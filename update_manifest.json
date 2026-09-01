@@ -1,0 +1,11 @@
+{
+  "version": "65",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v65/XPS_Tracker_Updater_v65.zip",
+  "sha256": "2d150a09e90e442943f8f69b628a7ba7c9eb86fa481829f866025e7d9acaedc9",
+  "release_notes": [
+    "Automatic internet update support",
+    "SHA-256 package verification",
+    "Program-file backup and automatic rollback",
+    "Offline startup fallback"
+  ]
+}

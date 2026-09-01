@@ -1,11 +1,12 @@
 {
-  "version": "76",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v76/XPS_Tracker_Updater_v76.zip",
-  "sha256": "a3a4e20ee557265be0db9908c39db56e38700011c4682094598a6668f1b6385c",
+  "version": "77",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v77/XPS_Tracker_Updater_v77.zip",
+  "sha256": "b63a96bf46759b423a9c934dcc3919991f611aea6a2cdf6d0902a377fa36d424",
   "release_notes": [
-    "Skip the table-layout confirmation dialog for complete 100% detections and previously saved/confirmed layouts",
-    "Retry questionable cleaning-length OCR using the printed or user-verified work-order total as an arithmetic constraint",
-    "Run the stronger OCR/reconciliation pass again after the user corrects the verified PDF total",
-    "Only choose length values actually observed by OCR; never invent a value from the master spreadsheet"
+    "Read each cleaning length once with a conservative OCR pass before doing anything more complicated",
+    "Run stronger border-free OCR only when the work-order total does not reconcile",
+    "Require repeated OCR support and limit automatic total-driven corrections to at most three rows",
+    "Fail closed on ambiguous or weak OCR alternatives instead of forcing the arithmetic to match",
+    "Use a fresh v4 OCR cache namespace"
   ]
 }

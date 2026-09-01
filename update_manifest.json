@@ -1,12 +1,11 @@
 {
-  "version": "71",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v71/XPS_Tracker_Updater_v71.zip",
-  "sha256": "7e2bee8d92720000c437fa4c44c8de67e71c297773f262930d0a73dac2e326b1",
+  "version": "72",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v72/XPS_Tracker_Updater_v72.zip",
+  "sha256": "1634093d480fc550c05e7573b290704a674ed3cbe4b742bea0966d871c35e1f0",
   "release_notes": [
-    "Validate extracted work-order activity lengths against the printed PDF total",
-    "Block Update Master and show affected rows dark red when totals do not reconcile",
-    "Allow the user to correct an OCRed printed total after visually verifying the PDF",
-    "Recalculate total validation automatically after a row length is edited",
-    "Re-read cleaning lengths with border-free OCR when the first pass is blank or invalid"
+    "Detect compact B&C pipe and cleaning tables relative to the table size when strict full-page grid detection fails",
+    "Preserve the existing strict detector for normal layouts",
+    "Keep column mapping evidence-based rather than hard-coding positions",
+    "Retain v71 fail-closed PDF total-length validation"
   ]
 }

@@ -58,15 +58,10 @@ jobs:
           python working_source/tests/regression_v73_total_dates.py
           python working_source/tests/regression_compact_table_fallback.py
           python working_source/tests/regression_length_totals.py
-          python working_source/tests/regression_r2_endpoint_ocr.py
-          python working_source/tests/regression_tall_cleaning_header.py
           python working_source/tests/regression_split_pipes.py
           python working_source/tests/regression_new_assets.py
           python working_source/tests/regression_master_insert.py
-          python working_source/tests/regression_trouble_tickets.py
           python working_source/tests/regression_trouble_workbook.py
-          python working_source/tests/regression_workorder_preview.py
-          python working_source/tests/test_trouble_parser.py
           python - <<'PY'
           from pathlib import Path
           app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')

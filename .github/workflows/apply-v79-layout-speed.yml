@@ -1,0 +1,56 @@
+name: Apply v79 compact-layout performance fix
+
+on:
+  push:
+    branches:
+      - v79-work
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.event.head_commit.message == 'APPLY_V79_LAYOUT_SPEED' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v79 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v79-work
+          fetch-depth: 0
+
+      - name: Apply v79 patch
+        run: python .github/scripts/apply_v79_layout_speed.py
+
+      - name: Install geometry-test dependencies
+        run: python -m pip install --disable-pip-version-check -q numpy opencv-python-headless
+
+      - name: Compile and prepare legacy regression path
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+
+      - name: Run v79 and existing regressions
+        run: |
+          python working_source/tests/regression_v79_layout_speed.py
+          python working_source/tests/regression_v78_rollback.py
+          python working_source/tests/regression_v75_811_ocr.py
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+
+      - name: Commit validated v79 source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt working_source/tests/regression_v79_layout_speed.py
+          git commit -m 'Fix compact-layout column explosion for v79 [skip ci]'
+          git push origin HEAD:v79-work

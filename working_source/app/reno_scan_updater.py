@@ -1413,6 +1413,126 @@ def _parse_sheet_date(cell_img, expected_year=None):
     return None
 
 
+def _parse_sheet_date_text_candidates(text, expected_date=None):
+    """Return candidate sheet dates plus whether the printed year was read exactly.
+
+    OCR frequently damages the 4-digit year while leaving month/day usable.  When
+    an expected work-order/report date is available, its year may repair only the
+    year component; month/day still come from the printed cell.
+    """
+    expected_year=expected_date.year if isinstance(expected_date,datetime) else None
+    tokens=re.findall(r'\d+',str(text or ''))
+    out=[]
+    for i in range(max(0,len(tokens)-2)):
+        a_s,b_s,c_s=tokens[i:i+3]
+        try: a,b,c=map(int,(a_s,b_s,c_s))
+        except Exception: continue
+        strong=False; repaired=False
+        if 2020<=a<=2100:
+            y,d,m=a,b,c; strong=len(a_s)==4
+        else:
+            m,d,y=a,b,c
+            if y<100: y=2000+y
+            strong=(len(c_s)==4 and 2020<=y<=2100)
+        if expected_year and y!=expected_year:
+            y=expected_year; repaired=True; strong=False
+        if not (2020<=y<=2100 and 1<=m<=12 and 1<=d<=31):
+            continue
+        try: out.append((datetime(y,m,d),bool(strong and not repaired)))
+        except Exception: pass
+    return out
+
+
+def _choose_sheet_date_evidence(texts, expected_date=None):
+    """Choose one row date while preserving clearly printed full dates."""
+    candidates=[]
+    for txt in texts or []:
+        candidates.extend(_parse_sheet_date_text_candidates(txt,expected_date))
+    if not candidates:
+        return {'date':None,'strong':False,'candidates':[]}
+    strong_dates=[d for d,strong in candidates if strong]
+    pool=strong_dates or [d for d,strong in candidates]
+    counts={d:pool.count(d) for d in set(pool)}
+    most=max(counts.values())
+    winners=sorted((d for d,n in counts.items() if n==most))
+    if strong_dates:
+        chosen=winners[0]
+        return {'date':chosen,'strong':True,'candidates':[d for d,_ in candidates]}
+    if isinstance(expected_date,datetime) and expected_date in counts:
+        chosen=expected_date
+    else:
+        chosen=winners[0]
+    return {'date':chosen,'strong':False,'candidates':[d for d,_ in candidates]}
+
+
+def _read_sheet_date_evidence(cell_img, expected_date=None):
+    if cell_img is None or getattr(cell_img,'size',0)==0:
+        return {'date':None,'strong':False,'candidates':[]}
+    gray=cv2.cvtColor(cell_img,cv2.COLOR_RGB2GRAY)
+    gray=cv2.resize(gray,None,fx=2.2,fy=2.2,interpolation=cv2.INTER_CUBIC)
+    variants=[gray,cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]]
+    texts=[]
+    for im in variants:
+        for psm in (7,6):
+            texts.append(cached_ocr_string(im,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789/').strip())
+    return _choose_sheet_date_evidence(texts,expected_date)
+
+
+def _dominant_sheet_date(evidences, expected_date=None):
+    """Return a repeated table date only when several rows independently support it."""
+    dates=[ev.get('date') for ev in evidences or [] if ev.get('date') is not None]
+    if not dates: return None
+    counts={d:dates.count(d) for d in set(dates)}
+    if isinstance(expected_date,datetime) and counts.get(expected_date,0)>=3:
+        return expected_date
+    ranked=sorted(((n,d) for d,n in counts.items()),reverse=True)
+    best_n,best_d=ranked[0]
+    second_n=ranked[1][0] if len(ranked)>1 else 0
+    if best_n>=3 and best_n>second_n:
+        return best_d
+    return None
+
+
+def _ocr_gridless_number_candidates(cell_img, decimal=False):
+    """OCR a numeric cell after removing printed table rules.
+
+    Total rows often put the digits directly against the bottom border; ordinary
+    OCR can then see only one digit.  Morphologically removing horizontal/vertical
+    rules keeps the number independent from the row grid.
+    """
+    if cell_img is None or getattr(cell_img,'size',0)==0: return []
+    gray=cv2.cvtColor(cell_img,cv2.COLOR_RGB2GRAY)
+    wl='0123456789.' if decimal else '0123456789'
+    found=[]
+    for threshold in (190,200,210,220):
+        inv=cv2.threshold(gray,threshold,255,cv2.THRESH_BINARY_INV)[1]
+        hk=cv2.getStructuringElement(cv2.MORPH_RECT,(max(8,int(cell_img.shape[1]*.45)),1))
+        vk=cv2.getStructuringElement(cv2.MORPH_RECT,(1,max(8,int(cell_img.shape[0]*.45))))
+        lines=cv2.bitwise_or(cv2.morphologyEx(inv,cv2.MORPH_OPEN,hk),
+                             cv2.morphologyEx(inv,cv2.MORPH_OPEN,vk))
+        clean=255-cv2.subtract(inv,lines)
+        for psm in (11,6,7):
+            raw=cached_ocr_string(clean,config=f'--psm {psm} -c tessedit_char_whitelist={wl}').strip()
+            if decimal:
+                for value in re.findall(r'\d+(?:\.\d+)?',raw.replace(',','')):
+                    try: found.append(float(value))
+                    except Exception: pass
+            else:
+                found.extend(re.findall(r'\d+',raw))
+    return found
+
+
+def _printed_total_value_is_plausible(value, band_count):
+    if value is None: return False
+    try: numeric=float(value)
+    except Exception: return False
+    if not (0<numeric<1000000): return False
+    # A lone digit from a table with many rows is almost certainly a clipped OCR
+    # fragment. Fail closed and ask the user rather than treating it as a total.
+    if int(band_count or 0)>=6 and numeric<10: return False
+    return True
+
+
 def _choose_length(cands, expected=None):
     cands=[float(x) for x in cands if 0 < float(x) < 5000]
     if not cands: return None
@@ -1452,13 +1572,7 @@ def _choose_printed_total(cands):
 
 
 def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=None,date_box=None):
-    """Read a printed activity total independently from the data-row lengths.
-
-    B&C sheets may print TOTAL text, but some scans (including the 8-20 cleaning
-    layout) use a blank footer row containing only the numeric value under the
-    activity-length column. Support both forms while requiring the neighboring
-    endpoint/date cells to be blank for the unlabeled-footer form.
-    """
+    """Read the printed activity total independently from the data-row lengths."""
     result={'found':False,'value':None,'confident':False,'candidates':[],'method':'not found'}
     if img is None or not bands or not table or not value_box: return result
     left,right=table; h,w=img.shape[:2]; tw=max(1,right-left)
@@ -1476,48 +1590,62 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
             pad=max(0,int(round(width*ratio)))
             sample=cell[:,pad:width-pad] if pad and width>pad*2+4 else cell
             found.extend(_ocr_digits(sample,True,fast_plain=True))
+        # Total digits commonly touch the grid border, so also remove the printed
+        # rules before OCR. This is what recovers 4476 from the 8-11 fixture.
+        found.extend(_ocr_gridless_number_candidates(cell,True))
         if not found: found.extend(_ocr_digits(cell,True,fast_plain=False))
         return found
 
-    # First try an explicitly labelled total inside the final few detected bands.
+    def neighbor_has_number(box,y1,y2):
+        cell=cut(box,y1,y2)
+        if cell is None or cell.size==0: return False
+        txt=' '.join(ocr_text(cell,psm) for psm in (6,11))
+        return bool(re.search(r'\d{2,}',txt))
+
+    def date_signal(y1,y2):
+        cell=cut(date_box,y1,y2)
+        if cell is None or getattr(cell,'size',0)==0: return False
+        return _parse_sheet_date(cell) is not None
+
+    def blank_total_row(y1,y2,method):
+        candidates=read_value(y1,y2)
+        if not candidates: return None
+        if neighbor_has_number(up_box,y1,y2) or neighbor_has_number(dn_box,y1,y2) or date_signal(y1,y2):
+            return None
+        value,confident=_choose_printed_total(candidates)
+        if not _printed_total_value_is_plausible(value,len(bands)):
+            value=None; confident=False
+        return {'found':True,'value':value,'confident':confident,
+                'candidates':candidates,'method':method}
+
+    # Explicit TOTAL label, when present.
     for y1,y2 in list(bands)[-4:]:
         row=img[max(0,y1):min(h,y2),max(0,left):min(w,right)]
         if row.size==0: continue
         row_text=' '.join(ocr_text(row,psm) for psm in (6,11)).lower()
         compact=re.sub(r'[^a-z]+','',row_text)
-        if not any(token in compact for token in ('total','tota','totai','totl')):
-            continue
+        if not any(token in compact for token in ('total','tota','totai','totl')): continue
         candidates=read_value(y1,y2)
         value,confident=_choose_printed_total(candidates)
+        if not _printed_total_value_is_plausible(value,len(bands)):
+            value=None; confident=False
         return {'found':True,'value':value,'confident':confident,
                 'candidates':candidates,'method':'labelled total row'}
 
-    # Many B&C tables put the total in one blank footer row immediately below the
-    # last data band. The vertical-grid detector intentionally excludes that row,
-    # so inspect a narrow footer window rather than treating it as an asset row.
+    # Some B&C sheets include the numeric total as the FINAL DETECTED GRID BAND.
+    # v71/v72 incorrectly assumed the total was always below bands[-1], causing
+    # 4476 on 8-11-2026 to be skipped and a stray single 4 to be accepted instead.
+    in_grid=blank_total_row(bands[-1][0],bands[-1][1],'in-grid footer total')
+    if in_grid is not None:
+        return in_grid
+
+    # Other sheets put one blank footer row immediately below the final detected
+    # data band. Keep that path as a fallback.
     typical=float(statistics.median(max(1,b-a) for a,b in bands))
     fy1=max(0,int(bands[-1][1]-typical*.05))
     fy2=min(h,int(bands[-1][1]+typical*2.10))
-    candidates=read_value(fy1,fy2)
-    value,confident=_choose_printed_total(candidates)
-    if not candidates: return result
-
-    def footer_has_number(box):
-        cell=cut(box,fy1,fy2)
-        if cell is None or cell.size==0: return False
-        txt=' '.join(ocr_text(cell,psm) for psm in (6,11))
-        return bool(re.search(r'\d{2,}',txt))
-
-    endpoint_signal=footer_has_number(up_box) or footer_has_number(dn_box)
-    date_signal=False
-    date_cell=cut(date_box,fy1,fy2)
-    if date_cell is not None and getattr(date_cell,'size',0):
-        date_signal=_parse_sheet_date(date_cell) is not None
-    if not endpoint_signal and not date_signal:
-        return {'found':True,'value':value,'confident':confident,
-                'candidates':candidates,'method':'blank footer total'}
-    return result
-
+    below=blank_total_row(fy1,fy2,'blank footer total')
+    return below if below is not None else result
 
 def _resolve_printed_total_sources(sources):
     """Resolve page total readings into one work-order/activity expected total."""
@@ -2212,7 +2340,7 @@ def validate_page_rows(data,kind,text,page_number,layout=None,profile=None):
             'duplicates':duplicates,'expected':expected,'issues':issues}
 
 
-def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None, on_progress=None):
+def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None, on_progress=None, expected_date=None):
     """Read Year 15 video/cleaning rows by the printed UP_MH + DN_MH pair."""
     prepared=prepared or prepare_year15_pair_layout(page,master_index,kind)
     img=prepared['img']; h,w=img.shape[:2]; bands=prepared.get('bands',[]); table=prepared.get('table')
@@ -2231,6 +2359,14 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
              'status':'COLUMN HEADERS NOT RESOLVED','skip_update':True}
         if on_row: on_row(rec)
         return [rec]
+    expected_date=expected_date if isinstance(expected_date,datetime) else None
+    date_reads={}
+    for date_band_index,(date_y1,date_y2) in enumerate(bands):
+        date_cell=img[date_y1:date_y2,
+                      max(0,int(left+date_box[0]*tw)):min(w,int(left+date_box[1]*tw))]
+        date_reads[date_band_index]=_read_sheet_date_evidence(date_cell,expected_date)
+    dominant_date=_dominant_sheet_date(list(date_reads.values()),expected_date)
+
     endpoint_items={}
     for pipe_item in master_index.get('pipe_items',[]):
         endpoint_items[pipe_item['up_key']]=pipe_item['up']
@@ -2292,8 +2428,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             expanded=_ocr_digits(cut(val_box),True,fast_plain=False)
             if expanded:
                 value=_choose_length(list(value_candidates)+list(expanded),expected)
-        d=_parse_sheet_date(cut(date_box))
+        date_evidence=date_reads.get(band_index,{'date':None,'strong':False,'candidates':[]})
+        d=date_evidence.get('date')
         endpoint_signal=any(re.search(r'\d',x) for x in up_obs+dn_obs)
+        if dominant_date is not None and (match or endpoint_signal) and not date_evidence.get('strong'):
+            d=dominant_date
         # Skip the header, footer total, and wrapped-comment continuation band.
         # A tall retained header or final total can occasionally produce digit-like
         # OCR noise even though it is neither a master pair nor a dated data row.
@@ -3212,8 +3351,8 @@ class App(tk.Tk):
 
                 emit=lambda rec: self.commit_extracted_record(rec,current_wo,use_date,idx,pi+1,processed)
                 if idx.get('profile') in ('year15', 'phase2_year1'):
-                    if kind=='pipes': data=parse_year15_pair_list(page,idx,'pipes',item.get('pair_layout'),emit,self.pump_analysis_ui)
-                    elif kind=='cleaning': data=parse_year15_pair_list(page,idx,'cleaning',item.get('pair_layout'),emit,self.pump_analysis_ui)
+                    if kind=='pipes': data=parse_year15_pair_list(page,idx,'pipes',item.get('pair_layout'),emit,self.pump_analysis_ui,use_date)
+                    elif kind=='cleaning': data=parse_year15_pair_list(page,idx,'cleaning',item.get('pair_layout'),emit,self.pump_analysis_ui,use_date)
                     else: data=parse_year15_manholes(page,idx,emit,self.pump_analysis_ui)
                 else:
                     # Reno lists can contain many OCR rows on one page. Publish each

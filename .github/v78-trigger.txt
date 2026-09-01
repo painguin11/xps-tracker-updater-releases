@@ -1,1 +1,1 @@
-Trigger v78 rollback validation.
+Trigger v78 rollback validation, attempt 1.

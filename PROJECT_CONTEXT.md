@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v72**. The repository's v72 source bundle contains
+Current production version: **v73**. The repository's v73 source bundle contains
 the complete app directory and regression scripts and must match the v69 release
 ZIP. In a new conversation, begin with:
 
@@ -107,6 +107,12 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - New rows default Status to `Open`; dropdown values are Open, In Progress,
   Resolved, and No Action Needed.
 - Keep Resolution / Follow-up Notes and the green workbook header.
+
+## Current v73 fixes
+
+- Pair-table totals may be inside the final detected grid row or below the grid; table rules are removed before total OCR.
+- Implausible single-digit totals on multi-row tables fail closed. The local 8/11/2026 fixture reads 4476 rather than 4.
+- B&C pair-table dates use repeated table evidence to correct weak OCR while clearly read full YYYY dates are preserved.
 
 ## Current v72 fixes
 

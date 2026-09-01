@@ -46,6 +46,18 @@ jobs:
           assert "prepared['printed_total_info']=printed_total_info" in text
           print('v74 header/footer exclusion and date-outlier safeguards passed.')
           PY
+      - name: Update total regression for pre-row total detection
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('working_source/tests/regression_length_totals.py')
+          text=p.read_text(encoding='utf-8')
+          old='assert "prepared[\'printed_total_info\']=_read_pair_table_printed_total" in source'
+          new='assert "printed_total_info=_read_pair_table_printed_total" in source\nassert "prepared[\'printed_total_info\']=printed_total_info" in source'
+          if old not in text:
+              raise SystemExit('old total regression assertion not found')
+          p.write_text(text.replace(old,new,1),encoding='utf-8')
+          PY
       - name: Compile source
         run: |
           python -m py_compile working_source/app/reno_scan_updater.py
@@ -68,7 +80,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v74_row_filtering.py
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v74_row_filtering.py working_source/tests/regression_length_totals.py
           if ! git diff --cached --quiet; then
             git commit -m "Exclude header and total rows from pair summaries [skip ci]"
             git push origin HEAD:v74-work

@@ -422,3 +422,19 @@ Version 70 layout confidence, DPI, and cleaning headers
 - For B&C cleaning tables, recognizes the final Date column plus an immediately
   preceding Length-labelled column as Cleaning Date and Wheel Walk when OCR
   splits the narrow printed headers.
+
+
+Version 71 length-total validation
+----------------------------------
+- Reads the printed PDF activity total independently from the individual row
+  lengths and reconciles it against the lengths shown in the live summary.
+- A mismatch is a blocking validation failure: affected rows are dark red and
+  Update Master remains blocked until the totals reconcile.
+- If the printed total itself was OCRed incorrectly, the user can enter the
+  total they visually verify from the PDF; this changes only the expected PDF
+  total and never changes an individual row length.
+- Editing an extracted length automatically recalculates its work-order/activity
+  total validation.
+- Cleaning-length OCR now escalates to the border-free focused reread when the
+  first OCR result is blank or contains only impossible values, closing cases
+  such as a printed 114 being read initially as 6114/36114.

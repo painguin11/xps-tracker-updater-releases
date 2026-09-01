@@ -1,11 +1,12 @@
 {
-  "version": "70",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v70/XPS_Tracker_Updater_v70.zip",
-  "sha256": "6fff844e6f4cfe2d592a109082c7fb34ce23a1d263be08ccb454c75ec2cfcda2",
+  "version": "71",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v71/XPS_Tracker_Updater_v71.zip",
+  "sha256": "7e2bee8d92720000c437fa4c44c8de67e71c297773f262930d0a73dac2e326b1",
   "release_notes": [
-    "Skip table-layout confirmation when native detection is already 100% complete",
-    "Scale the main UI and live summary correctly across Windows DPI settings",
-    "Recover B&C cleaning Wheel Walk and Cleaning Date roles from narrow Length/Date headers",
-    "Preserve partial recognized header roles instead of blanking them when another role is missing"
+    "Validate extracted work-order activity lengths against the printed PDF total",
+    "Block Update Master and show affected rows dark red when totals do not reconcile",
+    "Allow the user to correct an OCRed printed total after visually verifying the PDF",
+    "Recalculate total validation automatically after a row length is edited",
+    "Re-read cleaning lengths with border-free OCR when the first pass is blank or invalid"
   ]
 }

@@ -1,0 +1,88 @@
+name: Publish XPS Tracker Updater v73
+on:
+  push:
+    branches: [v73-work]
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v73-work
+          fetch-depth: 0
+      - name: Prepare v73
+        run: python .github/scripts/prepare_v73_release.py
+      - name: Compile and regress
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          rm -rf output/package_v69 && mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+      - name: Verify packages
+        run: |
+          unzip -t XPS_Tracker_Updater_v73.zip
+          unzip -t XPS_Tracker_Updater_Source_v73.zip
+          test "$(zipinfo -1 XPS_Tracker_Updater_v73.zip | head -1 | cut -d/ -f1)" = 'XPS_Tracker_Updater'
+          for f in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do zipinfo -1 XPS_Tracker_Updater_v73.zip | grep -qx "XPS_Tracker_Updater/$f"; done
+      - name: Save final v73 source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          if ! git diff --cached --quiet; then git commit -m 'Finalize v73 app source [skip ci]' && git push origin HEAD:v73-work; fi
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+      - name: Add production source bundle
+        run: |
+          cp XPS_Tracker_Updater_Source_v73.zip mainrepo/
+          cd mainrepo
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('PROJECT_CONTEXT.md'); t=p.read_text(encoding='utf-8')
+          t=t.replace('Current production version: **v72**. The repository\'s v72 source bundle contains','Current production version: **v73**. The repository\'s v73 source bundle contains',1)
+          marker='## Current v72 fixes\n'
+          section='''## Current v73 fixes\n\n- Pair-table totals may be inside the final detected grid row or below the grid; table rules are removed before total OCR.\n- Implausible single-digit totals on multi-row tables fail closed. The local 8/11/2026 fixture reads 4476 rather than 4.\n- B&C pair-table dates use repeated table evidence to correct weak OCR while clearly read full YYYY dates are preserved.\n\n'''
+          if '## Current v73 fixes' not in t: t=t.replace(marker,section+marker,1)
+          p.write_text(t,encoding='utf-8')
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add XPS_Tracker_Updater_Source_v73.zip PROJECT_CONTEXT.md
+          git commit -m 'Add XPS Tracker Updater v73 source bundle'
+          git push origin HEAD:main
+      - name: Publish and verify release
+        run: |
+          sha=$(cat v73.sha256)
+          gh release create v73 XPS_Tracker_Updater_v73.zip --repo ${{ github.repository }} --target main --title 'XPS Tracker Updater v73' --notes 'v73 fixes in-grid total OCR and weak B&C date OCR while retaining v72 compact-table detection and v71 fail-closed total validation.'
+          json=$(gh api repos/${{ github.repository }}/releases/tags/v73)
+          test "$(printf '%s' "$json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v73.zip") | .digest')" = "sha256:$sha"
+      - name: Update and verify manifest
+        run: |
+          sha=$(cat v73.sha256)
+          cd mainrepo && git pull --ff-only origin main
+          python - "$sha" <<'PY'
+          import json,sys
+          from pathlib import Path
+          sha=sys.argv[1]
+          data={'version':'73','download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v73/XPS_Tracker_Updater_v73.zip','sha256':sha,'release_notes':['Read totals printed inside the final table row','Remove grid rules before total OCR and reject implausible lone digits','Correct weak B&C table dates using repeated date evidence','Preserve clearly read full dates']}
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git add update_manifest.json
+          git commit -m 'Point auto-updater manifest to v73'
+          git push origin HEAD:main
+          remote=$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)
+          printf '%s' "$remote" | jq -e '.version=="73" and .sha256!=""'

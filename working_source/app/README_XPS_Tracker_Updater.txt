@@ -468,3 +468,14 @@ Version 74 row filtering and date validation
 - When the dominant table date agrees with the confirmed work-order date, an
   outlier row date requires three independent full-date OCR reads to remain
   different; weak outliers are corrected to the verified table date.
+
+
+Version 75 cleaning OCR refresh
+--------------------------------
+- OCR cache namespace is advanced to v3 so older cached Tesseract strings do not
+  survive OCR/parser changes on previously analyzed PDFs. Existing cache files
+  are left untouched and are simply no longer reused by v75.
+- Suspicious cleaning lengths now add a grid-rule-removed OCR pass to the existing
+  border-free consensus, improving cases such as 275 -> 75 and 224 -> 274.
+- Date tokenization repairs a digit split between printed date separators (for
+  example 8/1 1/2026 -> 8/11/2026) before candidate voting.

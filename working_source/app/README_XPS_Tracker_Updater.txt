@@ -449,3 +449,11 @@ Version 72 compact-table detection
   scanned page.
 - Handles smaller B&C pair tables such as the 8/26/2026 packet while still using
   detected grid boundaries and header roles rather than fixed column numbers.
+
+
+Version 73 total/date reliability
+---------------------------------
+- Reads numeric totals inside the final detected grid row as well as totals below the grid.
+- Removes table rules before total OCR so border-touching digits are not clipped.
+- Rejects implausible lone-digit totals on multi-row tables instead of trusting them.
+- Uses repeated B&C table-date evidence to correct weak OCR while preserving clearly read full dates.

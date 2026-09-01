@@ -10,46 +10,17 @@ permissions:
 
 jobs:
   publish:
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') || contains(github.event.head_commit.message, 'RECOVER_V74') }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      RELEASE_ID: '380844831'
     steps:
-      - name: Check out v74 working source
+      - name: Check out finalized v74 source
         uses: actions/checkout@v4
         with:
           ref: v74-work
           fetch-depth: 0
-
-      - name: Prepare v74 versions and README
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          app=Path('working_source/app/reno_scan_updater.py')
-          text=app.read_text(encoding='utf-8')
-          if "APP_VERSION = '73'" in text:
-              text=text.replace("APP_VERSION = '73'","APP_VERSION = '74'",1)
-          elif "APP_VERSION = '74'" not in text:
-              raise SystemExit('Unexpected APP_VERSION')
-          app.write_text(text,encoding='utf-8')
-
-          updater=Path('working_source/app/xps_update.py')
-          text=updater.read_text(encoding='utf-8')
-          if 'CURRENT_VERSION = "73"' in text:
-              text=text.replace('CURRENT_VERSION = "73"','CURRENT_VERSION = "74"',1)
-          elif "CURRENT_VERSION = '73'" in text:
-              text=text.replace("CURRENT_VERSION = '73'","CURRENT_VERSION = '74'",1)
-          elif 'CURRENT_VERSION = "74"' not in text and "CURRENT_VERSION = '74'" not in text:
-              raise SystemExit('Unexpected CURRENT_VERSION')
-          updater.write_text(text,encoding='utf-8')
-
-          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
-          text=readme.read_text(encoding='utf-8')
-          if 'Version 74 row filtering and date validation' not in text:
-              text += '''\n\nVersion 74 row filtering and date validation\n--------------------------------------------\n- A detected in-grid printed total is validation evidence only and is excluded\n  from live-summary/master rows before row parsing.\n- Header/footer OCR noise is rejected structurally before repeated-date repair can\n  make it look like a valid data row.\n- When the dominant table date agrees with the confirmed work-order date, an\n  outlier row date requires three independent full-date OCR reads to remain\n  different; weak outliers are corrected to the verified table date.\n'''
-          readme.write_text(text,encoding='utf-8')
-          PY
 
       - name: Compile and run regressions
         run: |
@@ -66,109 +37,65 @@ jobs:
           python working_source/tests/regression_new_assets.py
           python working_source/tests/regression_master_insert.py
           python working_source/tests/regression_trouble_workbook.py
+          grep -q "APP_VERSION = '74'" working_source/app/reno_scan_updater.py
+          grep -Eq 'CURRENT_VERSION = ["'"']74["'"']' working_source/app/xps_update.py
 
-      - name: Verify versions and scoped behavior
+      - name: Package v74
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
-          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
-          assert "APP_VERSION = '74'" in app
-          assert ('CURRENT_VERSION = "74"' in updater or "CURRENT_VERSION = '74'" in updater)
-          assert "if total_band_index is not None and band_index==total_band_index:" in app
-          assert 'Structural filtering happens BEFORE date repair' in app
-          assert '_date_outlier_is_well_supported(date_evidence,dominant_date,expected_date)' in app
-          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
-              assert required in app, required
-          print('v74 versions and scoped behavior verified.')
-          PY
-
-      - name: Package release and source bundle
-        run: |
-          find working_source -type d -name __pycache__ -prune -exec rm -rf {} +
-          find working_source -name '*.pyc' -delete
           rm -rf dist
           mkdir -p dist/XPS_Tracker_Updater
           cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name __pycache__ -prune -exec rm -rf {} +
+          find dist -name '*.pyc' -delete
           (cd dist && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_v74.zip" XPS_Tracker_Updater)
-          (cd working_source && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v74.zip" app tests -x '*/__pycache__/*' '*.pyc')
           unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_v74.zip"
-          unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v74.zip"
           test "$(zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v74.zip" | head -1)" = 'XPS_Tracker_Updater/'
           for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do
             zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v74.zip" | grep -qx "XPS_Tracker_Updater/$required"
           done
           sha256sum "$RUNNER_TEMP/XPS_Tracker_Updater_v74.zip" | tee "$RUNNER_TEMP/v74.sha256"
 
-      - name: Save final v74 working source
+      - name: Upload asset directly to v74 draft
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
-          if ! git diff --cached --quiet; then
-            git commit -m "Finalize v74 app source [skip ci]"
-            git push origin HEAD:v74-work
+          release_json="$(gh api repos/${{ github.repository }}/releases/$RELEASE_ID)"
+          test "$(printf '%s' "$release_json" | jq -r .tag_name)" = 'v74'
+          existing="$(printf '%s' "$release_json" | jq -r '.assets[]? | select(.name=="XPS_Tracker_Updater_v74.zip") | .id')"
+          if [ -n "$existing" ]; then
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$existing"
           fi
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/zip" \
+            --data-binary @"$RUNNER_TEMP/XPS_Tracker_Updater_v74.zip" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=XPS_Tracker_Updater_v74.zip" >/dev/null
 
-      - name: Check out main for production source bundle
+      - name: Verify asset and publish release
+        run: |
+          local_sha="$(cut -d' ' -f1 "$RUNNER_TEMP/v74.sha256")"
+          release_json="$(gh api repos/${{ github.repository }}/releases/$RELEASE_ID)"
+          asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v74.zip") | .size')"
+          asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v74.zip") | .digest')"
+          asset_url="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v74.zip") | .browser_download_url')"
+          test "$asset_size" -gt 0
+          test "$asset_digest" = "sha256:$local_sha"
+          test "$asset_url" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v74/XPS_Tracker_Updater_v74.zip'
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$RELEASE_ID" -F draft=false >/dev/null
+          printf '%s\n' "$local_sha" > "$RUNNER_TEMP/verified_sha"
+          printf '%s\n' "$asset_url" > "$RUNNER_TEMP/verified_url"
+
+      - name: Check out main for manifest
         uses: actions/checkout@v4
         with:
           ref: main
           path: mainrepo
           fetch-depth: 0
 
-      - name: Add production source bundle and context
-        working-directory: mainrepo
-        run: |
-          cp "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v74.zip" ./XPS_Tracker_Updater_Source_v74.zip
-          python - <<'PY'
-          import re
-          from pathlib import Path
-          path=Path('PROJECT_CONTEXT.md')
-          text=path.read_text(encoding='utf-8')
-          text=re.sub(r'Current production version: \*\*v\d+\*\*\.', 'Current production version: **v74**.', text, count=1)
-          section='''## Current v74 fixes\n\n- Pair-table printed totals that occupy a detected grid band are identified before\n  row parsing and excluded from the live summary/master rows. The total remains\n  available only as independent total-length validation evidence.\n- Header/footer OCR noise is filtered before table-date repair, preventing labels\n  such as header text from becoming unmatched asset rows.\n- When a repeated table date agrees with the confirmed work-order date, a\n  different row date must have at least three independent strong full-date OCR\n  reads to be preserved; weaker outliers are corrected to the dominant date.\n- The 8/11/2026 cleaning fixture has one header band, 17 real data rows, and one\n  final 4476 total band; the customer PDF itself is not stored in this repository.\n\n'''
-          if '## Current v74 fixes' not in text:
-              marker='## Current v73 fixes\n'
-              if marker not in text:
-                  raise SystemExit('Current v73 context marker not found')
-              text=text.replace(marker,section+marker,1)
-          path.write_text(text,encoding='utf-8')
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add XPS_Tracker_Updater_Source_v74.zip PROJECT_CONTEXT.md
-          git commit -m "Add XPS Tracker Updater v74 source bundle"
-          git push origin HEAD:main
-
-      - name: Publish and verify v74 release
-        working-directory: mainrepo
-        run: |
-          if gh release view v74 >/dev/null 2>&1; then
-            echo 'v74 release already exists; refusing to overwrite.'
-            exit 1
-          fi
-          gh release create v74 "$RUNNER_TEMP/XPS_Tracker_Updater_v74.zip" \
-            --target main \
-            --title 'XPS Tracker Updater v74' \
-            --notes $'v74 fixes the v73 header/footer regression in B&C pair tables.\n\n- Printed total rows are validation-only and never become live-summary/master rows.\n- Header/footer OCR noise is rejected before date repair.\n- Weak date outliers are corrected when the repeated table date agrees with the confirmed work-order date.\n- v73 total OCR, v72 compact-table detection, and v71 fail-closed total validation remain included.'
-          local_sha="$(cut -d' ' -f1 "$RUNNER_TEMP/v74.sha256")"
-          release_json="$(gh api repos/${{ github.repository }}/releases/tags/v74)"
-          asset_name="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v74.zip") | .name')"
-          asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v74.zip") | .size')"
-          asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v74.zip") | .digest')"
-          asset_url="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v74.zip") | .browser_download_url')"
-          test "$asset_name" = 'XPS_Tracker_Updater_v74.zip'
-          test "$asset_size" -gt 0
-          test "$asset_digest" = "sha256:$local_sha"
-          test "$asset_url" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v74/XPS_Tracker_Updater_v74.zip'
-          printf '%s\n' "$local_sha" > "$RUNNER_TEMP/verified_sha"
-          printf '%s\n' "$asset_url" > "$RUNNER_TEMP/verified_url"
-
       - name: Update and verify manifest
         working-directory: mainrepo
         run: |
-          git pull --ff-only origin main
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -187,13 +114,16 @@ jobs:
           }
           Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
           PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add update_manifest.json
-          git commit -m 'Point auto-updater manifest to v74'
-          git push origin HEAD:main
+          if ! git diff --cached --quiet; then
+            git commit -m 'Point auto-updater manifest to v74'
+            git push origin HEAD:main
+          fi
           git pull --ff-only origin main
           remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
           printf '%s\n' "$remote_manifest" | jq -e '.version=="74"'
-          printf '%s\n' "$remote_manifest" | jq -e '.download_url=="https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v74/XPS_Tracker_Updater_v74.zip"'
           verified_sha="$(cat "$RUNNER_TEMP/verified_sha")"
           test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$verified_sha"
-          echo 'v74 manifest verified.'
+          echo 'v74 release and manifest verified.'

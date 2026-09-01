@@ -1,0 +1,183 @@
+name: Publish XPS Tracker Updater v76
+
+on:
+  push:
+    branches:
+      - v76-work
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.head_commit.message == 'PUBLISH_V76' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out validated v76 source
+        uses: actions/checkout@v4
+        with:
+          ref: v76-work
+          fetch-depth: 0
+
+      - name: Set v76 versions and bundled README
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py')
+          updater=Path('working_source/app/xps_update.py')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          a=app.read_text(encoding='utf-8')
+          u=updater.read_text(encoding='utf-8')
+          a,n=re.subn(r"APP_VERSION = ['\"]\d+['\"]", "APP_VERSION = '76'", a, count=1)
+          if n!=1: raise SystemExit('APP_VERSION replacement failed')
+          u,n=re.subn(r"CURRENT_VERSION = ['\"]\d+['\"]", 'CURRENT_VERSION = "76"', u, count=1)
+          if n!=1: raise SystemExit('CURRENT_VERSION replacement failed')
+          app.write_text(a,encoding='utf-8')
+          updater.write_text(u,encoding='utf-8')
+          r=readme.read_text(encoding='utf-8')
+          if 'Version 76 total-driven OCR and layout confirmation fixes' not in r:
+              r += "\n\nVersion 76 total-driven OCR and layout confirmation fixes\n---------------------------------------------------------\n- A complete 100% table layout, including a previously saved/confirmed layout, is accepted automatically without reopening the layout confirmation dialog.\n- Cleaning rows retain their OCR-observed length candidates for a second-pass reconciliation against the printed PDF total.\n- When a printed total or user-verified total does not match the summary, questionable cleaning cells are re-read with stronger border-free OCR and only OCR-observed candidate combinations may be selected.\n- If the user corrects the PDF total in the verification dialog, the stronger OCR/reconciliation pass is run again using that verified total before manual row edits are required.\n- Total-driven reconciliation never invents a length from the master spreadsheet.\n"
+              readme.write_text(r,encoding='utf-8')
+          PY
+
+      - name: Compile and run release regressions
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_v76_layout_skip.py
+          python working_source/tests/regression_v75_811_ocr.py
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '76'" in app
+          assert 'CURRENT_VERSION = "76"' in updater
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in app, required
+          print('v76 release validation passed.')
+          PY
+
+      - name: Commit finalized v76 source branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Finalize v76 versions and README [skip ci]'
+            git push origin HEAD:v76-work
+          fi
+
+      - name: Package app and source bundle
+        run: |
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name __pycache__ -prune -exec rm -rf {} +
+          find dist -name '*.pyc' -delete
+          (cd dist && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_v76.zip" XPS_Tracker_Updater)
+          unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_v76.zip"
+          test "$(zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v76.zip" | head -1)" = 'XPS_Tracker_Updater/'
+          for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do
+            zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v76.zip" | grep -qx "XPS_Tracker_Updater/$required"
+          done
+          rm -rf "$RUNNER_TEMP/source_v76"
+          mkdir -p "$RUNNER_TEMP/source_v76/XPS_Tracker_Updater_Source_v76"
+          cp -a working_source/. "$RUNNER_TEMP/source_v76/XPS_Tracker_Updater_Source_v76/"
+          find "$RUNNER_TEMP/source_v76" -type d -name __pycache__ -prune -exec rm -rf {} +
+          find "$RUNNER_TEMP/source_v76" -name '*.pyc' -delete
+          (cd "$RUNNER_TEMP/source_v76" && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v76.zip" XPS_Tracker_Updater_Source_v76)
+          sha256sum "$RUNNER_TEMP/XPS_Tracker_Updater_v76.zip" | tee "$RUNNER_TEMP/v76.sha256"
+
+      - name: Create draft release and upload verified ZIP
+        run: |
+          existing="$(gh api -H 'Accept: application/vnd.github+json' repos/${{ github.repository }}/releases --jq '.[] | select(.tag_name=="v76") | .id' | head -1)"
+          if [ -n "$existing" ]; then
+            release_id="$existing"
+            gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=true -f name='XPS Tracker Updater v76' >/dev/null
+          else
+            release_id="$(gh api -X POST "repos/${{ github.repository }}/releases" -f tag_name='v76' -f target_commitish='v76-work' -f name='XPS Tracker Updater v76' -f body='v76 skips redundant 100% layout confirmation and adds total-driven cleaning-length OCR reconciliation, including a retry after the user corrects the verified PDF total. Only OCR-observed length candidates may be selected.' -F draft=true --jq .id)"
+          fi
+          existing_asset="$(gh api "repos/${{ github.repository }}/releases/$release_id" --jq '.assets[]? | select(.name=="XPS_Tracker_Updater_v76.zip") | .id' | head -1)"
+          if [ -n "$existing_asset" ]; then gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$existing_asset" >/dev/null; fi
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/zip" \
+            --data-binary @"$RUNNER_TEMP/XPS_Tracker_Updater_v76.zip" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/$release_id/assets?name=XPS_Tracker_Updater_v76.zip" >/dev/null
+          echo "$release_id" > "$RUNNER_TEMP/release_id"
+
+      - name: Verify checksum, publish, and verify final URL
+        run: |
+          release_id="$(cat "$RUNNER_TEMP/release_id")"
+          local_sha="$(cut -d' ' -f1 "$RUNNER_TEMP/v76.sha256")"
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            release_json="$(gh api "repos/${{ github.repository }}/releases/$release_id")"
+            asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v76.zip") | .size')"
+            asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v76.zip") | .digest')"
+            if [ "${asset_size:-0}" -gt 0 ] && [ "$asset_digest" = "sha256:$local_sha" ]; then ok=1; break; fi
+            sleep 3
+          done
+          test "$ok" = 1
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=false >/dev/null
+          final_json="$(gh api "repos/${{ github.repository }}/releases/$release_id")"
+          final_url="$(printf '%s' "$final_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v76.zip") | .browser_download_url')"
+          test "$final_url" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v76/XPS_Tracker_Updater_v76.zip'
+          printf '%s\n' "$local_sha" > "$RUNNER_TEMP/verified_sha"
+          printf '%s\n' "$final_url" > "$RUNNER_TEMP/verified_url"
+
+      - name: Update source bundle and manifest on main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Commit source bundle and verified manifest
+        working-directory: mainrepo
+        run: |
+          cp "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v76.zip" ./XPS_Tracker_Updater_Source_v76.zip
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          sha=Path(os.environ['RUNNER_TEMP']+'/verified_sha').read_text().strip()
+          url=Path(os.environ['RUNNER_TEMP']+'/verified_url').read_text().strip()
+          data={
+            'version':'76',
+            'download_url':url,
+            'sha256':sha,
+            'release_notes':[
+              'Skip the table-layout confirmation dialog for complete 100% detections and previously saved/confirmed layouts',
+              'Retry questionable cleaning-length OCR using the printed or user-verified work-order total as an arithmetic constraint',
+              'Run the stronger OCR/reconciliation pass again after the user corrects the verified PDF total',
+              'Only choose length values actually observed by OCR; never invent a value from the master spreadsheet'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add XPS_Tracker_Updater_Source_v76.zip update_manifest.json
+          git commit -m 'Publish v76 source bundle and update manifest'
+          git push origin HEAD:main
+          git pull --ff-only origin main
+          remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          printf '%s\n' "$remote_manifest" | jq -e '.version=="76"'
+          verified_sha="$(cat "$RUNNER_TEMP/verified_sha")"
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$verified_sha"
+          test -s XPS_Tracker_Updater_Source_v76.zip
+          echo 'v76 release, source bundle, and manifest verified.'

@@ -1,1 +1,1 @@
-Trigger v75 cleaning OCR validation.
+Publish validated XPS Tracker Updater v75.

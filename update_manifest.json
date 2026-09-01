@@ -1,11 +1,11 @@
 {
-  "version": "65",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v65/XPS_Tracker_Updater_v65.zip",
-  "sha256": "2d150a09e90e442943f8f69b628a7ba7c9eb86fa481829f866025e7d9acaedc9",
+  "version": "66",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v66/XPS_Tracker_Updater_v66.zip",
+  "sha256": "19da36a39513992d408eded7c977133312dc0adabb589c6805902bb2e893db91",
   "release_notes": [
-    "Automatic internet update support",
-    "SHA-256 package verification",
-    "Program-file backup and automatic rollback",
-    "Offline startup fallback"
+    "Fix tall wrapped cleaning-table header detection",
+    "Select the correct rotated table orientation",
+    "Exclude header and final total from summary and master",
+    "Verified 17 real cleaning rows in 8-11-2026.pdf"
   ]
 }

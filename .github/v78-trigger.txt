@@ -1,1 +1,1 @@
-Trigger v78 column OCR validation, attempt 5.
+Publish validated v78 column OCR recovery.

@@ -2153,10 +2153,10 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
         if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
         expected=match.get('expected') if match else None
-        if kind=='cleaning' and value_candidates:
+        if kind=='cleaning':
             value=_choose_cleaning_length(value_candidates,expected)
             distinct={round(float(x),2) for x in value_candidates if 0<float(x)<5000}
-            needs_consensus=(value is None or len(distinct)>1 or
+            needs_consensus=(not value_candidates or value is None or len(distinct)>1 or
                 (value is not None and expected not in (None,0) and
                  abs(float(value)-float(expected))>LENGTH_DIFF_THRESHOLD))
             if needs_consensus:
@@ -3274,9 +3274,11 @@ class App(tk.Tk):
             self.revalidate_total_checks_for_record(r)
             self.show_summary_record(i)
             length_warnings=sum(1 for rec in self.records if str(rec.get('status','')).startswith('LENGTH DIFF'))
-            other_warnings=sum(1 for rec in self.records if record_needs_review(rec) and not str(rec.get('status','')).startswith('LENGTH DIFF'))
-            if length_warnings or other_warnings:
+            total_failures=sum(1 for check in self.total_validations if not check.get('passed'))
+            other_warnings=sum(1 for rec in self.records if record_needs_review(rec) and not str(rec.get('status','')).startswith('LENGTH DIFF') and not any(str(w).startswith('TOTAL LENGTH') for w in rec.get('warnings',[])))
+            if length_warnings or total_failures or other_warnings:
                 bits=[]
+                if total_failures: bits.append(f'{total_failures} TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED')
                 if length_warnings: bits.append(f'{length_warnings} length difference warning(s) > {LENGTH_DIFF_THRESHOLD:.1f}')
                 if other_warnings: bits.append(f'{other_warnings} other row(s) need review')
                 self.status.set('; '.join(bits) + '.')

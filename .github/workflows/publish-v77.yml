@@ -1,0 +1,192 @@
+name: Publish XPS Tracker Updater v77
+
+on:
+  push:
+    branches:
+      - v77-work
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.head_commit.message == 'PUBLISH_V77' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out validated v77 source
+        uses: actions/checkout@v4
+        with:
+          ref: v77-work
+          fetch-depth: 0
+
+      - name: Set v77 versions and bundled README
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py')
+          updater=Path('working_source/app/xps_update.py')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          a=app.read_text(encoding='utf-8')
+          u=updater.read_text(encoding='utf-8')
+          a,n=re.subn(r"APP_VERSION = ['\"]\d+['\"]", "APP_VERSION = '77'", a, count=1)
+          if n!=1: raise SystemExit('APP_VERSION replacement failed')
+          u,n=re.subn(r"CURRENT_VERSION = ['\"]\d+['\"]", 'CURRENT_VERSION = "77"', u, count=1)
+          if n!=1: raise SystemExit('CURRENT_VERSION replacement failed')
+          app.write_text(a,encoding='utf-8')
+          updater.write_text(u,encoding='utf-8')
+          r=readme.read_text(encoding='utf-8')
+          title='Version 77 simple-first cleaning length OCR'
+          if title not in r:
+              r += "\n\nVersion 77 simple-first cleaning length OCR\n-------------------------------------------\n- Cleaning lengths now start with one conservative OCR read per cell.\n- Stronger border-free and transformed OCR runs only when the work-order total does not reconcile.\n- Total-driven correction requires repeated OCR support, changes at most three rows automatically, and fails closed on ambiguous alternatives.\n- Weak one-off OCR garbage cannot be selected just because it makes the arithmetic match.\n- Manual row edits remain authoritative and OCR cache advances to v4.\n"
+              readme.write_text(r,encoding='utf-8')
+          PY
+
+      - name: Compile and run release regressions
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_v77_simple_first.py
+          python working_source/tests/regression_v76_layout_skip.py
+          python working_source/tests/regression_v75_811_ocr.py
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_r2_endpoint_ocr.py
+          python working_source/tests/regression_tall_cleaning_header.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_tickets.py
+          python working_source/tests/regression_trouble_workbook.py
+          python working_source/tests/regression_workorder_preview.py
+          python working_source/tests/test_trouble_parser.py
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '77'" in app
+          assert 'CURRENT_VERSION = "77"' in updater
+          assert "OCR_CACHE_VERSION = 'v4'" in app
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in app, required
+          print('v77 release validation passed.')
+          PY
+
+      - name: Commit finalized v77 source branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Finalize v77 versions and README [skip ci]'
+            git push origin HEAD:v77-work
+          fi
+
+      - name: Package app and source bundle
+        run: |
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name __pycache__ -prune -exec rm -rf {} +
+          find dist -name '*.pyc' -delete
+          (cd dist && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_v77.zip" XPS_Tracker_Updater)
+          unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_v77.zip"
+          test "$(zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v77.zip" | head -1)" = 'XPS_Tracker_Updater/'
+          for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do
+            zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v77.zip" | grep -qx "XPS_Tracker_Updater/$required"
+          done
+          rm -rf "$RUNNER_TEMP/source_v77"
+          mkdir -p "$RUNNER_TEMP/source_v77/XPS_Tracker_Updater_Source_v77"
+          cp -a working_source/. "$RUNNER_TEMP/source_v77/XPS_Tracker_Updater_Source_v77/"
+          find "$RUNNER_TEMP/source_v77" -type d -name __pycache__ -prune -exec rm -rf {} +
+          find "$RUNNER_TEMP/source_v77" -name '*.pyc' -delete
+          (cd "$RUNNER_TEMP/source_v77" && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v77.zip" XPS_Tracker_Updater_Source_v77)
+          sha256sum "$RUNNER_TEMP/XPS_Tracker_Updater_v77.zip" | tee "$RUNNER_TEMP/v77.sha256"
+
+      - name: Create draft release and upload verified ZIP
+        run: |
+          existing="$(gh api -H 'Accept: application/vnd.github+json' repos/${{ github.repository }}/releases --jq '.[] | select(.tag_name=="v77") | .id' | head -1)"
+          if [ -n "$existing" ]; then
+            release_id="$existing"
+            gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=true -f name='XPS Tracker Updater v77' >/dev/null
+          else
+            release_id="$(gh api -X POST "repos/${{ github.repository }}/releases" -f tag_name='v77' -f target_commitish='v77-work' -f name='XPS Tracker Updater v77' -f body='v77 makes cleaning-length OCR simple-first: one conservative initial read, stronger OCR only after the printed total fails, and fail-closed total reconciliation that requires repeated OCR support.' -F draft=true --jq .id)"
+          fi
+          existing_asset="$(gh api "repos/${{ github.repository }}/releases/$release_id" --jq '.assets[]? | select(.name=="XPS_Tracker_Updater_v77.zip") | .id' | head -1)"
+          if [ -n "$existing_asset" ]; then gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$existing_asset" >/dev/null; fi
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/zip" \
+            --data-binary @"$RUNNER_TEMP/XPS_Tracker_Updater_v77.zip" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/$release_id/assets?name=XPS_Tracker_Updater_v77.zip" >/dev/null
+          echo "$release_id" > "$RUNNER_TEMP/release_id"
+
+      - name: Verify checksum, publish, and verify final URL
+        run: |
+          release_id="$(cat "$RUNNER_TEMP/release_id")"
+          local_sha="$(cut -d' ' -f1 "$RUNNER_TEMP/v77.sha256")"
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            release_json="$(gh api "repos/${{ github.repository }}/releases/$release_id")"
+            asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v77.zip") | .size')"
+            asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v77.zip") | .digest')"
+            if [ "${asset_size:-0}" -gt 0 ] && [ "$asset_digest" = "sha256:$local_sha" ]; then ok=1; break; fi
+            sleep 3
+          done
+          test "$ok" = 1
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=false >/dev/null
+          final_json="$(gh api "repos/${{ github.repository }}/releases/$release_id")"
+          final_url="$(printf '%s' "$final_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v77.zip") | .browser_download_url')"
+          test "$final_url" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v77/XPS_Tracker_Updater_v77.zip'
+          printf '%s\n' "$local_sha" > "$RUNNER_TEMP/verified_sha"
+          printf '%s\n' "$final_url" > "$RUNNER_TEMP/verified_url"
+
+      - name: Update source bundle and manifest on main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Commit source bundle and verified manifest
+        working-directory: mainrepo
+        run: |
+          cp "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v77.zip" ./XPS_Tracker_Updater_Source_v77.zip
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          sha=Path(os.environ['RUNNER_TEMP']+'/verified_sha').read_text().strip()
+          url=Path(os.environ['RUNNER_TEMP']+'/verified_url').read_text().strip()
+          data={
+            'version':'77',
+            'download_url':url,
+            'sha256':sha,
+            'release_notes':[
+              'Read each cleaning length once with a conservative OCR pass before doing anything more complicated',
+              'Run stronger border-free OCR only when the work-order total does not reconcile',
+              'Require repeated OCR support and limit automatic total-driven corrections to at most three rows',
+              'Fail closed on ambiguous or weak OCR alternatives instead of forcing the arithmetic to match',
+              'Use a fresh v4 OCR cache namespace'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add XPS_Tracker_Updater_Source_v77.zip update_manifest.json
+          git commit -m 'Publish v77 source bundle and update manifest'
+          git push origin HEAD:main
+          git pull --ff-only origin main
+          remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          printf '%s\n' "$remote_manifest" | jq -e '.version=="77"'
+          verified_sha="$(cat "$RUNNER_TEMP/verified_sha")"
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$verified_sha"
+          test -s XPS_Tracker_Updater_Source_v77.zip
+          echo 'v77 release, source bundle, and manifest verified.'

@@ -1,4 +1,4 @@
-name: Apply v76 layout confirmation fix
+name: Apply v76 layout and total OCR fix
 
 on:
   push:
@@ -9,58 +9,31 @@ permissions:
   contents: write
 
 jobs:
-  apply:
-    if: ${{ contains(github.event.head_commit.message, 'APPLY_V76_LAYOUT_FIX') }}
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') && contains(github.event.head_commit.message, 'APPLY_V76_FIX') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out v76 working source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: v76-work
           fetch-depth: 0
 
-      - name: Skip re-confirmation for valid saved layout
-        run: |
-          python - <<'PY'
-          from pathlib import Path
+      - name: Apply scoped v76 fixes
+        run: python .github/scripts/apply_v76_layout_total_retry.py
 
-          path = Path('working_source/app/reno_scan_updater.py')
-          text = path.read_text(encoding='utf-8')
-          old = """                            saved=saved_layouts.get(fingerprint,{}).get('role_indices')
-                            if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
-                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
-                            dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
-                            if dlg.result is None:
-                                self.status.set('Analysis cancelled.'); return
-                            confirmed_layouts[fingerprint]=dlg.result
-                            apply_confirmed_layout(layout,dlg.result)
-                            save_layout_profile(fingerprint,layout,dlg.result)
-"""
-          new = """                            saved=saved_layouts.get(fingerprint,{}).get('role_indices')
-                            if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
-                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
-                                # This exact layout fingerprint was already user-confirmed earlier.
-                                # apply_confirmed_layout makes the mapping 100% confident, so accept it
-                                # instead of immediately showing the same confirmation dialog again.
-                                confirmed_layouts[fingerprint]=dict(layout.get('role_indices',saved))
-                            else:
-                                dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
-                                if dlg.result is None:
-                                    self.status.set('Analysis cancelled.'); return
-                                confirmed_layouts[fingerprint]=dlg.result
-                                apply_confirmed_layout(layout,dlg.result)
-                                save_layout_profile(fingerprint,layout,dlg.result)
-"""
-          if old not in text:
-              raise SystemExit('Expected layout confirmation block not found; refusing broad edit')
-          path.write_text(text.replace(old,new,1), encoding='utf-8')
-          PY
-
-      - name: Compile and run regressions
+      - name: Compile source
         run: |
           python -m py_compile working_source/app/reno_scan_updater.py
           python -m py_compile working_source/app/xps_update.py
-          python working_source/tests/regression_v76_layout_skip.py
+
+      - name: Run v76 regression
+        run: python working_source/tests/regression_v76_layout_skip.py
+
+      - name: Run existing non-fixture regressions
+        run: |
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
           python working_source/tests/regression_v75_811_ocr.py
           python working_source/tests/regression_v74_row_filtering.py
           python working_source/tests/regression_v73_total_dates.py
@@ -71,10 +44,21 @@ jobs:
           python working_source/tests/regression_master_insert.py
           python working_source/tests/regression_trouble_workbook.py
 
-      - name: Commit validated v76 working fix
+      - name: Verify unrelated parser entry points remain
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in text, required
+          print('v76 scoped parser preservation verified.')
+          PY
+
+      - name: Commit validated v76 working source
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add working_source/app/reno_scan_updater.py
-          git commit -m "Skip redundant saved-layout confirmation [skip ci]"
+          git commit -m "Retry cleaning OCR against verified totals [skip ci]"
+          git pull --rebase origin v76-work
           git push origin HEAD:v76-work

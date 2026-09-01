@@ -1,11 +1,11 @@
 {
-  "version": "74",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v74/XPS_Tracker_Updater_v74.zip",
-  "sha256": "8d4b8b526ddb0d526b71012b5876cda61a52c32b69e1b30290f9838abef92800",
+  "version": "75",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v75/XPS_Tracker_Updater_v75.zip",
+  "sha256": "387281f63b20b942ab447d8728bd301180a3ada0f122259333441639ff266264",
   "release_notes": [
-    "Exclude detected header and printed-total bands from B&C live-summary/master rows",
-    "Keep printed totals as validation evidence only",
-    "Filter header/footer OCR noise before date repair",
-    "Tighten repeated-date consensus while preserving strongly supported real date changes"
+    "Start a fresh v3 OCR cache namespace so stale OCR strings are not reused",
+    "Add grid-rule-removed OCR evidence to suspicious cleaning length consensus",
+    "Repair split date digits such as 8/1 1/2026 before date voting",
+    "Preserve v74 header and printed-total row exclusion"
   ]
 }

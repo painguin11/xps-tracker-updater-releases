@@ -1,0 +1,51 @@
+name: Apply v70 cleaning header fix
+
+on:
+  push:
+    branches:
+      - v70-work
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v70-work
+      - name: Preserve partial header roles and infer final cleaning length/date pair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('working_source/app/reno_scan_updater.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = """        # Cleaning Date is normally the cell immediately after Wheel Walk. This\n        # positional inference is safe only after Wheel Walk itself was identified.\n        if kind=='cleaning' and 'value' in found and 'date' not in found:\n            for ci,box,text,display in cells:\n                if box==found['value']:\n                    nxt=next((b for j,b,t,d in cells if j==ci+1),None)\n                    if nxt: found['date']=nxt\n                    break\n        if len(found)>len(best): best,best_cells=found,cells\n        if all(x in found for x in ('up','down','value','date')):\n            if return_details: return found,cells,'header'\n            return found\n    result=best if all(x in best for x in ('up','down','value','date')) else None\n    if return_details: return result,best_cells,'header' if result else 'incomplete header'\n    return result\n"""
+          new = """        # Cleaning Date is normally the cell immediately after Wheel Walk. This\n        # positional inference is safe only after Wheel Walk itself was identified.\n        if kind=='cleaning' and 'value' in found and 'date' not in found:\n            for ci,box,text,display in cells:\n                if box==found['value']:\n                    nxt=next((b for j,b,t,d in cells if j==ci+1),None)\n                    if nxt: found['date']=nxt\n                    break\n        # Some B&C cleaning scans split the narrow final headers so OCR sees\n        # \"Length Length\" and \"Date\" instead of \"Wheel Walk Length\" and\n        # \"Cleaning Date\".  When Date is confidently recognized in the final\n        # column, accept the immediately preceding Length-labelled column as the\n        # Wheel Walk value.  Requiring adjacency + final-column Date keeps this\n        # inference specific to the printed cleaning layout rather than treating\n        # every generic Length header as Wheel Walk.\n        if kind=='cleaning' and 'date' in found and 'value' not in found and cells:\n            date_ci=next((ci for ci,box,text,display in cells if box==found['date']),None)\n            if date_ci==len(cells)-1 and date_ci>0:\n                prev=next(((box,text,display) for ci,box,text,display in cells if ci==date_ci-1),None)\n                if prev and 'length' in (prev[1] or ''):\n                    found['value']=prev[0]\n        if len(found)>len(best): best,best_cells=dict(found),list(cells)\n        if all(x in found for x in ('up','down','value','date')):\n            if return_details: return found,cells,'header'\n            return found\n    # Preserve useful partial header evidence for the confirmable layout path.\n    # Previously one missing role discarded all other recognized roles, which is\n    # why an OCR-visible Date column could still default blank in the dialog.\n    if return_details:\n        return (best or None),best_cells,'header' if all(x in best for x in ('up','down','value','date')) else 'incomplete header'\n    return best if all(x in best for x in ('up','down','value','date')) else None\n"""
+          if old not in text:
+              raise SystemExit('Expected table-header inference block not found')
+          path.write_text(text.replace(old,new,1),encoding='utf-8')
+          PY
+      - name: Compile changed source
+        run: python -m py_compile working_source/app/reno_scan_updater.py
+      - name: Static regression for cleaning header fallback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          assert "date_ci==len(cells)-1" in text
+          assert "'length' in (prev[1] or '')" in text
+          assert "return (best or None),best_cells" in text
+          print('cleaning header fallback checks passed')
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py
+          git commit -m "Fix narrow B&C cleaning header detection [skip ci]"
+          git push origin HEAD:v70-work

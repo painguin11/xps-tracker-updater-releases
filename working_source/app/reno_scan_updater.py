@@ -1440,6 +1440,126 @@ def _choose_cleaning_length(cands, expected=None):
     return min(winners)
 
 
+def _choose_printed_total(cands):
+    """Return a total-length OCR winner and whether its OCR vote is confident."""
+    rounded=[round(float(x),2) for x in cands if 0<float(x)<1000000]
+    if not rounded: return None,False
+    counts={value:rounded.count(value) for value in set(rounded)}
+    most=max(counts.values())
+    winners=sorted(value for value,count in counts.items() if count==most)
+    if len(winners)!=1: return None,False
+    return winners[0],most>=2
+
+
+def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=None,date_box=None):
+    """Read a printed activity total independently from the data-row lengths.
+
+    B&C sheets may print TOTAL text, but some scans (including the 8-20 cleaning
+    layout) use a blank footer row containing only the numeric value under the
+    activity-length column. Support both forms while requiring the neighboring
+    endpoint/date cells to be blank for the unlabeled-footer form.
+    """
+    result={'found':False,'value':None,'confident':False,'candidates':[],'method':'not found'}
+    if img is None or not bands or not table or not value_box: return result
+    left,right=table; h,w=img.shape[:2]; tw=max(1,right-left)
+
+    def cut(box,y1,y2):
+        if not box: return None
+        return img[max(0,int(y1)):min(h,int(y2)),
+                   max(0,int(left+box[0]*tw)):min(w,int(left+box[1]*tw))]
+
+    def read_value(y1,y2):
+        cell=cut(value_box,y1,y2)
+        if cell is None or cell.size==0: return []
+        found=[]; width=cell.shape[1]
+        for ratio in (0,.015,.030,.045,.060):
+            pad=max(0,int(round(width*ratio)))
+            sample=cell[:,pad:width-pad] if pad and width>pad*2+4 else cell
+            found.extend(_ocr_digits(sample,True,fast_plain=True))
+        if not found: found.extend(_ocr_digits(cell,True,fast_plain=False))
+        return found
+
+    # First try an explicitly labelled total inside the final few detected bands.
+    for y1,y2 in list(bands)[-4:]:
+        row=img[max(0,y1):min(h,y2),max(0,left):min(w,right)]
+        if row.size==0: continue
+        row_text=' '.join(ocr_text(row,psm) for psm in (6,11)).lower()
+        compact=re.sub(r'[^a-z]+','',row_text)
+        if not any(token in compact for token in ('total','tota','totai','totl')):
+            continue
+        candidates=read_value(y1,y2)
+        value,confident=_choose_printed_total(candidates)
+        return {'found':True,'value':value,'confident':confident,
+                'candidates':candidates,'method':'labelled total row'}
+
+    # Many B&C tables put the total in one blank footer row immediately below the
+    # last data band. The vertical-grid detector intentionally excludes that row,
+    # so inspect a narrow footer window rather than treating it as an asset row.
+    typical=float(statistics.median(max(1,b-a) for a,b in bands))
+    fy1=max(0,int(bands[-1][1]-typical*.05))
+    fy2=min(h,int(bands[-1][1]+typical*2.10))
+    candidates=read_value(fy1,fy2)
+    value,confident=_choose_printed_total(candidates)
+    if not candidates: return result
+
+    def footer_has_number(box):
+        cell=cut(box,fy1,fy2)
+        if cell is None or cell.size==0: return False
+        txt=' '.join(ocr_text(cell,psm) for psm in (6,11))
+        return bool(re.search(r'\d{2,}',txt))
+
+    endpoint_signal=footer_has_number(up_box) or footer_has_number(dn_box)
+    date_signal=False
+    date_cell=cut(date_box,fy1,fy2)
+    if date_cell is not None and getattr(date_cell,'size',0):
+        date_signal=_parse_sheet_date(date_cell) is not None
+    if not endpoint_signal and not date_signal:
+        return {'found':True,'value':value,'confident':confident,
+                'candidates':candidates,'method':'blank footer total'}
+    return result
+
+
+def _resolve_printed_total_sources(sources):
+    """Resolve page total readings into one work-order/activity expected total."""
+    sources=list(sources or [])
+    found=[source for source in sources if (source.get('info') or {}).get('found')]
+    if not found:
+        return {'available':False,'value':None,'confident':False,'mode':'not found','pages':[]}
+    values=[]; confident=True
+    for source in found:
+        info=source.get('info') or {}
+        value=info.get('value')
+        if value is not None: values.append(float(value))
+        if not info.get('confident'): confident=False
+    pages=[source.get('page') for source in found if source.get('page') is not None]
+    if len(found)==1 and len(values)==1:
+        total=round(values[0],2); mode='single printed work-order total'
+    elif len(found)==len(sources) and len(values)==len(found):
+        total=round(sum(values),2); mode='sum of printed page totals'
+    elif values:
+        total=round(sum(values),2); mode='partial printed page totals'; confident=False
+    else:
+        total=None; mode='printed total unreadable'; confident=False
+    return {'available':True,'value':total,'confident':confident,'mode':mode,'pages':pages}
+
+
+def _length_total_result(records,expected_total):
+    """Compare exactly what is visible in the summary with a verified PDF total."""
+    values=[]; missing=0
+    for record in records:
+        value=record.get('video_length')
+        if value is None: missing+=1
+        else:
+            try: values.append(float(value))
+            except Exception: missing+=1
+    summary_total=round(sum(values),2)
+    expected=None if expected_total is None else round(float(expected_total),2)
+    difference=None if expected is None else round(summary_total-expected,2)
+    matches=expected is not None and missing==0 and abs(difference)<=.01
+    return {'summary_total':summary_total,'expected_total':expected,
+            'difference':difference,'missing':missing,'matches':matches}
+
+
 def _table_row_bands(img, min_y_ratio=.10, max_y_ratio=.86):
     """Find printed horizontal table separators and return row bands between them.
 
@@ -2036,7 +2156,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         if kind=='cleaning' and value_candidates:
             value=_choose_cleaning_length(value_candidates,expected)
             distinct={round(float(x),2) for x in value_candidates if 0<float(x)<5000}
-            needs_consensus=(len(distinct)>1 or
+            needs_consensus=(value is None or len(distinct)>1 or
                 (value is not None and expected not in (None,0) and
                  abs(float(value)-float(expected))>LENGTH_DIFF_THRESHOLD))
             if needs_consensus:
@@ -2091,6 +2211,8 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         if key in seen and kind!='pipes': continue
         seen.add(key); rows.append(rec)
         if on_row: on_row(rec)
+    prepared['printed_total_info']=_read_pair_table_printed_total(
+        img,bands,table,val_box,up_box,dn_box,date_box)
     return rows
 
 
@@ -2614,7 +2736,7 @@ class App(tk.Tk):
         self.geometry(f'{default_w}x{default_h}')
         self.minsize(min(self.spx(960),max(760,int(screen_w*.90))),
                      min(self.spx(620),max(560,int(screen_h*.85))))
-        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.pdf_hash=''
+        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.pdf_hash=''
         self._analysis_running=False; self.cancel_requested=False
         self.configure(background='#f3f6fa')
         self.configure_styles()
@@ -2685,6 +2807,7 @@ class App(tk.Tk):
         table_frame.rowconfigure(0,weight=1); table_frame.columnconfigure(0,weight=1)
         # Length warnings are deliberately prominent during review.  The warning is
         # Length warnings are also appended to the pipe NOTES field when the master is updated.
+        self.tree.tag_configure('total_warning', background='#8b0000', foreground='white')
         self.tree.tag_configure('length_warning', background='#c62828', foreground='white')
         self.tree.tag_configure('check_warning', background='#ffcccc', foreground='#7a0000')
         ttk.Label(self,text='Colored rows need review—see Status for the reason. Nothing is written until Update Master is clicked. Close the master workbook before updating.',style='Hint.TLabel',wraplength=self.spx(1100),justify='left',padding=(self.spx(14),0,self.spx(14),self.spx(12))).pack(fill='x')
@@ -2698,7 +2821,7 @@ class App(tk.Tk):
             if typ=='pdf' and changed:
                 self.clear_extracted_rows('New PDF selected. Click Analyze PDF to extract its rows.')
     def clear_extracted_rows(self,status_text=None):
-        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.pdf_hash=''
+        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.pdf_hash=''
         if hasattr(self,'tree'): self.tree.delete(*self.tree.get_children())
         if status_text and hasattr(self,'status'): self.status.set(status_text)
     def edit_double_clicked(self,event):
@@ -2730,7 +2853,9 @@ class App(tk.Tk):
         """Insert or refresh one summary row while analysis is still running."""
         r=self.records[index]
         tags=()
-        if str(r.get('status','')).startswith('LENGTH DIFF'):
+        if any(str(w).startswith('TOTAL LENGTH') for w in r.get('warnings',[])):
+            tags=('total_warning',)
+        elif str(r.get('status','')).startswith('LENGTH DIFF'):
             tags=('length_warning',)
         elif record_needs_review(r):
             tags=('check_warning',)
@@ -2828,7 +2953,7 @@ class App(tk.Tk):
             self.stop_analysis_animation(); self.status.set('Analysis cancelled.'); return
         except Exception as e:
             self.stop_analysis_animation(); messagebox.showerror('Master spreadsheet error',str(e)); return
-        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.tree.delete(*self.tree.get_children())
+        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.tree.delete(*self.tree.get_children())
         try: self.pdf_hash=hashlib.sha256(open(self.pdf_path.get(),'rb').read()).hexdigest()
         except Exception: self.pdf_hash=''
         init_ocr_cache(self.pdf_hash)
@@ -2930,7 +3055,7 @@ class App(tk.Tk):
             # Stage 2: every work order is now confirmed. Process spreadsheet pages
             # sequentially and attach them to the most recent confirmed work order.
             self.status.set('All work orders confirmed. Processing spreadsheet pages...'); self.pump_analysis_ui()
-            ignored_pages=[]; validation_reports=[]
+            ignored_pages=[]; validation_reports=[]; total_sources={}
             for item in page_info:
                 pi=item['index']; page=item['page']; txt=item['text']; kind=item.get('effective_kind',item['kind'])
                 if kind=='workorder':
@@ -2981,11 +3106,17 @@ class App(tk.Tk):
                     # completed row from inside the parser rather than waiting for the
                     # entire page to return.
                     data=parse_pipe_list(page,idx,txt,emit,self.pump_analysis_ui) if kind=='pipes' else parse_manhole_list(page,idx,txt,emit,self.pump_analysis_ui)
+                if idx.get('profile') in ('year15','phase2_year1') and kind in ('pipes','cleaning'):
+                    layout=item.get('pair_layout') or {}
+                    check_kind='Cleaning' if kind=='cleaning' else 'Pipe'
+                    total_sources.setdefault((str(current_wo.get('wo','')),check_kind),[]).append(
+                        {'page':pi+1,'info':dict(layout.get('printed_total_info') or {})})
                 if not data:
                     messagebox.showwarning('Spreadsheet page could not be read',
                         f'PDF page {pi+1} was detected as a {kind} spreadsheet page, but it produced zero asset rows.\n\nThe page was not silently ignored.')
                 report=validate_page_rows(data,kind,txt,pi+1,item.get('pair_layout'),idx.get('profile'))
                 validation_reports.append(report)
+            self.verify_length_totals(total_sources)
             if ignored_pages:
                 ignored_text='\n'.join(f'Page {page_no}: {reason}' for page_no,reason in ignored_pages)
                 messagebox.showinfo('Ignored PDF Pages',
@@ -3019,11 +3150,13 @@ class App(tk.Tk):
         for i in range(len(self.trouble_tickets)):
             self.show_summary_ticket(i)
         length_warnings=sum(1 for r in self.records if str(r.get('status','')).startswith('LENGTH DIFF'))
-        other_warnings=sum(1 for r in self.records if record_needs_review(r) and not str(r.get('status','')).startswith('LENGTH DIFF'))
+        total_failures=sum(1 for check in self.total_validations if not check.get('passed'))
+        other_warnings=sum(1 for r in self.records if record_needs_review(r) and not str(r.get('status','')).startswith('LENGTH DIFF') and not any(str(w).startswith('TOTAL LENGTH') for w in r.get('warnings',[])))
         validation_warning_count=sum(len(r['issues']) for r in validation_reports)
         ticket_reviews=sum(1 for t in self.trouble_tickets if trouble_ticket_status(t).startswith('Review'))
-        if length_warnings or other_warnings or validation_warning_count or ticket_reviews:
+        if length_warnings or total_failures or other_warnings or validation_warning_count or ticket_reviews:
             bits=[]
+            if total_failures: bits.append(f'{total_failures} TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED')
             if length_warnings: bits.append(f'{length_warnings} length difference warning(s) > {LENGTH_DIFF_THRESHOLD:.1f}')
             if other_warnings: bits.append(f'{other_warnings} other row(s) need review')
             if validation_warning_count: bits.append(f'{validation_warning_count} page validation warning(s)')
@@ -3032,6 +3165,93 @@ class App(tk.Tk):
         else:
             suffix=' All extracted items are ready.'
             self.status.set(f'Found {len(self.records)} master update row(s) and {len(self.trouble_tickets)} trouble ticket(s) from {group_no} work order(s); ignored {len(ignored_pages)} PDF page(s).'+suffix)
+    def _total_check_records(self,check):
+        return [(i,r) for i,r in enumerate(self.records)
+                if str(r.get('wo',''))==str(check.get('wo','')) and r.get('kind')==check.get('kind')]
+    def refresh_total_check(self,check,redraw=True):
+        indexed=self._total_check_records(check); rows=[r for _,r in indexed]
+        expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
+        result=_length_total_result(rows,expected)
+        check.update(result)
+        trusted=bool(check.get('manual_verified') or check.get('pdf_total_confident'))
+        check['passed']=bool(result['matches'] and trusted)
+        for _,record in indexed:
+            record['warnings']=[w for w in record.get('warnings',[]) if not str(w).startswith('TOTAL LENGTH')]
+        if not check['passed']:
+            if expected is None:
+                warning='TOTAL LENGTH NEEDS VERIFICATION — PRINTED PDF TOTAL COULD NOT BE READ'
+            elif result['missing']:
+                warning=(f"TOTAL LENGTH MISMATCH — {'VERIFIED' if check.get('manual_verified') else 'PDF'} TOTAL {expected:g}, "
+                         f"SUMMARY {result['summary_total']:g}; {result['missing']} LENGTH(S) MISSING")
+            elif not trusted:
+                warning=(f"TOTAL LENGTH NEEDS VERIFICATION — PDF TOTAL {expected:g}, "
+                         f"SUMMARY {result['summary_total']:g}")
+            else:
+                warning=(f"TOTAL LENGTH MISMATCH — {'VERIFIED' if check.get('manual_verified') else 'PDF'} TOTAL {expected:g}, "
+                         f"SUMMARY {result['summary_total']:g}, DIFF {abs(result['difference']):g} FT")
+            check['warning']=warning
+            for _,record in indexed:
+                if warning not in record.setdefault('warnings',[]): record['warnings'].append(warning)
+        else:
+            check['warning']=''
+        if redraw:
+            for index,_ in indexed: self.show_summary_record(index)
+        return check['passed']
+    def prompt_total_check(self,check):
+        self.refresh_total_check(check)
+        if check.get('passed'): return True
+        expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
+        page_text=', '.join(str(p) for p in check.get('pages',[])) or 'unknown'
+        initial='' if expected is None else f'{float(expected):g}'
+        while True:
+            raw=simpledialog.askstring(
+                'Verify Total Length',
+                f"Work Order {check.get('wo','')} — {check.get('kind','')}\n\n"
+                f"PDF page(s): {page_text}\n"
+                f"PDF total read: {initial or 'UNREADABLE'}\n"
+                f"Summary length total: {check.get('summary_total',0):g}\n"
+                + (f"Difference: {abs(check.get('difference') or 0):g} ft\n" if expected is not None else '') +
+                f"Missing summary lengths: {check.get('missing',0)}\n\n"
+                'Enter the TOTAL LENGTH you verify by looking at the PDF.\n'
+                'Changing this value corrects only the OCR of the printed total; it does not change any row length.\n\n'
+                'The master update remains blocked until the verified total and the summary lengths match exactly.',
+                initialvalue=initial,parent=self)
+            if raw is None: return False
+            try:
+                verified=float(str(raw).replace(',','').strip())
+                if verified<=0: raise ValueError
+            except Exception:
+                messagebox.showerror('Invalid total','Enter a positive numeric total length.',parent=self)
+                continue
+            check['verified_total']=verified; check['manual_verified']=True
+            passed=self.refresh_total_check(check)
+            if passed:
+                messagebox.showinfo('Total Length Verified',
+                    f"Work Order {check.get('wo','')} {check.get('kind','')} now reconciles exactly at {verified:g} ft.",parent=self)
+            else:
+                messagebox.showwarning('Total Still Does Not Match',
+                    f"The verified PDF total is {verified:g} ft, but the summary currently totals {check.get('summary_total',0):g} ft.\n\n"
+                    'The affected summary rows remain dark red and Update Master is blocked until the row lengths are corrected.',parent=self)
+            return passed
+    def verify_length_totals(self,total_sources):
+        self.total_validations=[]
+        for (wo,kind),sources in total_sources.items():
+            resolved=_resolve_printed_total_sources(sources)
+            if not resolved.get('available'): continue
+            check={'wo':wo,'kind':kind,'sources':sources,'pages':resolved.get('pages',[]),
+                   'pdf_total':resolved.get('value'),'pdf_total_confident':resolved.get('confident',False),
+                   'pdf_total_mode':resolved.get('mode',''),'verified_total':None,'manual_verified':False}
+            self.total_validations.append(check)
+            self.refresh_total_check(check)
+            if not check.get('passed'): self.prompt_total_check(check)
+    def revalidate_total_checks_for_record(self,record):
+        for check in self.total_validations:
+            if str(record.get('wo',''))==str(check.get('wo','')) and record.get('kind')==check.get('kind'):
+                self.refresh_total_check(check)
+    def unresolved_total_checks(self):
+        for check in self.total_validations: self.refresh_total_check(check,redraw=False)
+        return [check for check in self.total_validations if not check.get('passed')]
+
     def edit_selected(self):
         sel=self.tree.selection()
         if not sel: messagebox.showinfo('Edit','Select a row first.'); return
@@ -3051,9 +3271,8 @@ class App(tk.Tk):
                 r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
             refresh_length_status(r)
-            vals=(r['kind'],r['display_asset'],'' if r['video_length'] is None else f"{r['video_length']:.1f}",fmt_date(r['date']),r['wo'],r['truck'],r['operator'],review_status(r))
-            tags=('length_warning',) if str(r.get('status','')).startswith('LENGTH DIFF') else (('check_warning',) if record_needs_review(r) else ())
-            self.tree.item(f'record:{i}',values=vals,tags=tags)
+            self.revalidate_total_checks_for_record(r)
+            self.show_summary_record(i)
             length_warnings=sum(1 for rec in self.records if str(rec.get('status','')).startswith('LENGTH DIFF'))
             other_warnings=sum(1 for rec in self.records if record_needs_review(rec) and not str(rec.get('status','')).startswith('LENGTH DIFF'))
             if length_warnings or other_warnings:
@@ -3116,6 +3335,16 @@ class App(tk.Tk):
         ttk.Button(win,text='Save',command=save,style='Primary.TButton').grid(row=(len(fields)+1)//2,column=0,columnspan=4,pady=12)
     def update_master(self):
         if not self.records and not self.trouble_tickets: messagebox.showwarning('Nothing to update','Analyze a PDF first.'); return
+        unresolved=self.unresolved_total_checks()
+        if unresolved:
+            for check in list(unresolved): self.prompt_total_check(check)
+            unresolved=self.unresolved_total_checks()
+            if unresolved:
+                details='\n'.join(f"W/O {c.get('wo','')} {c.get('kind','')}: {c.get('warning','TOTAL LENGTH NOT VERIFIED')}" for c in unresolved)
+                messagebox.showerror('Total Length Validation Failed',
+                    'Update Master is blocked because the PDF total length does not reconcile with the lengths in the summary.\n\n'+details+
+                    '\n\nCorrect the affected row length(s), or verify the printed PDF total when prompted, then try Update Master again.')
+                return
         bad=[r for r in self.records if not r.get('new_asset_approved') and (r['status']=='NOT MATCHED' or r.get('skip_update'))]
         if bad and not messagebox.askyesno('Unmatched rows',f'{len(bad)} rows are not matched and will be skipped. Continue with matched rows?'): return
         protected=[r for r in self.records if not r.get('skip_update') and any(x in r.get('warnings',[]) for x in ('EXISTING DATA','W/O ALREADY ENTERED','PDF PREVIOUSLY PROCESSED'))]

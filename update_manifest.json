@@ -1,7 +1,7 @@
 {
   "version": "74",
   "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v74/XPS_Tracker_Updater_v74.zip",
-  "sha256": "ca99b5f8c4d28e4870cea52f58ff0ad685311a377bed59c696e16e62f85e287e",
+  "sha256": "8d4b8b526ddb0d526b71012b5876cda61a52c32b69e1b30290f9838abef92800",
   "release_notes": [
     "Exclude detected header and printed-total bands from B&C live-summary/master rows",
     "Keep printed totals as validation evidence only",

@@ -1,1 +1,1 @@
-Trigger v79 compact-layout performance validation, attempt 2.
+Trigger v79 compact-layout performance validation, attempt 3.

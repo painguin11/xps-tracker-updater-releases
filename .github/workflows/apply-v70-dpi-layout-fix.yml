@@ -1,0 +1,70 @@
+name: Apply v70 DPI layout fix
+
+on:
+  push:
+    branches:
+      - v70-work
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v70-work
+      - name: Make fixed UI dimensions DPI aware
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('working_source/app/reno_scan_updater.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = """def _cache_root():\n"""
+          new = """def ui_scale_for(window):\n    \"\"\"Return the current monitor scale relative to standard 96-DPI Windows.\"\"\"\n    try:\n        dpi=float(window.winfo_fpixels('1i'))\n        return max(.85,min(2.5,dpi/96.0))\n    except Exception:\n        try:\n            return max(.85,min(2.5,float(window.tk.call('tk','scaling'))/(96.0/72.0)))\n        except Exception:\n            return 1.0\n\n\ndef _cache_root():\n"""
+          if old not in text:
+              raise SystemExit('cache root insertion point not found')
+          text = text.replace(old,new,1)
+
+          old = """    def __init__(self):\n        super().__init__(); apply_app_icon(self); self.title(APP_TITLE); self.geometry('1180x760'); self.minsize(960,620)\n        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.pdf_hash=''\n"""
+          new = """    def __init__(self):\n        super().__init__(); apply_app_icon(self); self.title(APP_TITLE)\n        self.ui_scale=ui_scale_for(self)\n        screen_w=max(1,self.winfo_screenwidth()); screen_h=max(1,self.winfo_screenheight())\n        default_w=min(self.spx(1180),max(900,int(screen_w*.94)))\n        default_h=min(self.spx(760),max(600,int(screen_h*.90)))\n        self.geometry(f'{default_w}x{default_h}')\n        self.minsize(min(self.spx(960),max(760,int(screen_w*.90))),\n                     min(self.spx(620),max(560,int(screen_h*.85))))\n        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.pdf_hash=''\n"""
+          if old not in text:
+              raise SystemExit('App init block not found')
+          text = text.replace(old,new,1)
+
+          old = """        self.configure_styles()\n        self.build_ui()\n    def configure_styles(self):\n"""
+          new = """        self.configure_styles()\n        self.build_ui()\n    def spx(self,value):\n        return max(1,int(round(float(value)*self.ui_scale)))\n    def configure_styles(self):\n"""
+          if old not in text:
+              raise SystemExit('spx insertion point not found')
+          text = text.replace(old,new,1)
+
+          replacements = {
+              "style.configure('TEntry',fieldbackground='white',padding=6,bordercolor='#b7c5d6')": "style.configure('TEntry',fieldbackground='white',padding=self.spx(6),bordercolor='#b7c5d6')",
+              "style.configure('TButton',padding=(12,7),font=('Segoe UI Semibold',9))": "style.configure('TButton',padding=(self.spx(12),self.spx(7)),font=('Segoe UI Semibold',9))",
+              "style.configure('Status.TLabel',background='#e8f2fc',foreground='#183b5f',padding=(10,8),font=('Segoe UI',9))": "style.configure('Status.TLabel',background='#e8f2fc',foreground='#183b5f',padding=(self.spx(10),self.spx(8)),font=('Segoe UI',9))",
+              "style.configure('Treeview',background='white',fieldbackground='white',foreground='#172033',rowheight=28,bordercolor='#c9d5e3',font=('Segoe UI',9))": "style.configure('Treeview',background='white',fieldbackground='white',foreground='#172033',rowheight=self.spx(28),bordercolor='#c9d5e3',font=('Segoe UI',9))",
+              "style.configure('Treeview.Heading',background='#183f68',foreground='white',font=('Segoe UI Semibold',9),padding=(7,7),relief='flat')": "style.configure('Treeview.Heading',background='#183f68',foreground='white',font=('Segoe UI Semibold',9),padding=(self.spx(7),self.spx(7)),relief='flat')",
+              "self.analyze_button=ProgressFillButton(controls,text='1. Analyze PDF',command=self.analyze,width=145,height=35)": "self.analyze_button=ProgressFillButton(controls,text='1. Analyze PDF',command=self.analyze,width=self.spx(145),height=self.spx(35))",
+              "self.tree.heading(c,text=heads[c]); self.tree.column(c,width=widths[c],minwidth=widths[c],stretch=False,anchor='center' if c not in ('asset','status') else 'w')": "scaled_width=self.spx(widths[c])\n            self.tree.heading(c,text=heads[c]); self.tree.column(c,width=scaled_width,minwidth=scaled_width,stretch=c in ('asset','status'),anchor='center' if c not in ('asset','status') else 'w')",
+              "style='Hint.TLabel',wraplength=1100,justify='left',padding=(14,0,14,12)).pack(fill='x')": "style='Hint.TLabel',wraplength=self.spx(1100),justify='left',padding=(self.spx(14),0,self.spx(14),self.spx(12))).pack(fill='x')",
+          }
+          for old,new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Expected UI text not found: {old}')
+              text = text.replace(old,new,1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Compile changed source
+        run: python -m py_compile working_source/app/reno_scan_updater.py
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py
+          git commit -m "Make main UI DPI aware and responsive [skip ci]"
+          git push origin HEAD:v70-work

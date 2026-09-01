@@ -1,0 +1,139 @@
+name: Recover XPS Tracker Updater v75 release
+
+on:
+  push:
+    branches:
+      - v75-work
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    if: ${{ github.event.head_commit.message == 'PUBLISH_V75_RECOVER' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out finalized v75 source
+        uses: actions/checkout@v4
+        with:
+          ref: v75-work
+          fetch-depth: 0
+
+      - name: Compile and rerun release regressions
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_v75_811_ocr.py
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '75'" in app
+          assert ('CURRENT_VERSION = "75"' in updater or "CURRENT_VERSION = '75'" in updater)
+          assert "OCR_CACHE_VERSION = 'v3'" in app
+          PY
+
+      - name: Rebuild and verify v75 package
+        run: |
+          find working_source -type d -name __pycache__ -prune -exec rm -rf {} +
+          find working_source -name '*.pyc' -delete
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          (cd dist && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_v75.zip" XPS_Tracker_Updater)
+          unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_v75.zip"
+          test "$(zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v75.zip" | head -1)" = 'XPS_Tracker_Updater/'
+          for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do
+            zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v75.zip" | grep -qx "XPS_Tracker_Updater/$required"
+          done
+          sha256sum "$RUNNER_TEMP/XPS_Tracker_Updater_v75.zip" | tee "$RUNNER_TEMP/v75.sha256"
+
+      - name: Replace draft asset, publish, then verify tagged URL
+        run: |
+          release_json="$(gh api repos/${{ github.repository }}/releases)"
+          release_id="$(printf '%s' "$release_json" | jq -r '.[] | select(.tag_name=="v75" and .draft==true) | .id' | head -1)"
+          test -n "$release_id"
+          existing_id="$(printf '%s' "$release_json" | jq -r '.[] | select(.id=='"$release_id"') | .assets[]? | select(.name=="XPS_Tracker_Updater_v75.zip") | .id')"
+          if [ -n "$existing_id" ]; then
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$existing_id"
+          fi
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/zip" \
+            --data-binary @"$RUNNER_TEMP/XPS_Tracker_Updater_v75.zip" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/$release_id/assets?name=XPS_Tracker_Updater_v75.zip" >/dev/null
+          local_sha="$(cut -d' ' -f1 "$RUNNER_TEMP/v75.sha256")"
+          release_json="$(gh api repos/${{ github.repository }}/releases/$release_id)"
+          asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v75.zip") | .size')"
+          asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v75.zip") | .digest')"
+          test "$asset_size" -gt 0
+          test "$asset_digest" = "sha256:$local_sha"
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=false >/dev/null
+          release_json="$(gh api repos/${{ github.repository }}/releases/tags/v75)"
+          test "$(printf '%s' "$release_json" | jq -r .draft)" = 'false'
+          asset_url="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v75.zip") | .browser_download_url')"
+          asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v75.zip") | .digest')"
+          test "$asset_url" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v75/XPS_Tracker_Updater_v75.zip'
+          test "$asset_digest" = "sha256:$local_sha"
+          printf '%s\n' "$local_sha" > "$RUNNER_TEMP/verified_sha"
+          printf '%s\n' "$asset_url" > "$RUNNER_TEMP/verified_url"
+
+      - name: Check out main for manifest
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Point updater manifest to verified v75 asset
+        working-directory: mainrepo
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          sha=Path(os.environ['RUNNER_TEMP']+'/verified_sha').read_text().strip()
+          url=Path(os.environ['RUNNER_TEMP']+'/verified_url').read_text().strip()
+          data={
+            'version':'75',
+            'download_url':url,
+            'sha256':sha,
+            'release_notes':[
+              'Start a fresh v3 OCR cache namespace so stale OCR strings are not reused',
+              'Add grid-rule-removed OCR evidence to suspicious cleaning length consensus',
+              'Repair split date digits such as 8/1 1/2026 before date voting',
+              'Preserve v74 header and printed-total row exclusion'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
+          git add update_manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Point auto-updater manifest to v75'
+            git push origin HEAD:main
+          fi
+          git pull --ff-only origin main
+          remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          printf '%s\n' "$remote_manifest" | jq -e '.version=="75"'
+          printf '%s\n' "$remote_manifest" | jq -e '.download_url=="https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v75/XPS_Tracker_Updater_v75.zip"'
+          verified_sha="$(cat "$RUNNER_TEMP/verified_sha")"
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$verified_sha"
+          echo 'v75 release and manifest verified.'

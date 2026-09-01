@@ -438,3 +438,14 @@ Version 71 length-total validation
 - Cleaning-length OCR now escalates to the border-free focused reread when the
   first OCR result is blank or contains only impossible values, closing cases
   such as a printed 114 being read initially as 6114/36114.
+
+
+Version 72 compact-table detection
+----------------------------------
+- Keeps the existing strict Year 15 / Phase 2 grid detector unchanged for normal
+  pages.
+- If the strict detector fails, isolates the largest connected table region and
+  validates row/column rules relative to the table itself instead of the full
+  scanned page.
+- Handles smaller B&C pair tables such as the 8/26/2026 packet while still using
+  detected grid boundaries and header roles rather than fixed column numbers.

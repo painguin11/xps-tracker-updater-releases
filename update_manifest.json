@@ -1,11 +1,11 @@
 {
-  "version": "72",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v72/XPS_Tracker_Updater_v72.zip",
-  "sha256": "1634093d480fc550c05e7573b290704a674ed3cbe4b742bea0966d871c35e1f0",
+  "version": "73",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v73/XPS_Tracker_Updater_v73.zip",
+  "sha256": "5d841df9b3ad6656b65f5e0e2ccecec25c70ffaef1a88c0a2105d33b29d65216",
   "release_notes": [
-    "Detect compact B&C pipe and cleaning tables relative to the table size when strict full-page grid detection fails",
-    "Preserve the existing strict detector for normal layouts",
-    "Keep column mapping evidence-based rather than hard-coding positions",
-    "Retain v71 fail-closed PDF total-length validation"
+    "Read totals printed inside the final table row",
+    "Remove grid rules before total OCR and reject implausible lone digits",
+    "Correct weak B&C table dates using repeated date evidence",
+    "Preserve clearly read full dates"
   ]
 }

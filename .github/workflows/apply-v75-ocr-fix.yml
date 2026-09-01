@@ -1,0 +1,65 @@
+name: Apply v75 cleaning OCR fix
+
+on:
+  push:
+    branches:
+      - v75-work
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v75-work
+          fetch-depth: 0
+
+      - name: Apply scoped v75 OCR fixes
+        run: python .github/scripts/apply_v75_ocr_cache_and_consensus.py
+
+      - name: Compile source
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+
+      - name: Run v75 regression
+        run: python working_source/tests/regression_v75_811_ocr.py
+
+      - name: Run existing non-fixture regressions
+        run: |
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+
+      - name: Verify unrelated parser entry points remain
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in text, required
+          assert "OCR_CACHE_VERSION = 'v3'" in text
+          print('v75 scoped parser preservation verified.')
+          PY
+
+      - name: Commit validated v75 source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v75_811_ocr.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Refresh cleaning OCR consensus and cache [skip ci]"
+            git push origin HEAD:v75-work
+          fi

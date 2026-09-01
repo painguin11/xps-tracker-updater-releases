@@ -505,3 +505,13 @@ Version 78 cleaning OCR rollback
 - Restores the proven v76 printed-value consensus and grid-rule-removal path for cleaning lengths.
 - Keeps fail-closed total validation and manual review behavior.
 - Uses OCR cache v5 so incorrect v77 cached reads are never reused.
+
+
+Version 78 cleaning OCR recovery
+--------------------------------
+- Removes the v77 simple-first cleaning-length OCR strategy.
+- Removes v76 automatic total-driven row reselection, which could change good OCR values just to force the arithmetic to match.
+- Restores the v75 printed-value consensus and grid-rule-removal path that specifically handles border-touching digits such as 275 and 224.
+- Keeps the saved-layout auto-accept improvement so confirmed table layouts do not prompt again unnecessarily.
+- Total validation remains fail-closed: a mismatch blocks the master update but does not silently rewrite row lengths.
+- Uses OCR cache v5 so incorrect v76/v77 cached reads are never reused.

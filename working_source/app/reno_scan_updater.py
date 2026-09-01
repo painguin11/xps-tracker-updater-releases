@@ -1582,115 +1582,6 @@ def _choose_cleaning_length(cands, expected=None):
     return min(winners)
 
 
-def _aggressive_cleaning_length_candidates(cell_img):
-    """Retry a cleaning length with larger, border-trimmed numeric OCR variants.
-
-    This deliberately runs only after total validation fails.  It produces OCR
-    observations only; the verified PDF total may select among those observations
-    but may never manufacture a value or pull one from the master workbook.
-    """
-    if cell_img is None or getattr(cell_img,'size',0)==0:
-        return []
-    found=[]; height,width=cell_img.shape[:2]
-    for xratio in (0,.02,.04):
-        xpad=max(0,int(round(width*xratio)))
-        sample=cell_img[:,xpad:width-xpad] if xpad and width>xpad*2+4 else cell_img
-        ypad=max(1,int(round(sample.shape[0]*.05)))
-        if sample.shape[0]>ypad*2+4:
-            sample=sample[ypad:sample.shape[0]-ypad,:]
-        gray=cv2.cvtColor(sample,cv2.COLOR_RGB2GRAY)
-        for scale in (2.5,3.5):
-            enlarged=cv2.resize(gray,None,fx=scale,fy=scale,interpolation=cv2.INTER_CUBIC)
-            variants=(enlarged,cv2.threshold(enlarged,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1])
-            for variant in variants:
-                for psm in (7,6,11):
-                    raw=cached_ocr_string(
-                        variant,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789.').strip()
-                    for value in re.findall(r'\d+(?:\.\d+)?',raw.replace(',','')):
-                        try:
-                            numeric=float(value)
-                            if 0<numeric<5000: found.append(numeric)
-                        except Exception:
-                            pass
-    # Keep the v75 rule-removal evidence in the retry pool as well.
-    for value in _ocr_gridless_number_candidates(cell_img,True):
-        try:
-            numeric=float(value)
-            if 0<numeric<5000: found.append(numeric)
-        except Exception:
-            pass
-    return found
-
-
-def _find_cleaning_total_reconciliation(records,target_total):
-    """Find the least-cost OCR-observed length combination matching a PDF total."""
-    try: target_cents=int(round(float(target_total)*100))
-    except Exception: return {'matched':False,'changes':[]}
-    if target_cents<=0: return {'matched':False,'changes':[]}
-
-    current_cents=[]; adjustable=[]
-    for index,record in enumerate(records or []):
-        value=record.get('video_length')
-        if value is None: return {'matched':False,'changes':[]}
-        try: current=int(round(float(value)*100))
-        except Exception: return {'matched':False,'changes':[]}
-        current_cents.append(current)
-        if record.get('_length_user_edited'):
-            continue
-        votes={}
-        for raw in record.get('_length_ocr_candidates',[]) or []:
-            try:
-                candidate=round(float(raw),2)
-                if 0<candidate<5000: votes[candidate]=votes.get(candidate,0)+1
-            except Exception:
-                pass
-        current_value=round(float(value),2)
-        if current_value not in votes:
-            # The current automatic value came from OCR before candidate tracking
-            # existed in this row; preserve it as one observed option.
-            votes[current_value]=1
-        ranked=sorted(votes.items(),key=lambda item:(-item[1],abs(item[0]-current_value),item[0]))[:12]
-        adjustable.append((index,current,ranked))
-
-    base_total=sum(current_cents); needed=target_cents-base_total
-    if needed==0:
-        return {'matched':True,'changes':[]}
-    if not adjustable:
-        return {'matched':False,'changes':[]}
-
-    # delta -> (vote_penalty, changed_rows, movement_cents, choices)
-    states={0:(0,0,0,[])}
-    for index,current,ranked in adjustable:
-        max_vote=max(v for _,v in ranked)
-        next_states={}
-        for old_delta,(old_vote_penalty,old_changes,old_move,old_choices) in states.items():
-            for candidate,vote_count in ranked:
-                cents=int(round(candidate*100)); delta=old_delta+(cents-current)
-                score=(old_vote_penalty+(max_vote-vote_count),
-                       old_changes+(0 if cents==current else 1),
-                       old_move+abs(cents-current))
-                previous=next_states.get(delta)
-                if previous is None or score<previous[:3]:
-                    next_states[delta]=score+(old_choices+[(index,candidate)],)
-        # Real tables produce only a modest number of distinct sums.  Keep a
-        # bounded safety valve for pathological OCR without sacrificing sums near
-        # the required correction.
-        if len(next_states)>100000:
-            best_keys=sorted(next_states,key=lambda delta:(abs(delta-needed),next_states[delta][:3]))[:50000]
-            next_states={delta:next_states[delta] for delta in best_keys}
-        states=next_states
-
-    winner=states.get(needed)
-    if winner is None:
-        return {'matched':False,'changes':[]}
-    changes=[]
-    for index,candidate in winner[3]:
-        old=round(float(records[index].get('video_length')),2)
-        if abs(candidate-old)>.001:
-            changes.append((index,old,candidate))
-    return {'matched':True,'changes':changes}
-
-
 def _choose_printed_total(cands):
     """Return a total-length OCR winner and whether its OCR vote is confident."""
     rounded=[round(float(x),2) for x in cands if 0<float(x)<1000000]
@@ -2547,7 +2438,6 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
         if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
         expected=match.get('expected') if match else None
-        length_ocr_candidates=list(value_candidates)
         if kind=='cleaning':
             value=_choose_cleaning_length(value_candidates,expected)
             distinct={round(float(x),2) for x in value_candidates if 0<float(x)<5000}
@@ -2570,7 +2460,6 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 # (for example 275 -> 75 or 224 -> 274).  Remove grid rules and
                 # add those OCR observations to the same printed-value vote.
                 consensus.extend(_ocr_gridless_number_candidates(value_cell,True))
-                length_ocr_candidates=consensus
                 value=_choose_cleaning_length(consensus,expected)
         else:
             value=_choose_length(value_candidates,expected)
@@ -2606,9 +2495,6 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             asset='' if status=='NEW PIPE' else f'UNMATCHED ROW {len(rows)+1}'
         rec={'kind':'Cleaning' if kind=='cleaning' else 'Pipe','asset':asset,
              'up':up,'down':down,'video_length':value,'row_date':d,'status':status}
-        if kind=='cleaning':
-            rec['_length_ocr_candidates']=list(length_ocr_candidates)
-            rec['_length_ocr_cell']=value_cell.copy()
         if not match: rec['skip_update']=True
         if kind in ('pipes','cleaning'):
             rec['master_length']=match.get('expected') if match else None; rec['length_diff']=None
@@ -3610,58 +3496,6 @@ class App(tk.Tk):
         if redraw:
             for index,_ in indexed: self.show_summary_record(index)
         return check['passed']
-    def retry_total_length_ocr(self,check,target_total):
-        if check.get('kind')!='Cleaning' or target_total is None:
-            return {'attempted':False,'matched':False,'changes':[]}
-        indexed=self._total_check_records(check); rows=[record for _,record in indexed]
-        if not rows:
-            return {'attempted':False,'matched':False,'changes':[]}
-
-        def add_retry_candidates(record):
-            if record.get('_length_user_edited'): return
-            cell=record.get('_length_ocr_cell')
-            if cell is None or getattr(cell,'size',0)==0: return
-            extra=_aggressive_cleaning_length_candidates(cell)
-            if extra:
-                record.setdefault('_length_ocr_candidates',[]).extend(extra)
-                record['_length_retry_done']=True
-
-        suspicious=[]
-        for record in rows:
-            try: diff=float(record.get('length_diff') or 0)
-            except Exception: diff=0
-            distinct=set()
-            for raw in record.get('_length_ocr_candidates',[]) or []:
-                try:
-                    value=round(float(raw),2)
-                    if 0<value<5000: distinct.add(value)
-                except Exception: pass
-            if record.get('video_length') is None or diff>LENGTH_DIFF_THRESHOLD or len(distinct)>1:
-                suspicious.append(record)
-        for record in suspicious: add_retry_candidates(record)
-
-        result=_find_cleaning_total_reconciliation(rows,target_total)
-        if not result.get('matched'):
-            for record in rows:
-                if not record.get('_length_retry_done') and not record.get('_length_user_edited'):
-                    add_retry_candidates(record)
-            result=_find_cleaning_total_reconciliation(rows,target_total)
-
-        changed=[]
-        if result.get('matched'):
-            for row_index,old,new in result.get('changes',[]):
-                record=rows[row_index]
-                record['video_length']=float(new)
-                record['ocr_total_reconciled']=True
-                refresh_length_status(record)
-                note='OCR LENGTH RESELECTED USING VERIFIED PDF TOTAL'
-                if note not in record.setdefault('warnings',[]): record['warnings'].append(note)
-                changed.append((old,new))
-            for index,_ in indexed: self.show_summary_record(index)
-        check['ocr_retry_attempted']=True
-        check['ocr_retry_changes']=len(changed)
-        return {'attempted':True,'matched':bool(result.get('matched')),'changes':changed}
-
     def prompt_total_check(self,check):
         self.refresh_total_check(check)
         if check.get('passed'): return True
@@ -3689,13 +3523,10 @@ class App(tk.Tk):
                 messagebox.showerror('Invalid total','Enter a positive numeric total length.',parent=self)
                 continue
             check['verified_total']=verified; check['manual_verified']=True
-            retry=self.retry_total_length_ocr(check,verified)
             passed=self.refresh_total_check(check)
             if passed:
-                retry_note=(f" OCR retry corrected {len(retry.get('changes',[]))} row length(s) using only values read from the PDF."
-                            if retry.get('changes') else '')
                 messagebox.showinfo('Total Length Verified',
-                    f"Work Order {check.get('wo','')} {check.get('kind','')} now reconciles exactly at {verified:g} ft."+retry_note,parent=self)
+                    f"Work Order {check.get('wo','')} {check.get('kind','')} now reconciles exactly at {verified:g} ft.",parent=self)
             else:
                 messagebox.showwarning('Total Still Does Not Match',
                     f"The verified PDF total is {verified:g} ft, but the summary currently totals {check.get('summary_total',0):g} ft.\n\n"
@@ -3711,10 +3542,6 @@ class App(tk.Tk):
                    'pdf_total_mode':resolved.get('mode',''),'verified_total':None,'manual_verified':False}
             self.total_validations.append(check)
             self.refresh_total_check(check)
-            if (not check.get('passed') and check.get('pdf_total_confident') and
-                    check.get('pdf_total') is not None):
-                self.retry_total_length_ocr(check,check.get('pdf_total'))
-                self.refresh_total_check(check)
             if not check.get('passed'): self.prompt_total_check(check)
     def revalidate_total_checks_for_record(self,record):
         for check in self.total_validations:
@@ -3740,7 +3567,6 @@ class App(tk.Tk):
         def save():
             try:
                 r['video_length']=None if r['kind']=='Manhole' or not vars['Activity Value'].get().strip() else float(vars['Activity Value'].get())
-                if r.get('kind') in ('Pipe','Cleaning'): r['_length_user_edited']=True
                 r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
             refresh_length_status(r)

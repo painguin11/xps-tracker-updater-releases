@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v71**. The repository's v71 source bundle contains
+Current production version: **v72**. The repository's v72 source bundle contains
 the complete app directory and regression scripts and must match the v69 release
 ZIP. In a new conversation, begin with:
 
@@ -107,6 +107,16 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - New rows default Status to `Open`; dropdown values are Open, In Progress,
   Resolved, and No Action Needed.
 - Keep Resolution / Follow-up Notes and the green workbook header.
+
+## Current v72 fixes
+
+- Normal Year 15 / Phase 2 pair tables still use the existing strict full-page
+  grid detector.
+- If that detector fails, a compact-table fallback isolates the largest connected
+  table region and measures grid continuity relative to the table itself.
+- This handles small/light B&C tables without hard-coding column positions. The
+  8/26/2026 packet was locally checked at 7 columns on page 4 and 9 columns on
+  pages 10 and 12; the customer PDF itself is not stored in this repository.
 
 ## Current v71 fixes
 

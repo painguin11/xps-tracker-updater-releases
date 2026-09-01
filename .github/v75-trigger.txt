@@ -1,1 +1,1 @@
-Publish validated XPS Tracker Updater v75.
+Recover and publish validated XPS Tracker Updater v75 release.

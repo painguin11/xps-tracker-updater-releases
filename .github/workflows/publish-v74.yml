@@ -37,8 +37,14 @@ jobs:
           python working_source/tests/regression_new_assets.py
           python working_source/tests/regression_master_insert.py
           python working_source/tests/regression_trouble_workbook.py
-          grep -q "APP_VERSION = '74'" working_source/app/reno_scan_updater.py
-          grep -Eq 'CURRENT_VERSION = ["'"']74["'"']' working_source/app/xps_update.py
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '74'" in app
+          assert ('CURRENT_VERSION = "74"' in updater or "CURRENT_VERSION = '74'" in updater)
+          print('v74 version checks passed.')
+          PY
 
       - name: Package v74
         run: |

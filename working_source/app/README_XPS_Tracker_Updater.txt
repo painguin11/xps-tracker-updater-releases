@@ -479,3 +479,12 @@ Version 75 cleaning OCR refresh
   border-free consensus, improving cases such as 275 -> 75 and 224 -> 274.
 - Date tokenization repairs a digit split between printed date separators (for
   example 8/1 1/2026 -> 8/11/2026) before candidate voting.
+
+
+Version 76 total-driven OCR and layout confirmation fixes
+---------------------------------------------------------
+- A complete 100% table layout, including a previously saved/confirmed layout, is accepted automatically without reopening the layout confirmation dialog.
+- Cleaning rows retain their OCR-observed length candidates for a second-pass reconciliation against the printed PDF total.
+- When a printed total or user-verified total does not match the summary, questionable cleaning cells are re-read with stronger border-free OCR and only OCR-observed candidate combinations may be selected.
+- If the user corrects the PDF total in the verification dialog, the stronger OCR/reconciliation pass is run again using that verified total before manual row edits are required.
+- Total-driven reconciliation never invents a length from the master spreadsheet.

@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v69**. The repository's v69 source bundle contains
+Current production version: **v70**. The repository's v70 source bundle contains
 the complete app directory and regression scripts and must match the v69 release
 ZIP. In a new conversation, begin with:
 
@@ -107,6 +107,19 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - New rows default Status to `Open`; dropdown values are Open, In Progress,
   Resolved, and No Action Needed.
 - Keep Resolution / Follow-up Notes and the green workbook header.
+
+## Current v70 fixes
+
+- A table-layout confirmation popup is skipped only when native detection is
+  100% confident and all four required roles are already mapped.
+- Main-window fixed pixel dimensions are scaled using the current Windows DPI;
+  summary rows/columns and the Analyze button remain readable across display
+  scaling settings, and Asset / Nodes plus Status can expand with the window.
+- Pair-table header detection preserves recognized partial roles instead of
+  discarding them when one role is missing.
+- B&C cleaning tables can recover a narrow final Wheel Walk / Cleaning Date pair
+  when OCR recognizes the last column as Date and the immediately preceding
+  column as Length.
 
 ## Current v69 fixes
 

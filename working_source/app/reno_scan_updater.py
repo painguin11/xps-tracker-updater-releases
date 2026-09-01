@@ -1444,25 +1444,41 @@ def _parse_sheet_date_text_candidates(text, expected_date=None):
 
 
 def _choose_sheet_date_evidence(texts, expected_date=None):
-    """Choose one row date while preserving clearly printed full dates."""
+    """Choose one row date and retain vote strength for table-level reconciliation."""
     candidates=[]
     for txt in texts or []:
         candidates.extend(_parse_sheet_date_text_candidates(txt,expected_date))
     if not candidates:
-        return {'date':None,'strong':False,'candidates':[]}
+        return {'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{}}
+    all_dates=[d for d,_ in candidates]
     strong_dates=[d for d,strong in candidates if strong]
-    pool=strong_dates or [d for d,strong in candidates]
+    votes={d:all_dates.count(d) for d in set(all_dates)}
+    strong_votes={d:strong_dates.count(d) for d in set(strong_dates)}
+    pool=strong_dates or all_dates
     counts={d:pool.count(d) for d in set(pool)}
     most=max(counts.values())
     winners=sorted((d for d,n in counts.items() if n==most))
     if strong_dates:
         chosen=winners[0]
-        return {'date':chosen,'strong':True,'candidates':[d for d,_ in candidates]}
+        return {'date':chosen,'strong':True,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes}
     if isinstance(expected_date,datetime) and expected_date in counts:
         chosen=expected_date
     else:
         chosen=winners[0]
-    return {'date':chosen,'strong':False,'candidates':[d for d,_ in candidates]}
+    return {'date':chosen,'strong':False,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes}
+
+
+def _date_outlier_is_well_supported(evidence, dominant_date):
+    """Keep a different date only when multiple OCR passes independently support it."""
+    if not evidence or dominant_date is None: return False
+    date=evidence.get('date')
+    if date is None or date==dominant_date: return True
+    strong_votes=(evidence.get('strong_votes') or {}).get(date,0)
+    total_votes=(evidence.get('votes') or {}).get(date,0)
+    # One lucky/misread full-year pass is not enough. Requiring at least two
+    # independent strong reads (or three total matching reads) preserves genuine
+    # mixed-date tables while correcting isolated 01/01/2026-style OCR failures.
+    return strong_votes>=2 or total_votes>=3
 
 
 def _read_sheet_date_evidence(cell_img, expected_date=None):
@@ -1573,7 +1589,7 @@ def _choose_printed_total(cands):
 
 def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=None,date_box=None):
     """Read the printed activity total independently from the data-row lengths."""
-    result={'found':False,'value':None,'confident':False,'candidates':[],'method':'not found'}
+    result={'found':False,'value':None,'confident':False,'candidates':[],'method':'not found','band_index':None}
     if img is None or not bands or not table or not value_box: return result
     left,right=table; h,w=img.shape[:2]; tw=max(1,right-left)
 
@@ -1607,7 +1623,7 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
         if cell is None or getattr(cell,'size',0)==0: return False
         return _parse_sheet_date(cell) is not None
 
-    def blank_total_row(y1,y2,method):
+    def blank_total_row(y1,y2,method,band_index=None):
         candidates=read_value(y1,y2)
         if not candidates: return None
         if neighbor_has_number(up_box,y1,y2) or neighbor_has_number(dn_box,y1,y2) or date_signal(y1,y2):
@@ -1616,10 +1632,11 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
         if not _printed_total_value_is_plausible(value,len(bands)):
             value=None; confident=False
         return {'found':True,'value':value,'confident':confident,
-                'candidates':candidates,'method':method}
+                'candidates':candidates,'method':method,'band_index':band_index}
 
     # Explicit TOTAL label, when present.
-    for y1,y2 in list(bands)[-4:]:
+    tail_start=max(0,len(bands)-4)
+    for band_index,(y1,y2) in enumerate(list(bands)[-4:],tail_start):
         row=img[max(0,y1):min(h,y2),max(0,left):min(w,right)]
         if row.size==0: continue
         row_text=' '.join(ocr_text(row,psm) for psm in (6,11)).lower()
@@ -1630,12 +1647,12 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
         if not _printed_total_value_is_plausible(value,len(bands)):
             value=None; confident=False
         return {'found':True,'value':value,'confident':confident,
-                'candidates':candidates,'method':'labelled total row'}
+                'candidates':candidates,'method':'labelled total row','band_index':band_index}
 
     # Some B&C sheets include the numeric total as the FINAL DETECTED GRID BAND.
     # v71/v72 incorrectly assumed the total was always below bands[-1], causing
     # 4476 on 8-11-2026 to be skipped and a stray single 4 to be accepted instead.
-    in_grid=blank_total_row(bands[-1][0],bands[-1][1],'in-grid footer total')
+    in_grid=blank_total_row(bands[-1][0],bands[-1][1],'in-grid footer total',len(bands)-1)
     if in_grid is not None:
         return in_grid
 
@@ -1644,7 +1661,7 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
     typical=float(statistics.median(max(1,b-a) for a,b in bands))
     fy1=max(0,int(bands[-1][1]-typical*.05))
     fy2=min(h,int(bands[-1][1]+typical*2.10))
-    below=blank_total_row(fy1,fy2,'blank footer total')
+    below=blank_total_row(fy1,fy2,'blank footer total',None)
     return below if below is not None else result
 
 def _resolve_printed_total_sources(sources):
@@ -2366,6 +2383,9 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                       max(0,int(left+date_box[0]*tw)):min(w,int(left+date_box[1]*tw))]
         date_reads[date_band_index]=_read_sheet_date_evidence(date_cell,expected_date)
     dominant_date=_dominant_sheet_date(list(date_reads.values()),expected_date)
+    printed_total_info=_read_pair_table_printed_total(
+        img,bands,table,val_box,up_box,dn_box,date_box)
+    total_band_index=printed_total_info.get('band_index')
 
     endpoint_items={}
     for pipe_item in master_index.get('pipe_items',[]):
@@ -2375,7 +2395,16 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         endpoint_items[asset_key(endpoint_key)]=manhole_item.get('asset') or str(endpoint_key)
     rows=[]; seen=set()
     typical_band=float(np.median([max(1,b-a) for a,b in bands]))
+    def has_asset_digit_signal(observations):
+        for raw in observations or []:
+            key=asset_key(raw)
+            if len(re.findall(r'\d',key))>=2:
+                return True
+        return False
     for band_index,(y1,y2) in enumerate(bands):
+        if total_band_index is not None and band_index==total_band_index:
+            # The printed total is validation evidence, never an asset row.
+            continue
         if on_progress: on_progress()
         def cut(box): return img[y1:y2,max(0,int(left+box[0]*tw)):min(w,int(left+box[1]*tw))]
         def read_id(box,fast=True):
@@ -2428,18 +2457,23 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             expanded=_ocr_digits(cut(val_box),True,fast_plain=False)
             if expanded:
                 value=_choose_length(list(value_candidates)+list(expanded),expected)
-        date_evidence=date_reads.get(band_index,{'date':None,'strong':False,'candidates':[]})
+        date_evidence=date_reads.get(band_index,{'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{}})
         d=date_evidence.get('date')
-        endpoint_signal=any(re.search(r'\d',x) for x in up_obs+dn_obs)
-        if dominant_date is not None and (match or endpoint_signal) and not date_evidence.get('strong'):
-            d=dominant_date
-        # Skip the header, footer total, and wrapped-comment continuation band.
-        # A tall retained header or final total can occasionally produce digit-like
-        # OCR noise even though it is neither a master pair nor a dated data row.
+        endpoint_signal=has_asset_digit_signal(up_obs) and has_asset_digit_signal(dn_obs)
+        # Structural filtering happens BEFORE date repair. Header labels such as
+        # UPMI/WOM and footer OCR noise must never become rows merely because a
+        # dominant table date can be inferred.
         edge_band=band_index in (0,len(bands)-1)
         tall_band=(y2-y1)>typical_band*1.45
-        if d is None and not match and (edge_band or tall_band): continue
-        if d is None and not endpoint_signal: continue
+        if not match and (edge_band or tall_band) and not endpoint_signal:
+            continue
+        if not match and not endpoint_signal:
+            continue
+        if dominant_date is not None and (match or endpoint_signal):
+            if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date):
+                d=dominant_date
+        if d is None:
+            continue
         if match:
             status='Matched' if value is not None else ('CHECK WHEEL WALK' if kind=='cleaning' else 'CHECK LENGTH')
             up,down=match['up'],match['down']; asset=match.get('pipe_id','')
@@ -2464,8 +2498,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         if key in seen and kind!='pipes': continue
         seen.add(key); rows.append(rec)
         if on_row: on_row(rec)
-    prepared['printed_total_info']=_read_pair_table_printed_total(
-        img,bands,table,val_box,up_box,dn_box,date_box)
+    prepared['printed_total_info']=printed_total_info
     return rows
 
 

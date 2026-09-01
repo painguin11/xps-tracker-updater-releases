@@ -20,7 +20,7 @@ APP_NAME = 'XPS Tracker Updater'
 APP_VERSION = '74'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
-OCR_CACHE_VERSION = 'v2'
+OCR_CACHE_VERSION = 'v3'
 _OCR_CACHE = {}
 _OCR_CACHE_PATH = ''
 _OCR_CACHE_DIRTY = 0
@@ -1421,7 +1421,10 @@ def _parse_sheet_date_text_candidates(text, expected_date=None):
     year component; month/day still come from the printed cell.
     """
     expected_year=expected_date.year if isinstance(expected_date,datetime) else None
-    tokens=re.findall(r'\d+',str(text or ''))
+    date_text=str(text or '')
+    date_text=re.sub(r'(?<=[/-])\s*(\d)\s+(\d)\s*(?=[/-])',r'\1\2',date_text)
+    date_text=re.sub(r'\s*([/-])\s*',r'\1',date_text)
+    tokens=re.findall(r'\d+',date_text)
     out=[]
     for i in range(max(0,len(tokens)-2)):
         a_s,b_s,c_s=tokens[i:i+3]
@@ -2452,6 +2455,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                     pad=max(2,int(round(width*ratio)))
                     if width>pad*2+4:
                         consensus.extend(_ocr_digits(value_cell[:,pad:width-pad],True,fast_plain=True))
+                # If a digit touches or is distorted by a table rule, horizontal
+                # trimming alone can repeatedly agree on the same wrong value
+                # (for example 275 -> 75 or 224 -> 274).  Remove grid rules and
+                # add those OCR observations to the same printed-value vote.
+                consensus.extend(_ocr_gridless_number_candidates(value_cell,True))
                 value=_choose_cleaning_length(consensus,expected)
         else:
             value=_choose_length(value_candidates,expected)

@@ -1,11 +1,11 @@
 {
-  "version": "68",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v68/XPS_Tracker_Updater_v68.zip",
-  "sha256": "81122c77b1a0801f94175c6e7ec701ba0c49171e29a8b44d8f9e7018514ff86b",
+  "version": "69",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v69/XPS_Tracker_Updater_v69.zip",
+  "sha256": "e325f0f10d4ff93b6752c59ff82b1eaef3babb5ce6711b79fd3fc07a1b77b69d",
   "release_notes": [
-    "Preserve R2-style asset IDs such as R2-280",
-    "Re-read questionable Wheel Walk cells without grid borders",
-    "Select cleaning lengths by OCR consensus",
-    "Verified all 17 cleaning lengths in 8-11-2026.pdf"
+    "Recover R2 endpoint OCR scan artifacts such as 32-427 and 2-417",
+    "Use master-backed pair validation before correcting ambiguous R2 endpoints",
+    "Preserve joined one-letter suffixes such as R2-414A as possible new assets",
+    "Verified R2-427 to R2-414 and R2-417 to R2-427 on the supplied regression PDF"
   ]
 }

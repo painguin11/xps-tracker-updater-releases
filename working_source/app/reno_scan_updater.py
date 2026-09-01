@@ -2872,15 +2872,21 @@ class App(tk.Tk):
                     if fingerprint in confirmed_layouts:
                         apply_confirmed_layout(layout,confirmed_layouts[fingerprint])
                     else:
-                        saved=saved_layouts.get(fingerprint,{}).get('role_indices')
-                        if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
-                            apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
-                        dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
-                        if dlg.result is None:
-                            self.status.set('Analysis cancelled.'); return
-                        confirmed_layouts[fingerprint]=dlg.result
-                        apply_confirmed_layout(layout,dlg.result)
-                        save_layout_profile(fingerprint,layout,dlg.result)
+                        detected_roles=layout.get('role_indices',{})
+                        if layout.get('confidence',0)>=100 and all(k in detected_roles for k in ('up','down','value','date')):
+                            # A complete 100% native detection is already unambiguous;
+                            # do not interrupt analysis with a confirmation dialog.
+                            confirmed_layouts[fingerprint]=dict(detected_roles)
+                        else:
+                            saved=saved_layouts.get(fingerprint,{}).get('role_indices')
+                            if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
+                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
+                            dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
+                            if dlg.result is None:
+                                self.status.set('Analysis cancelled.'); return
+                            confirmed_layouts[fingerprint]=dlg.result
+                            apply_confirmed_layout(layout,dlg.result)
+                            save_layout_profile(fingerprint,layout,dlg.result)
                     item['pair_layout']=layout
 
             # Stage 2: every work order is now confirmed. Process spreadsheet pages

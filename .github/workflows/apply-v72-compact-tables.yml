@@ -1,0 +1,46 @@
+name: Apply v72 compact table detection
+
+on:
+  push:
+    branches:
+      - v72-work
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v72-work
+          fetch-depth: 0
+      - name: Apply compact-table fallback
+        run: python .github/scripts/apply_v72_compact_tables.py
+      - name: Compile source
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+      - name: Run compact-table guard
+        run: python working_source/tests/regression_compact_table_fallback.py
+      - name: Run core non-fixture regressions
+        run: |
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+      - name: Commit staged v72 fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_compact_table_fallback.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Handle compact B&C pair tables [skip ci]"
+            git push origin HEAD:v72-work
+          fi

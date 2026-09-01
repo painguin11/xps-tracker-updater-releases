@@ -488,3 +488,12 @@ Version 76 total-driven OCR and layout confirmation fixes
 - When a printed total or user-verified total does not match the summary, questionable cleaning cells are re-read with stronger border-free OCR and only OCR-observed candidate combinations may be selected.
 - If the user corrects the PDF total in the verification dialog, the stronger OCR/reconciliation pass is run again using that verified total before manual row edits are required.
 - Total-driven reconciliation never invents a length from the master spreadsheet.
+
+
+Version 77 simple-first cleaning length OCR
+-------------------------------------------
+- Cleaning lengths now start with one conservative OCR read per cell.
+- Stronger border-free and transformed OCR runs only when the work-order total does not reconcile.
+- Total-driven correction requires repeated OCR support, changes at most three rows automatically, and fails closed on ambiguous alternatives.
+- Weak one-off OCR garbage cannot be selected just because it makes the arithmetic match.
+- Manual row edits remain authoritative and OCR cache advances to v4.

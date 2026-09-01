@@ -4,8 +4,8 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v68**. The repository's v68 source bundle contains
-the complete app directory and regression scripts and must match the v68 release
+Current production version: **v69**. The repository's v69 source bundle contains
+the complete app directory and regression scripts and must match the v69 release
 ZIP. In a new conversation, begin with:
 
 > Continue the XPS Tracker Updater project from the connected GitHub repository.
@@ -108,7 +108,18 @@ asset and highlight the entire row green. Declined rows remain skipped and say
   Resolved, and No Action Needed.
 - Keep Resolution / Follow-up Notes and the green workbook header.
 
-## Current v68 fixes
+## Current v69 fixes
+
+- Unresolved R2 endpoint cells receive a focused, border-free OCR pass.
+- OCR artifacts such as `32-427`, `2-417`, and a grid-rule character after
+  `R2-414` recover only when the exact endpoint already exists in the master and
+  the complete upstream/downstream pair identifies one master pipe.
+- Joined one-letter suffixes such as `R2-414A` and `R2-414S` remain possible new
+  assets and are never reduced to the base ID by this recovery.
+- The supplied `8-17-2026(1).pdf` regression resolves `R2-427 -> R2-414` and
+  `R2-417 -> R2-427`.
+
+## v68 baseline fixes
 
 - `R2-280` remains `R2-280`; it must never normalize to `R-2280`.
 - Tall wrapped cleaning headers are recognized.

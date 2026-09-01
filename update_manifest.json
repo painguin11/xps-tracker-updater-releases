@@ -1,12 +1,11 @@
 {
-  "version": "67",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v67/XPS_Tracker_Updater_v67.zip",
-  "sha256": "e85ef04957abd69eef5d312fcfacbbc9c8121c47436f31be0cc248611806d6c5",
+  "version": "68",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v68/XPS_Tracker_Updater_v68.zip",
+  "sha256": "81122c77b1a0801f94175c6e7ec701ba0c49171e29a8b44d8f9e7018514ff86b",
   "release_notes": [
-    "Show the complete work-order number in the confirmation preview",
-    "Remove the false blank Column 1 from fallback table layouts",
-    "Display Cleaning Date as Column 10",
-    "Correctly map all four cleaning-table fields",
-    "Preserve exactly 17 data rows while excluding the header and total"
+    "Preserve R2-style asset IDs such as R2-280",
+    "Re-read questionable Wheel Walk cells without grid borders",
+    "Select cleaning lengths by OCR consensus",
+    "Verified all 17 cleaning lengths in 8-11-2026.pdf"
   ]
 }

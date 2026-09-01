@@ -457,3 +457,14 @@ Version 73 total/date reliability
 - Removes table rules before total OCR so border-touching digits are not clipped.
 - Rejects implausible lone-digit totals on multi-row tables instead of trusting them.
 - Uses repeated B&C table-date evidence to correct weak OCR while preserving clearly read full dates.
+
+
+Version 74 row filtering and date validation
+--------------------------------------------
+- A detected in-grid printed total is validation evidence only and is excluded
+  from live-summary/master rows before row parsing.
+- Header/footer OCR noise is rejected structurally before repeated-date repair can
+  make it look like a valid data row.
+- When the dominant table date agrees with the confirmed work-order date, an
+  outlier row date requires three independent full-date OCR reads to remain
+  different; weak outliers are corrected to the verified table date.

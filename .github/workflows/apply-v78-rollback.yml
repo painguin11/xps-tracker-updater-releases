@@ -19,12 +19,12 @@ jobs:
           ref: v78-work
           fetch-depth: 0
 
-      - name: Restore known-good v76 cleaning OCR implementation
+      - name: Restore v75 cleaning OCR and keep saved-layout skip
         run: |
-          git fetch origin v76-work
-          git show origin/v76-work:working_source/app/reno_scan_updater.py > working_source/app/reno_scan_updater.py
-          git show origin/v76-work:working_source/tests/regression_length_totals.py > working_source/tests/regression_length_totals.py
-          git show origin/v76-work:working_source/tests/regression_v75_811_ocr.py > working_source/tests/regression_v75_811_ocr.py
+          git fetch origin v75-work
+          git show origin/v75-work:working_source/app/reno_scan_updater.py > working_source/app/reno_scan_updater.py
+          git show origin/v75-work:working_source/tests/regression_length_totals.py > working_source/tests/regression_length_totals.py
+          git show origin/v75-work:working_source/tests/regression_v75_811_ocr.py > working_source/tests/regression_v75_811_ocr.py
           python - <<'PY'
           import re
           from pathlib import Path
@@ -32,26 +32,57 @@ jobs:
           updater=Path('working_source/app/xps_update.py')
           readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
           text=app.read_text(encoding='utf-8')
+
+          # Keep the v76 saved-layout convenience, but none of its automatic
+          # total-driven OCR reselection logic.
+          old="""                            saved=saved_layouts.get(fingerprint,{}).get('role_indices')
+                            if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
+                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
+                            dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
+                            if dlg.result is None:
+                                self.status.set('Analysis cancelled.'); return
+                            confirmed_layouts[fingerprint]=dlg.result
+                            apply_confirmed_layout(layout,dlg.result)
+                            save_layout_profile(fingerprint,layout,dlg.result)
+"""
+          new="""                            saved=saved_layouts.get(fingerprint,{}).get('role_indices')
+                            if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
+                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
+                                confirmed_layouts[fingerprint]=dict(layout.get('role_indices',saved))
+                            else:
+                                dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
+                                if dlg.result is None:
+                                    self.status.set('Analysis cancelled.'); return
+                                confirmed_layouts[fingerprint]=dlg.result
+                                apply_confirmed_layout(layout,dlg.result)
+                                save_layout_profile(fingerprint,layout,dlg.result)
+"""
+          if old not in text: raise SystemExit('saved-layout source block not found; refusing broad edit')
+          text=text.replace(old,new,1)
+
           text,n=re.subn(r"APP_VERSION = ['\"]\d+['\"]", "APP_VERSION = '78'", text, count=1)
           if n != 1: raise SystemExit('APP_VERSION replacement failed')
           text,n=re.subn(r"OCR_CACHE_VERSION = ['\"]v\d+['\"]", "OCR_CACHE_VERSION = 'v5'", text, count=1)
           if n != 1: raise SystemExit('OCR cache version replacement failed')
           app.write_text(text,encoding='utf-8')
+
           u=updater.read_text(encoding='utf-8')
           u,n=re.subn(r"CURRENT_VERSION = ['\"]\d+['\"]", 'CURRENT_VERSION = "78"', u, count=1)
           if n != 1: raise SystemExit('CURRENT_VERSION replacement failed')
           updater.write_text(u,encoding='utf-8')
+
           t=Path('working_source/tests/regression_v75_811_ocr.py')
           s=t.read_text(encoding='utf-8').replace("OCR_CACHE_VERSION = 'v3'","OCR_CACHE_VERSION = 'v5'")
           t.write_text(s,encoding='utf-8')
+
           r=readme.read_text(encoding='utf-8')
-          title='Version 78 cleaning OCR rollback'
+          title='Version 78 cleaning OCR recovery'
           if title not in r:
-              r += "\n\nVersion 78 cleaning OCR rollback\n--------------------------------\n- Reverts the v77 simple-first cleaning-length OCR strategy after it caused broad regressions on the 8/11 packet.\n- Restores the proven v76 printed-value consensus and grid-rule-removal path for cleaning lengths.\n- Keeps fail-closed total validation and manual review behavior.\n- Uses OCR cache v5 so incorrect v77 cached reads are never reused.\n"
+              r += "\n\nVersion 78 cleaning OCR recovery\n--------------------------------\n- Removes the v77 simple-first cleaning-length OCR strategy.\n- Removes v76 automatic total-driven row reselection, which could change several good OCR values just to force the arithmetic to match.\n- Restores the v75 printed-value consensus and grid-rule-removal path that specifically handles border-touching digits such as 275 and 224.\n- Keeps the saved-layout auto-accept improvement so confirmed table layouts do not prompt again unnecessarily.\n- Total validation remains fail-closed: a mismatch blocks the master update but does not silently rewrite row lengths.\n- Uses OCR cache v5 so incorrect v76/v77 cached reads are never reused.\n"
               readme.write_text(r,encoding='utf-8')
           PY
 
-      - name: Add v78 rollback guard
+      - name: Add v78 recovery guard
         run: |
           cat > working_source/tests/regression_v78_rollback.py <<'PY'
           from pathlib import Path
@@ -63,7 +94,15 @@ jobs:
           assert 'consensus.extend(_ocr_gridless_number_candidates(value_cell,True))' in src
           assert 'def _simple_cleaning_length_candidates' not in src
           assert 'def _fallback_cleaning_length_candidates' not in src
-          print('v78 known-good cleaning OCR rollback guard passed.')
+          assert 'def retry_total_length_ocr' not in src
+          assert 'OCR LENGTH RESELECTED USING VERIFIED PDF TOTAL' not in src
+          saved_gate="""if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
+                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
+                                confirmed_layouts[fingerprint]=dict(layout.get('role_indices',saved))
+                            else:
+                                dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)"""
+          assert saved_gate in src
+          print('v78 v75-OCR recovery + fail-closed total guard passed.')
           PY
 
       - name: Compile and run applicable non-fixture regressions
@@ -74,7 +113,6 @@ jobs:
           mkdir -p output/package_v69/XPS_Tracker_Updater
           cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
           python working_source/tests/regression_v78_rollback.py
-          python working_source/tests/regression_v76_layout_skip.py
           python working_source/tests/regression_v75_811_ocr.py
           python working_source/tests/regression_v74_row_filtering.py
           python working_source/tests/regression_v73_total_dates.py
@@ -94,10 +132,10 @@ jobs:
             working_source/tests/regression_tall_cleaning_header.py
           retention-days: 1
 
-      - name: Commit validated rollback source
+      - name: Commit validated recovery source
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt working_source/tests/regression_length_totals.py working_source/tests/regression_v75_811_ocr.py working_source/tests/regression_v78_rollback.py
-          git commit -m 'Restore known-good cleaning OCR for v78 [skip ci]'
+          git commit -m 'Restore v75 cleaning OCR without total reselection for v78 [skip ci]'
           git push origin HEAD:v78-work

@@ -43,7 +43,8 @@ result=ns['_length_total_result'](bad,5690)
 assert result['summary_total']==5680 and result['difference']==-10 and not result['matches']
 
 source=SOURCE.read_text(encoding='utf-8')
-assert 'needs_consensus=(not value_candidates or value is None or len(distinct)>1' in source
+assert 'value_candidates=_simple_cleaning_length_candidates(value_cell)' in source
+assert 'def _fallback_cleaning_length_candidates' in source
 assert "printed_total_info=_read_pair_table_printed_total" in source
 assert "prepared['printed_total_info']=printed_total_info" in source
 assert 'TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED' in source

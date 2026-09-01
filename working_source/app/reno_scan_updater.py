@@ -90,6 +90,18 @@ def configure_windows_identity():
         pass
 
 
+def ui_scale_for(window):
+    """Return the current monitor scale relative to standard 96-DPI Windows."""
+    try:
+        dpi=float(window.winfo_fpixels('1i'))
+        return max(.85,min(2.5,dpi/96.0))
+    except Exception:
+        try:
+            return max(.85,min(2.5,float(window.tk.call('tk','scaling'))/(96.0/72.0)))
+        except Exception:
+            return 1.0
+
+
 def _cache_root():
     base=os.environ.get('LOCALAPPDATA') or os.path.join(os.path.expanduser('~'),'.xps_tracker_updater')
     return os.path.join(base,'XPS Tracker Updater','Cache')
@@ -2578,12 +2590,21 @@ class ProgressFillButton(tk.Canvas):
 
 class App(tk.Tk):
     def __init__(self):
-        super().__init__(); apply_app_icon(self); self.title(APP_TITLE); self.geometry('1180x760'); self.minsize(960,620)
+        super().__init__(); apply_app_icon(self); self.title(APP_TITLE)
+        self.ui_scale=ui_scale_for(self)
+        screen_w=max(1,self.winfo_screenwidth()); screen_h=max(1,self.winfo_screenheight())
+        default_w=min(self.spx(1180),max(900,int(screen_w*.94)))
+        default_h=min(self.spx(760),max(600,int(screen_h*.90)))
+        self.geometry(f'{default_w}x{default_h}')
+        self.minsize(min(self.spx(960),max(760,int(screen_w*.90))),
+                     min(self.spx(620),max(560,int(screen_h*.85))))
         self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.pdf_hash=''
         self._analysis_running=False; self.cancel_requested=False
         self.configure(background='#f3f6fa')
         self.configure_styles()
         self.build_ui()
+    def spx(self,value):
+        return max(1,int(round(float(value)*self.ui_scale)))
     def configure_styles(self):
         style=ttk.Style(self)
         try: style.theme_use('clam')
@@ -2595,17 +2616,17 @@ class App(tk.Tk):
         style.configure('HeaderSub.TLabel',background='#0b2f5b',foreground='#cfe4ff',font=('Segoe UI',10))
         style.configure('TLabelframe',background='#f3f6fa',bordercolor='#c9d5e3',relief='solid')
         style.configure('TLabelframe.Label',background='#f3f6fa',foreground='#28415f',font=('Segoe UI Semibold',10))
-        style.configure('TEntry',fieldbackground='white',padding=6,bordercolor='#b7c5d6')
-        style.configure('TButton',padding=(12,7),font=('Segoe UI Semibold',9))
+        style.configure('TEntry',fieldbackground='white',padding=self.spx(6),bordercolor='#b7c5d6')
+        style.configure('TButton',padding=(self.spx(12),self.spx(7)),font=('Segoe UI Semibold',9))
         style.configure('Primary.TButton',background='#0878d1',foreground='white',bordercolor='#0878d1')
         style.map('Primary.TButton',background=[('active','#0567b5'),('pressed','#045a9e')])
         style.configure('Success.TButton',background='#148452',foreground='white',bordercolor='#148452')
         style.map('Success.TButton',background=[('active','#0f7145'),('pressed','#0c613b')])
         style.configure('Danger.TButton',background='#b33a3a',foreground='white',bordercolor='#b33a3a')
         style.map('Danger.TButton',background=[('active','#982f2f'),('pressed','#812828')])
-        style.configure('Status.TLabel',background='#e8f2fc',foreground='#183b5f',padding=(10,8),font=('Segoe UI',9))
-        style.configure('Treeview',background='white',fieldbackground='white',foreground='#172033',rowheight=28,bordercolor='#c9d5e3',font=('Segoe UI',9))
-        style.configure('Treeview.Heading',background='#183f68',foreground='white',font=('Segoe UI Semibold',9),padding=(7,7),relief='flat')
+        style.configure('Status.TLabel',background='#e8f2fc',foreground='#183b5f',padding=(self.spx(10),self.spx(8)),font=('Segoe UI',9))
+        style.configure('Treeview',background='white',fieldbackground='white',foreground='#172033',rowheight=self.spx(28),bordercolor='#c9d5e3',font=('Segoe UI',9))
+        style.configure('Treeview.Heading',background='#183f68',foreground='white',font=('Segoe UI Semibold',9),padding=(self.spx(7),self.spx(7)),relief='flat')
         style.map('Treeview',background=[('selected','#0878d1')],foreground=[('selected','white')])
         style.map('Treeview.Heading',background=[('active','#22527f')])
         style.configure('Hint.TLabel',background='#f3f6fa',foreground='#5d6c7d',font=('Segoe UI',9))
@@ -2618,7 +2639,7 @@ class App(tk.Tk):
         top.columnconfigure(1,weight=1)
         bar=ttk.Frame(self,padding=(14,0,14,6)); bar.pack(fill='x')
         controls=ttk.Frame(bar); controls.pack(fill='x')
-        self.analyze_button=ProgressFillButton(controls,text='1. Analyze PDF',command=self.analyze,width=145,height=35)
+        self.analyze_button=ProgressFillButton(controls,text='1. Analyze PDF',command=self.analyze,width=self.spx(145),height=self.spx(35))
         self.analyze_button.pack(side='left',padx=(0,8))
         ttk.Button(controls,text='Edit Selected',command=self.edit_selected).pack(side='left',padx=8)
         ttk.Button(controls,text='2. Update Master',command=self.update_master,style='Success.TButton').pack(side='left',padx=8)
@@ -2639,7 +2660,8 @@ class App(tk.Tk):
         heads={'type':'Type','asset':'Asset / Nodes','length':'Video / Wheel Walk / Map','date':'Date','wo':'W/O','truck':'Truck','operator':'Operator','status':'Status'}
         widths={'type':80,'asset':240,'length':145,'date':105,'wo':85,'truck':85,'operator':170,'status':520}
         for c in cols:
-            self.tree.heading(c,text=heads[c]); self.tree.column(c,width=widths[c],minwidth=widths[c],stretch=False,anchor='center' if c not in ('asset','status') else 'w')
+            scaled_width=self.spx(widths[c])
+            self.tree.heading(c,text=heads[c]); self.tree.column(c,width=scaled_width,minwidth=scaled_width,stretch=c in ('asset','status'),anchor='center' if c not in ('asset','status') else 'w')
         self.tree.grid(row=0,column=0,sticky='nsew')
         self.tree.bind('<Double-1>',self.edit_double_clicked)
         yscroll.grid(row=0,column=1,sticky='ns')
@@ -2649,7 +2671,7 @@ class App(tk.Tk):
         # Length warnings are also appended to the pipe NOTES field when the master is updated.
         self.tree.tag_configure('length_warning', background='#c62828', foreground='white')
         self.tree.tag_configure('check_warning', background='#ffcccc', foreground='#7a0000')
-        ttk.Label(self,text='Colored rows need review—see Status for the reason. Nothing is written until Update Master is clicked. Close the master workbook before updating.',style='Hint.TLabel',wraplength=1100,justify='left',padding=(14,0,14,12)).pack(fill='x')
+        ttk.Label(self,text='Colored rows need review—see Status for the reason. Nothing is written until Update Master is clicked. Close the master workbook before updating.',style='Hint.TLabel',wraplength=self.spx(1100),justify='left',padding=(self.spx(14),0,self.spx(14),self.spx(12))).pack(fill='x')
     def browse(self,var,typ):
         ft=[('PDF files','*.pdf')] if typ=='pdf' else [('Excel files','*.xlsx')]
         p=filedialog.askopenfilename(filetypes=ft)

@@ -1,10 +1,8 @@
 ## Current Production Release
-- **v78**
-- Cleaning Wheel Walk values use aligned column OCR; v75 cell OCR is fallback-only.
-- The PDF total is validation-only and never rewrites row lengths.
-- OCR cache namespace is v5.
-
-# XPS Tracker Updater project context
+- **v79**
+- Compact B&C tables detect uninterrupted grid rules before gap-repair.
+- Implausible layouts above 20 columns are rejected before master-assisted OCR.
+- v78 aligned cleaning-length OCR and fail-closed total validation remain unchanged.
 
 ## Resume instructions
 

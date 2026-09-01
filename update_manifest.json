@@ -1,13 +1,11 @@
 {
-  "version": "78",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v78/XPS_Tracker_Updater_v78.zip",
-  "sha256": "5900dc6df24452a6ae3943169dd2195fe837e9a90b9319cf8b728966c018da9d",
+  "version": "79",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v79/XPS_Tracker_Updater_v79.zip",
+  "sha256": "234014b4b47dabda1a3778ffa353d7ad4f2acaf6d9fefd8ca0af5faa34fb94d0",
   "release_notes": [
-    "Read cleaning Wheel Walk lengths as one aligned table column instead of isolated ruled cells",
-    "Trim table-border pixels without cropping right-aligned final digits",
-    "Map each OCR-observed value back to its detected row with v75 per-cell OCR only as a fallback",
-    "Remove v76/v77 automatic total-driven row reselection and simple-first OCR regressions",
-    "Keep PDF total validation fail-closed without allowing it to rewrite row lengths",
-    "Use a fresh v5 OCR cache namespace"
+    "Detect clean compact B&C table grid rules before gap-repair",
+    "Prevent repeated text strokes from becoming dozens of fake columns",
+    "Reject implausible layouts above 20 columns before expensive master-assisted OCR",
+    "Preserve v78 aligned Wheel Walk column OCR and fail-closed total validation unchanged"
   ]
 }

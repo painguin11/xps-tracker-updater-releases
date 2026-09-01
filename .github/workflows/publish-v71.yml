@@ -1,0 +1,211 @@
+name: Publish XPS Tracker Updater v71
+
+on:
+  push:
+    branches:
+      - v71-work
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out v71 working source
+        uses: actions/checkout@v4
+        with:
+          ref: v71-work
+          fetch-depth: 0
+
+      - name: Set v71 versions and bundled release notes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app=Path('working_source/app/reno_scan_updater.py')
+          text=app.read_text(encoding='utf-8')
+          if "APP_VERSION = '70'" in text:
+              text=text.replace("APP_VERSION = '70'","APP_VERSION = '71'",1)
+          elif "APP_VERSION = '71'" not in text:
+              raise SystemExit('Unexpected APP_VERSION')
+          app.write_text(text,encoding='utf-8')
+
+          updater=Path('working_source/app/xps_update.py')
+          text=updater.read_text(encoding='utf-8')
+          if 'CURRENT_VERSION = "70"' in text:
+              text=text.replace('CURRENT_VERSION = "70"','CURRENT_VERSION = "71"',1)
+          elif 'CURRENT_VERSION = "71"' not in text:
+              raise SystemExit('Unexpected CURRENT_VERSION')
+          updater.write_text(text,encoding='utf-8')
+
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          text=readme.read_text(encoding='utf-8')
+          if 'Version 71 length-total validation' not in text:
+              text += '''\n\nVersion 71 length-total validation\n----------------------------------\n- Reads the printed PDF activity total independently from the individual row\n  lengths and reconciles it against the lengths shown in the live summary.\n- A mismatch is a blocking validation failure: affected rows are dark red and\n  Update Master remains blocked until the totals reconcile.\n- If the printed total itself was OCRed incorrectly, the user can enter the\n  total they visually verify from the PDF; this changes only the expected PDF\n  total and never changes an individual row length.\n- Editing an extracted length automatically recalculates its work-order/activity\n  total validation.\n- Cleaning-length OCR now escalates to the border-free focused reread when the\n  first OCR result is blank or contains only impossible values, closing cases\n  such as a printed 114 being read initially as 6114/36114.\n'''
+          readme.write_text(text,encoding='utf-8')
+          PY
+
+      - name: Compile app and updater
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+
+      - name: Verify v71 versions and scoped fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '71'" in app
+          assert 'CURRENT_VERSION = "71"' in updater
+          assert 'def _read_pair_table_printed_total' in app
+          assert 'def _length_total_result' in app
+          assert 'def verify_length_totals' in app
+          assert 'def unresolved_total_checks' in app
+          assert 'TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED' in app
+          assert 'needs_consensus=(not value_candidates or value is None or len(distinct)>1' in app
+          assert "prepared['printed_total_info']=_read_pair_table_printed_total" in app
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in app, required
+          print('Version and scoped-fix checks passed.')
+          PY
+
+      - name: Run non-fixture regressions
+        run: |
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+          echo 'Customer PDF fixtures are not stored in this public repository and are intentionally not run here.'
+
+      - name: Package release and source bundle
+        run: |
+          find working_source -type d -name __pycache__ -prune -exec rm -rf {} +
+          find working_source -name '*.pyc' -delete
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          (cd dist && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_v71.zip" XPS_Tracker_Updater)
+          (cd working_source && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v71.zip" app tests -x '*/__pycache__/*' '*.pyc')
+          unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_v71.zip"
+          unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v71.zip"
+          test "$(zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v71.zip" | head -1)" = 'XPS_Tracker_Updater/'
+          for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do
+            zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v71.zip" | grep -qx "XPS_Tracker_Updater/$required"
+          done
+          sha256sum "$RUNNER_TEMP/XPS_Tracker_Updater_v71.zip" | tee "$RUNNER_TEMP/v71.sha256"
+
+      - name: Save final v71 working source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Finalize v71 app source [skip ci]"
+            git push origin HEAD:v71-work
+          fi
+
+      - name: Check out main for production source bundle
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Commit v71 source bundle and project context to main
+        working-directory: mainrepo
+        run: |
+          cp "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v71.zip" ./XPS_Tracker_Updater_Source_v71.zip
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('PROJECT_CONTEXT.md')
+          text=path.read_text(encoding='utf-8')
+          text=text.replace('Current production version: **v70**. The repository\'s v70 source bundle contains',
+                            'Current production version: **v71**. The repository\'s v71 source bundle contains',1)
+          marker='## Current v70 fixes\n'
+          section='''## Current v71 fixes\n\n- Pipe/cleaning activity tables can independently read the printed PDF total and\n  reconcile it against the sum of extracted summary lengths for the same work\n  order and activity.\n- A total mismatch is fail-closed: affected rows are dark red and Update Master\n  is blocked until the values reconcile.\n- The user may correct the OCRed printed total after visually verifying the PDF;\n  doing so changes only the validation target, never individual row lengths.\n- Editing an extracted length automatically recalculates total validation.\n- Cleaning length OCR now performs the focused border-free reread when the first\n  pass is blank or contains only invalid values, including the 114 -> 6114/36114\n  failure mode found during the 8-20-2026 regression review.\n\n'''
+          if '## Current v71 fixes' not in text:
+              if marker not in text:
+                  raise SystemExit('Current v70 context marker not found')
+              text=text.replace(marker,section+marker,1)
+          path.write_text(text,encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add XPS_Tracker_Updater_Source_v71.zip PROJECT_CONTEXT.md
+          git commit -m "Add XPS Tracker Updater v71 source bundle"
+          git push origin HEAD:main
+
+      - name: Create public v71 release
+        working-directory: mainrepo
+        run: |
+          if gh release view v71 >/dev/null 2>&1; then
+            echo 'v71 release already exists; refusing to overwrite.'
+            exit 1
+          fi
+          gh release create v71 "$RUNNER_TEMP/XPS_Tracker_Updater_v71.zip" \
+            --target main \
+            --title 'XPS Tracker Updater v71' \
+            --notes $'v71 adds fail-closed PDF length-total validation.\n\n- Independently reads the printed activity total and compares it with the sum of extracted lengths.\n- Total mismatches turn affected rows dark red and block Update Master.\n- The user can correct an OCRed PDF total after visually verifying it; individual row lengths are never changed by that correction.\n- Editing a row length immediately recalculates the work-order/activity total.\n- Cleaning-length OCR now escalates blank or invalid first-pass readings to the border-free focused reread.\n\nTrouble Ticket reading and the MSA note written to the master are not included yet.'
+
+      - name: Verify public release asset checksum
+        working-directory: mainrepo
+        run: |
+          local_sha="$(cut -d' ' -f1 "$RUNNER_TEMP/v71.sha256")"
+          release_json="$(gh api repos/${{ github.repository }}/releases/tags/v71)"
+          asset_name="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v71.zip") | .name')"
+          asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v71.zip") | .size')"
+          asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v71.zip") | .digest')"
+          asset_url="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v71.zip") | .browser_download_url')"
+          test "$asset_name" = 'XPS_Tracker_Updater_v71.zip'
+          test "$asset_size" -gt 0
+          test "$asset_digest" = "sha256:$local_sha"
+          test "$asset_url" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v71/XPS_Tracker_Updater_v71.zip'
+          printf '%s\n' "$local_sha" > "$RUNNER_TEMP/verified_sha"
+          printf '%s\n' "$asset_url" > "$RUNNER_TEMP/verified_url"
+          echo "Verified $asset_name ($asset_size bytes) $asset_digest"
+
+      - name: Update auto-update manifest only after asset verification
+        working-directory: mainrepo
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          sha=Path(os.environ['RUNNER_TEMP']+'/verified_sha').read_text().strip()
+          url=Path(os.environ['RUNNER_TEMP']+'/verified_url').read_text().strip()
+          data={
+            'version':'71',
+            'download_url':url,
+            'sha256':sha,
+            'release_notes':[
+              'Validate extracted work-order activity lengths against the printed PDF total',
+              'Block Update Master and show affected rows dark red when totals do not reconcile',
+              'Allow the user to correct an OCRed printed total after visually verifying the PDF',
+              'Recalculate total validation automatically after a row length is edited',
+              'Re-read cleaning lengths with border-free OCR when the first pass is blank or invalid'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git add update_manifest.json
+          git commit -m 'Point auto-updater manifest to v71'
+          git push origin HEAD:main
+
+      - name: Verify committed manifest
+        working-directory: mainrepo
+        run: |
+          git pull --ff-only origin main
+          remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          printf '%s\n' "$remote_manifest" | jq -e '.version=="71"'
+          printf '%s\n' "$remote_manifest" | jq -e '.download_url=="https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v71/XPS_Tracker_Updater_v71.zip"'
+          verified_sha="$(cat "$RUNNER_TEMP/verified_sha")"
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$verified_sha"
+          echo 'v71 manifest verified.'

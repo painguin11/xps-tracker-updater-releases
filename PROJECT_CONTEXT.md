@@ -4,8 +4,8 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v74**. The repository's v73 source bundle contains
-the complete app directory and regression scripts and must match the v69 release
+Current production version: **v75**. The repository's v75 source bundle contains
+the complete app directory and regression scripts and must match the v75 release
 ZIP. In a new conversation, begin with:
 
 > Continue the XPS Tracker Updater project from the connected GitHub repository.
@@ -107,6 +107,21 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - New rows default Status to `Open`; dropdown values are Open, In Progress,
   Resolved, and No Action Needed.
 - Keep Resolution / Follow-up Notes and the green workbook header.
+
+## Current v75 fixes
+
+- OCR cache namespace advances from v2 to v3. Old cache files remain on disk but
+  v75 does not reuse stale OCR strings from earlier parser/OCR behavior.
+- Cleaning rows that enter the existing uncertainty consensus also receive the
+  grid-rule-removal OCR pass already used for printed totals. This targets
+  digit loss/substitution such as 275 -> 75 and 224 -> 274 without inventing a
+  value from the master workbook.
+- Sheet-date OCR compacts a digit split between printed date separators before
+  token candidate voting, so text such as 8/1 1/2026 is treated as 8/11/2026
+  rather than creating a shifted 1/1/2026 candidate.
+- On the supplied 8/11/2026 page, fresh local OCR reads the two disputed cleaning
+  values as 275 and 224; grid-rule-removed OCR also favors those printed values.
+  The customer PDF itself is not stored in this repository.
 
 ## Current v74 fixes
 

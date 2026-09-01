@@ -1,0 +1,80 @@
+name: Apply v76 layout confirmation fix
+
+on:
+  push:
+    branches:
+      - v76-work
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ contains(github.event.head_commit.message, 'APPLY_V76_LAYOUT_FIX') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v76 working source
+        uses: actions/checkout@v4
+        with:
+          ref: v76-work
+          fetch-depth: 0
+
+      - name: Skip re-confirmation for valid saved layout
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('working_source/app/reno_scan_updater.py')
+          text = path.read_text(encoding='utf-8')
+          old = """                            saved=saved_layouts.get(fingerprint,{}).get('role_indices')
+                            if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
+                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
+                            dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
+                            if dlg.result is None:
+                                self.status.set('Analysis cancelled.'); return
+                            confirmed_layouts[fingerprint]=dlg.result
+                            apply_confirmed_layout(layout,dlg.result)
+                            save_layout_profile(fingerprint,layout,dlg.result)
+"""
+          new = """                            saved=saved_layouts.get(fingerprint,{}).get('role_indices')
+                            if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):
+                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'
+                                # This exact layout fingerprint was already user-confirmed earlier.
+                                # apply_confirmed_layout makes the mapping 100% confident, so accept it
+                                # instead of immediately showing the same confirmation dialog again.
+                                confirmed_layouts[fingerprint]=dict(layout.get('role_indices',saved))
+                            else:
+                                dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)
+                                if dlg.result is None:
+                                    self.status.set('Analysis cancelled.'); return
+                                confirmed_layouts[fingerprint]=dlg.result
+                                apply_confirmed_layout(layout,dlg.result)
+                                save_layout_profile(fingerprint,layout,dlg.result)
+"""
+          if old not in text:
+              raise SystemExit('Expected layout confirmation block not found; refusing broad edit')
+          path.write_text(text.replace(old,new,1), encoding='utf-8')
+          PY
+
+      - name: Compile and run regressions
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          python working_source/tests/regression_v76_layout_skip.py
+          python working_source/tests/regression_v75_811_ocr.py
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+
+      - name: Commit validated v76 working fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py
+          git commit -m "Skip redundant saved-layout confirmation [skip ci]"
+          git push origin HEAD:v76-work

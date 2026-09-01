@@ -1,1 +1,1 @@
-Publish validated v77.
+Publish validated v77, Linux-compatible release checks.

@@ -1801,13 +1801,29 @@ def _table_header_columns(img, header_bands, table, kind, column_bounds=None, re
                     nxt=next((b for j,b,t,d in cells if j==ci+1),None)
                     if nxt: found['date']=nxt
                     break
-        if len(found)>len(best): best,best_cells=found,cells
+        # Some B&C cleaning scans split the narrow final headers so OCR sees
+        # "Length Length" and "Date" instead of "Wheel Walk Length" and
+        # "Cleaning Date".  When Date is confidently recognized in the final
+        # column, accept the immediately preceding Length-labelled column as the
+        # Wheel Walk value.  Requiring adjacency + final-column Date keeps this
+        # inference specific to the printed cleaning layout rather than treating
+        # every generic Length header as Wheel Walk.
+        if kind=='cleaning' and 'date' in found and 'value' not in found and cells:
+            date_ci=next((ci for ci,box,text,display in cells if box==found['date']),None)
+            if date_ci==len(cells)-1 and date_ci>0:
+                prev=next(((box,text,display) for ci,box,text,display in cells if ci==date_ci-1),None)
+                if prev and 'length' in (prev[1] or ''):
+                    found['value']=prev[0]
+        if len(found)>len(best): best,best_cells=dict(found),list(cells)
         if all(x in found for x in ('up','down','value','date')):
             if return_details: return found,cells,'header'
             return found
-    result=best if all(x in best for x in ('up','down','value','date')) else None
-    if return_details: return result,best_cells,'header' if result else 'incomplete header'
-    return result
+    # Preserve useful partial header evidence for the confirmable layout path.
+    # Previously one missing role discarded all other recognized roles, which is
+    # why an OCR-visible Date column could still default blank in the dialog.
+    if return_details:
+        return (best or None),best_cells,'header' if all(x in best for x in ('up','down','value','date')) else 'incomplete header'
+    return best if all(x in best for x in ('up','down','value','date')) else None
 
 
 def _column_index_for_box(box,column_boxes):

@@ -515,3 +515,12 @@ Version 78 cleaning OCR recovery
 - Keeps the saved-layout auto-accept improvement so confirmed table layouts do not prompt again unnecessarily.
 - Total validation remains fail-closed: a mismatch blocks the master update but does not silently rewrite row lengths.
 - Uses OCR cache v5 so incorrect v76/v77 cached reads are never reused.
+
+
+Version 79 compact-layout performance fix
+-----------------------------------------
+- Compact B&C tables first detect uninterrupted vertical grid rules before any gap-joining repair.
+- Repeated printed text strokes can no longer be promoted into dozens of fake table columns on clean scans.
+- The older gap-joining grid repair remains available only when the clean raw-grid pass cannot resolve a plausible rule set.
+- Master-assisted endpoint scoring refuses implausible layouts above 20 columns instead of launching hundreds of OCR calls.
+- No cleaning-length OCR, total validation, matching, or master-write behavior is changed.

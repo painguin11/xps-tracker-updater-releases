@@ -17,7 +17,7 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '78'
+APP_VERSION = '79'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 OCR_CACHE_VERSION = 'v5'
@@ -2037,33 +2037,43 @@ def _year15_compact_grid_bands(img):
 
     cgray=cv2.cvtColor(crop,cv2.COLOR_RGB2GRAY)
     cinv=cv2.threshold(cgray,225,255,cv2.THRESH_BINARY_INV)[1]
-    joined=cv2.morphologyEx(
-        cinv,cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT,(1,max(3,int(bh*.012)))))
-    vk=cv2.getStructuringElement(cv2.MORPH_RECT,(1,max(20,int(bh*.12))))
-    vertical=cv2.morphologyEx(joined,cv2.MORPH_OPEN,vk)
-    contours,_=cv2.findContours(vertical,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
 
-    # Short fragments at one x-coordinate are merged before judging continuity.
-    # This repairs grid rules interrupted by printed text crossing the line.
-    rules=[]
-    for contour in contours:
-        x,y,ww,hh=cv2.boundingRect(contour)
-        if hh>=bh*.18 and ww<=max(24,bw*.025):
-            rules.append((x+ww//2,y,y+hh))
-    rules.sort(); merged=[]
-    for rule in rules:
-        if merged and abs(rule[0]-merged[-1][0])<=max(5,int(bw*.006)):
-            old=merged[-1]
-            merged[-1]=((old[0]+rule[0])//2,min(old[1],rule[1]),max(old[2],rule[2]))
-        else:
-            merged.append(rule)
-    if len(merged)<5:
-        return [],None,None
+    def collect_vertical_rules(binary,kernel_ratio,min_span_ratio):
+        # Prefer uninterrupted printed grid rules. Joining vertical gaps before
+        # this test can accidentally connect repeated letter/digit strokes in a
+        # long table and make dozens of fake columns.
+        vk=cv2.getStructuringElement(cv2.MORPH_RECT,(1,max(20,int(bh*kernel_ratio))))
+        vertical=cv2.morphologyEx(binary,cv2.MORPH_OPEN,vk)
+        found,_=cv2.findContours(vertical,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        rules=[]
+        for contour in found:
+            x,y,ww,hh=cv2.boundingRect(contour)
+            if hh>=bh*.30 and ww<=max(24,bw*.025):
+                rules.append((x+ww//2,y,y+hh))
+        rules.sort(); merged=[]
+        for rule in rules:
+            if merged and abs(rule[0]-merged[-1][0])<=max(5,int(bw*.006)):
+                previous=merged[-1]
+                merged[-1]=((previous[0]+rule[0])//2,min(previous[1],rule[1]),max(previous[2],rule[2]))
+            else:
+                merged.append(rule)
+        if len(merged)<5:
+            return []
+        max_span=max(y2-y1 for _,y1,y2 in merged)
+        return [rule for rule in merged if rule[2]-rule[1]>=max_span*min_span_ratio]
 
-    max_span=max(y2-y1 for _,y1,y2 in merged)
-    strong=[rule for rule in merged if rule[2]-rule[1]>=max_span*.85]
-    if len(strong)<5:
+    # Clean scans should resolve from the raw binary image. This is both faster
+    # and much less likely to mistake repeated text strokes for vertical rules.
+    strong=collect_vertical_rules(cinv,.18,.80)
+    if not (5<=len(strong)<=20):
+        # Broken/faint grids still get the older gap-joining repair, but reject an
+        # implausibly large rule set rather than feeding dozens of fake columns
+        # into the expensive master-assisted OCR stage.
+        joined=cv2.morphologyEx(
+            cinv,cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_RECT,(1,max(3,int(bh*.012)))))
+        strong=collect_vertical_rules(joined,.12,.85)
+    if not (5<=len(strong)<=20):
         return [],None,None
 
     xs=[]
@@ -2300,6 +2310,10 @@ def _column_index_for_box(box,column_boxes):
 def _master_assisted_endpoint_columns(img,bands,table,column_boxes,master_index):
     """Choose endpoint columns by how many sampled pairs resolve in the master."""
     if len(column_boxes)<2 or len(bands)<2: return None,0,0
+    # Bad geometry must never turn into hundreds of OCR calls. Normal B&C pair
+    # tables are far below this bound; an implausible set should be confirmed
+    # manually rather than spending minutes master-scoring fake columns.
+    if len(column_boxes)>20: return None,0,0
     left,right=table; tw=max(1,right-left)
     sample_bands=list(bands[1:8])
     observed=[[None for _ in sample_bands] for _ in column_boxes]

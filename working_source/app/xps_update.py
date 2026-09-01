@@ -22,7 +22,7 @@ import zipfile
 from pathlib import Path
 
 
-CURRENT_VERSION = "78"
+CURRENT_VERSION = "79"
 UPDATE_SCHEDULED_EXIT_CODE = 20
 CONFIG_FILENAME = "update_config.json"
 USER_AGENT = f"XPS-Tracker-Updater/{CURRENT_VERSION}"

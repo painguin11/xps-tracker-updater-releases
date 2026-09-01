@@ -497,3 +497,11 @@ Version 77 simple-first cleaning length OCR
 - Total-driven correction requires repeated OCR support, changes at most three rows automatically, and fails closed on ambiguous alternatives.
 - Weak one-off OCR garbage cannot be selected just because it makes the arithmetic match.
 - Manual row edits remain authoritative and OCR cache advances to v4.
+
+
+Version 78 cleaning OCR rollback
+--------------------------------
+- Reverts the v77 simple-first cleaning-length OCR strategy after it caused broad regressions on the 8/11 packet.
+- Restores the proven v76 printed-value consensus and grid-rule-removal path for cleaning lengths.
+- Keeps fail-closed total validation and manual review behavior.
+- Uses OCR cache v5 so incorrect v77 cached reads are never reused.

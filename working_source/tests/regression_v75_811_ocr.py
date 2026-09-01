@@ -35,6 +35,6 @@ choose=ns['_choose_cleaning_length']
 assert choose([75,75,275,275,275,275,275],273.4)==275
 assert choose([274,274,224,224,224,224,226],223.5)==224
 
-assert "OCR_CACHE_VERSION = 'v4'" in text
-assert 'def _fallback_cleaning_length_candidates' in text
+assert "OCR_CACHE_VERSION = 'v5'" in text
+assert 'consensus.extend(_ocr_gridless_number_candidates(value_cell,True))' in text
 print('v75 8/11 cleaning OCR/cache/date regression safeguards passed.')

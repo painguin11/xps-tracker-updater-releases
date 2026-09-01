@@ -17,7 +17,7 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '69'
+APP_VERSION = '70'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 OCR_CACHE_VERSION = 'v2'

@@ -407,3 +407,18 @@ Version 66 tall cleaning-table headers
 - Allows one taller leading table-header band while retaining the stricter
   data-row limits everywhere else.
 - Keeps ordinary-height cleaning, pipe, and manhole layouts unchanged.
+
+
+Version 70 layout confidence, DPI, and cleaning headers
+------------------------------------------------------
+- Skips the PDF table-layout confirmation popup when native detection is 100%
+  confident and all four required column roles are present.
+- Makes the main UI DPI-aware so buttons, summary rows, and summary columns keep
+  readable proportions on computers using different Windows display scaling.
+- Allows Asset / Nodes and Status to use extra window width while retaining the
+  horizontal scrollbar on smaller displays.
+- Preserves confidently recognized partial table-header roles instead of
+  discarding them when one role is missing.
+- For B&C cleaning tables, recognizes the final Date column plus an immediately
+  preceding Length-labelled column as Cleaning Date and Wheel Walk when OCR
+  splits the narrow printed headers.

@@ -1,1 +1,1 @@
-Apply validated v76 layout confirmation fix.
+Apply validated v76 saved-layout and verified-total OCR retry fixes.

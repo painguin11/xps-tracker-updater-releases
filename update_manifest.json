@@ -1,11 +1,12 @@
 {
-  "version": "66",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v66/XPS_Tracker_Updater_v66.zip",
-  "sha256": "19da36a39513992d408eded7c977133312dc0adabb589c6805902bb2e893db91",
+  "version": "67",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v67/XPS_Tracker_Updater_v67.zip",
+  "sha256": "e85ef04957abd69eef5d312fcfacbbc9c8121c47436f31be0cc248611806d6c5",
   "release_notes": [
-    "Fix tall wrapped cleaning-table header detection",
-    "Select the correct rotated table orientation",
-    "Exclude header and final total from summary and master",
-    "Verified 17 real cleaning rows in 8-11-2026.pdf"
+    "Show the complete work-order number in the confirmation preview",
+    "Remove the false blank Column 1 from fallback table layouts",
+    "Display Cleaning Date as Column 10",
+    "Correctly map all four cleaning-table fields",
+    "Preserve exactly 17 data rows while excluding the header and total"
   ]
 }

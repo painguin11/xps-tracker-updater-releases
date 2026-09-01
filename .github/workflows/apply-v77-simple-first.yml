@@ -24,12 +24,19 @@ jobs:
           python .github/scripts/apply_v77_simple_first_lengths.py
           python - <<'PY'
           from pathlib import Path
+
           p=Path('working_source/tests/regression_v75_811_ocr.py')
           s=p.read_text(encoding='utf-8')
           s=s.replace("assert \"OCR_CACHE_VERSION = 'v3'\" in text",
                       "assert \"OCR_CACHE_VERSION = 'v4'\" in text")
           s=s.replace("assert 'consensus.extend(_ocr_gridless_number_candidates(value_cell,True))' in text",
                       "assert 'def _fallback_cleaning_length_candidates' in text")
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('working_source/tests/regression_length_totals.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("assert 'needs_consensus=(not value_candidates or value is None or len(distinct)>1' in source",
+                      "assert 'value_candidates=_simple_cleaning_length_candidates(value_cell)' in source\nassert 'def _fallback_cleaning_length_candidates' in source")
           p.write_text(s,encoding='utf-8')
           PY
 
@@ -62,6 +69,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v77_simple_first.py working_source/tests/regression_v75_811_ocr.py
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v77_simple_first.py working_source/tests/regression_v75_811_ocr.py working_source/tests/regression_length_totals.py
           git commit -m 'Stage v77 simple-first cleaning length OCR [skip ci]'
           git push origin HEAD:v77-work

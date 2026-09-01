@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v70**. The repository's v70 source bundle contains
+Current production version: **v71**. The repository's v71 source bundle contains
 the complete app directory and regression scripts and must match the v69 release
 ZIP. In a new conversation, begin with:
 
@@ -107,6 +107,20 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - New rows default Status to `Open`; dropdown values are Open, In Progress,
   Resolved, and No Action Needed.
 - Keep Resolution / Follow-up Notes and the green workbook header.
+
+## Current v71 fixes
+
+- Pipe/cleaning activity tables can independently read the printed PDF total and
+  reconcile it against the sum of extracted summary lengths for the same work
+  order and activity.
+- A total mismatch is fail-closed: affected rows are dark red and Update Master
+  is blocked until the values reconcile.
+- The user may correct the OCRed printed total after visually verifying the PDF;
+  doing so changes only the validation target, never individual row lengths.
+- Editing an extracted length automatically recalculates total validation.
+- Cleaning length OCR now performs the focused border-free reread when the first
+  pass is blank or contains only invalid values, including the 114 -> 6114/36114
+  failure mode found during the 8-20-2026 regression review.
 
 ## Current v70 fixes
 

@@ -1,12 +1,13 @@
 {
-  "version": "77",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v77/XPS_Tracker_Updater_v77.zip",
-  "sha256": "b63a96bf46759b423a9c934dcc3919991f611aea6a2cdf6d0902a377fa36d424",
+  "version": "78",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v78/XPS_Tracker_Updater_v78.zip",
+  "sha256": "5900dc6df24452a6ae3943169dd2195fe837e9a90b9319cf8b728966c018da9d",
   "release_notes": [
-    "Read each cleaning length once with a conservative OCR pass before doing anything more complicated",
-    "Run stronger border-free OCR only when the work-order total does not reconcile",
-    "Require repeated OCR support and limit automatic total-driven corrections to at most three rows",
-    "Fail closed on ambiguous or weak OCR alternatives instead of forcing the arithmetic to match",
-    "Use a fresh v4 OCR cache namespace"
+    "Read cleaning Wheel Walk lengths as one aligned table column instead of isolated ruled cells",
+    "Trim table-border pixels without cropping right-aligned final digits",
+    "Map each OCR-observed value back to its detected row with v75 per-cell OCR only as a fallback",
+    "Remove v76/v77 automatic total-driven row reselection and simple-first OCR regressions",
+    "Keep PDF total validation fail-closed without allowing it to rewrite row lengths",
+    "Use a fresh v5 OCR cache namespace"
   ]
 }

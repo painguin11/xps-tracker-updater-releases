@@ -1,3 +1,9 @@
+## Current Production Release
+- **v78**
+- Cleaning Wheel Walk values use aligned column OCR; v75 cell OCR is fallback-only.
+- The PDF total is validation-only and never rewrites row lengths.
+- OCR cache namespace is v5.
+
 # XPS Tracker Updater project context
 
 ## Resume instructions

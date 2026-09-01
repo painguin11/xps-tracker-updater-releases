@@ -1468,17 +1468,20 @@ def _choose_sheet_date_evidence(texts, expected_date=None):
     return {'date':chosen,'strong':False,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes}
 
 
-def _date_outlier_is_well_supported(evidence, dominant_date):
-    """Keep a different date only when multiple OCR passes independently support it."""
+def _date_outlier_is_well_supported(evidence, dominant_date, expected_date=None):
+    """Keep a different date only when independent OCR evidence is strong enough."""
     if not evidence or dominant_date is None: return False
     date=evidence.get('date')
     if date is None or date==dominant_date: return True
     strong_votes=(evidence.get('strong_votes') or {}).get(date,0)
-    total_votes=(evidence.get('votes') or {}).get(date,0)
-    # One lucky/misread full-year pass is not enough. Requiring at least two
-    # independent strong reads (or three total matching reads) preserves genuine
-    # mixed-date tables while correcting isolated 01/01/2026-style OCR failures.
-    return strong_votes>=2 or total_votes>=3
+    # When the dominant table date agrees with the confirmed work-order date,
+    # require three full-date reads before preserving an outlier. This fixes
+    # clipped 8/11/2026 cells that can repeatedly look like 1/1 or 3/11 while
+    # still preserving a genuinely different, clearly printed date.
+    dominant_matches_expected=(isinstance(expected_date,datetime) and
+                     dominant_date.date()==expected_date.date())
+    required=3 if dominant_matches_expected else 2
+    return strong_votes>=required
 
 
 def _read_sheet_date_evidence(cell_img, expected_date=None):
@@ -2470,7 +2473,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         if not match and not endpoint_signal:
             continue
         if dominant_date is not None and (match or endpoint_signal):
-            if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date):
+            if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date):
                 d=dominant_date
         if d is None:
             continue

@@ -44,6 +44,9 @@ jobs:
         run: |
           python -m py_compile working_source/app/reno_scan_updater.py
           python -m py_compile working_source/app/xps_update.py
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
           python working_source/tests/regression_v77_simple_first.py
           python working_source/tests/regression_v76_layout_skip.py
           python working_source/tests/regression_v75_811_ocr.py

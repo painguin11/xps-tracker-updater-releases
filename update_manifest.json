@@ -1,11 +1,11 @@
 {
-  "version": "69",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v69/XPS_Tracker_Updater_v69.zip",
-  "sha256": "e325f0f10d4ff93b6752c59ff82b1eaef3babb5ce6711b79fd3fc07a1b77b69d",
+  "version": "70",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v70/XPS_Tracker_Updater_v70.zip",
+  "sha256": "6fff844e6f4cfe2d592a109082c7fb34ce23a1d263be08ccb454c75ec2cfcda2",
   "release_notes": [
-    "Recover R2 endpoint OCR scan artifacts such as 32-427 and 2-417",
-    "Use master-backed pair validation before correcting ambiguous R2 endpoints",
-    "Preserve joined one-letter suffixes such as R2-414A as possible new assets",
-    "Verified R2-427 to R2-414 and R2-417 to R2-427 on the supplied regression PDF"
+    "Skip table-layout confirmation when native detection is already 100% complete",
+    "Scale the main UI and live summary correctly across Windows DPI settings",
+    "Recover B&C cleaning Wheel Walk and Cleaning Date roles from narrow Length/Date headers",
+    "Preserve partial recognized header roles instead of blanking them when another role is missing"
   ]
 }

@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v73**. The repository's v73 source bundle contains
+Current production version: **v74**. The repository's v73 source bundle contains
 the complete app directory and regression scripts and must match the v69 release
 ZIP. In a new conversation, begin with:
 
@@ -107,6 +107,19 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - New rows default Status to `Open`; dropdown values are Open, In Progress,
   Resolved, and No Action Needed.
 - Keep Resolution / Follow-up Notes and the green workbook header.
+
+## Current v74 fixes
+
+- Pair-table printed totals that occupy a detected grid band are identified before
+  row parsing and excluded from the live summary/master rows. The total remains
+  available only as independent total-length validation evidence.
+- Header/footer OCR noise is filtered before table-date repair, preventing labels
+  such as header text from becoming unmatched asset rows.
+- When a repeated table date agrees with the confirmed work-order date, a
+  different row date must have at least three independent strong full-date OCR
+  reads to be preserved; weaker outliers are corrected to the dominant date.
+- The 8/11/2026 cleaning fixture has one header band, 17 real data rows, and one
+  final 4476 total band; the customer PDF itself is not stored in this repository.
 
 ## Current v73 fixes
 

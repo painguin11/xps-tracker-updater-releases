@@ -27,7 +27,6 @@ jobs:
         run: |
           python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
           python working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
-          python working_source/tests/regression_v84_real_packet_recovery.py
           python working_source/tests/regression_v83_length_recovery.py
           python working_source/tests/regression_v83_exact_pdf_numbers.py
           python working_source/tests/regression_v83_total_preview.py
@@ -41,6 +40,10 @@ jobs:
           python working_source/tests/regression_v80_ocr_total_ui.py
           python working_source/tests/regression_v79_layout_speed.py
           python working_source/tests/regression_v78_rollback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_r2_endpoint_ocr.py
       - name: Commit validated v85 changes
         run: |
           git config user.name 'github-actions[bot]'

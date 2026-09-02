@@ -1,1 +1,2 @@
 Apply total-length PDF preview, dedicated group error rows, and fix plural pipe suffix guard.
+Retry after group-review regression alignment.

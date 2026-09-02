@@ -6,7 +6,7 @@ assert 'def _confirmed_suffix_asset_candidates' in src
 assert 'def _guard_unconfirmed_suffix_observations' in src
 assert "for ratio in (.025,.045):" in src
 assert 'if count>=2' in src
-assert "if kind=='pipe' and not match and match_status=='NEW PIPE':" in src
+assert "if kind=='pipes' and not match and match_status=='NEW PIPE':" in src
 assert '_confirmed_suffix_asset_candidates(cut(up_box),endpoint_items,asset_format=asset_format)' in src
 assert '_confirmed_suffix_asset_candidates(cut(dn_box),endpoint_items,asset_format=asset_format)' in src
 assert '_ocr_asset_candidates(view,fast_plain=True,asset_format=asset_format)' in src

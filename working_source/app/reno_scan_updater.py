@@ -1959,7 +1959,7 @@ def _preferred_printed_total_candidates(direct,gridless,band_count):
 
 def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=None,date_box=None):
     """Read the printed activity total independently from the data-row lengths."""
-    result={'found':False,'value':None,'confident':False,'candidates':[],'method':'not found','band_index':None}
+    result={'found':False,'value':None,'confident':False,'candidates':[],'method':'not found','band_index':None,'preview':None}
     if img is None or not bands or not table or not value_box: return result
     left,right=table; h,w=img.shape[:2]; tw=max(1,right-left)
 
@@ -2007,8 +2007,10 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
         value,confident=_choose_printed_total(candidates)
         if not _printed_total_value_is_plausible(value,len(bands)):
             value=None; confident=False
+        preview=cut(value_box,y1,y2)
         return {'found':True,'value':value,'confident':confident,
-                'candidates':candidates,'method':method,'band_index':band_index}
+                'candidates':candidates,'method':method,'band_index':band_index,
+                'preview':preview.copy() if preview is not None and getattr(preview,'size',0) else None}
 
     # Explicit TOTAL label, when present.
     tail_start=max(0,len(bands)-4)
@@ -2022,8 +2024,10 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
         value,confident=_choose_printed_total(candidates)
         if not _printed_total_value_is_plausible(value,len(bands)):
             value=None; confident=False
+        preview=cut(value_box,y1,y2)
         return {'found':True,'value':value,'confident':confident,
-                'candidates':candidates,'method':'labelled total row','band_index':band_index}
+                'candidates':candidates,'method':'labelled total row','band_index':band_index,
+                'preview':preview.copy() if preview is not None and getattr(preview,'size',0) else None}
 
     # Some B&C sheets include the numeric total as the FINAL DETECTED GRID BAND.
     # v71/v72 incorrectly assumed the total was always below bands[-1], causing
@@ -2838,7 +2842,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             up_obs=list(dict.fromkeys(up_obs+read_id(up_box,False)))
             dn_obs=list(dict.fromkeys(dn_obs+read_id(dn_box,False)))
             match,match_status=_resolve_pipe_pair(up_obs,dn_obs,master_index)
-        if kind=='pipe' and not match and match_status=='NEW PIPE':
+        if kind=='pipes' and not match and match_status=='NEW PIPE':
             # A one-letter suffix can be a real new asset, but a table edge can
             # also create a stray final character. Require the suffix to survive
             # independent endpoint crops before allowing it to create a new pipe.
@@ -3420,6 +3424,72 @@ class ConfirmDialog(tk.Toplevel):
     def cancel(self): self.result=None; self.destroy()
 
 
+class TotalLengthVerifyDialog(tk.Toplevel):
+    """Verify a printed activity total while showing the exact PDF total crop."""
+    def __init__(self,parent,check,initial=''):
+        super().__init__(parent); self.result=None; self.crop_photos=[]
+        apply_app_icon(self)
+        self.title('Verify Total Length'); self.transient(parent); self.grab_set(); self.resizable(False,False)
+        ttk.Label(self,text=f"Work Order {check.get('wo','')} — {check.get('kind','')}",
+                  font=('Segoe UI',12,'bold')).grid(row=0,column=0,columnspan=2,sticky='w',padx=14,pady=(12,5))
+
+        preview_row=1; previews=0
+        for source in check.get('sources',[]) or []:
+            info=source.get('info') or {}; crop=info.get('preview')
+            if crop is None or not getattr(crop,'size',0):
+                continue
+            try:
+                image=Image.fromarray(crop)
+                if image.width<360:
+                    scale=min(3.0,360.0/max(1,image.width))
+                    image=image.resize((max(1,int(image.width*scale)),max(1,int(image.height*scale))),Image.Resampling.LANCZOS)
+                image.thumbnail((560,130),Image.Resampling.LANCZOS)
+                photo=ImageTk.PhotoImage(image,master=self); self.crop_photos.append(photo)
+                ttk.Label(self,text=f"PDF page {source.get('page','?')} printed total:").grid(
+                    row=preview_row,column=0,sticky='ne',padx=(14,8),pady=5)
+                ttk.Label(self,image=photo).grid(row=preview_row,column=1,sticky='w',padx=(0,14),pady=5)
+                preview_row+=1; previews+=1
+            except Exception:
+                continue
+        if not previews:
+            ttk.Label(self,text='Printed-total image was not available for this check.',foreground='#8A5200').grid(
+                row=preview_row,column=0,columnspan=2,sticky='w',padx=14,pady=5)
+            preview_row+=1
+
+        page_text=', '.join(str(p) for p in check.get('pages',[])) or 'unknown'
+        expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
+        details=(f"PDF page(s): {page_text}\n"
+                 f"PDF total read: {initial or 'UNREADABLE'}\n"
+                 f"Summary length total: {check.get('summary_total',0):g}\n")
+        if expected is not None:
+            details+=f"Difference: {abs(check.get('difference') or 0):g} ft\n"
+        details+=f"Missing summary lengths: {check.get('missing',0)}"
+        ttk.Label(self,text=details,justify='left').grid(row=preview_row,column=0,columnspan=2,sticky='w',padx=14,pady=(7,8))
+        preview_row+=1
+
+        ttk.Label(self,text='Verified TOTAL LENGTH:').grid(row=preview_row,column=0,sticky='e',padx=(14,8),pady=6)
+        self.value=tk.StringVar(value=initial)
+        entry=ttk.Entry(self,textvariable=self.value,width=24); entry.grid(row=preview_row,column=1,sticky='w',padx=(0,14),pady=6)
+        entry.focus_set(); entry.select_range(0,'end')
+        preview_row+=1
+        ttk.Label(self,text='This corrects only the OCR of the printed total; it does not change any row length.\nThe master update remains blocked until the verified total and summary lengths match exactly.',
+                  foreground='#8A5200',justify='left').grid(row=preview_row,column=0,columnspan=2,sticky='w',padx=14,pady=(5,8))
+        preview_row+=1
+        buttons=ttk.Frame(self); buttons.grid(row=preview_row,column=0,columnspan=2,pady=(0,12))
+        ttk.Button(buttons,text='Cancel',command=self.cancel).pack(side='left',padx=6)
+        ttk.Button(buttons,text='Use Verified Total',command=self.ok,style='Primary.TButton').pack(side='left',padx=6)
+        self.bind('<Return>',lambda _event:self.ok()); self.protocol('WM_DELETE_WINDOW',self.cancel)
+        self.update_idletasks(); self.geometry(f'+{parent.winfo_rootx()+80}+{parent.winfo_rooty()+70}')
+    def ok(self):
+        try:
+            value=float(self.value.get().replace(',','').strip())
+            if value<=0: raise ValueError
+        except Exception:
+            messagebox.showerror('Invalid total','Enter a positive numeric total length.',parent=self); return
+        self.result=value; self.destroy()
+    def cancel(self): self.result=None; self.destroy()
+
+
 class ProgressFillButton(tk.Canvas):
     """Fixed-label button whose background gradually fills during processing."""
     def __init__(self,parent,text,command,width=145,height=35):
@@ -3643,12 +3713,32 @@ class App(tk.Tk):
                 frame=tk.Frame(self.tree,background=color,borderwidth=0,highlightthickness=0,takefocus=0)
                 frame.place(x=x,y=y,width=max(1,width),height=max(1,line_height))
                 frame.lift(); self._total_outline_widgets.append(frame)
-    def _total_warning_for_record_index(self,index):
-        for check in self.total_validations:
-            if check.get('passed') or check.get('first_record_index')!=index:
-                continue
-            return str(check.get('warning') or '')
-        return ''
+    def _total_error_iid(self,check):
+        key=f"{check.get('wo','')}|{check.get('kind','')}|total-length"
+        return 'group-error:'+hashlib.sha1(key.encode()).hexdigest()[:16]
+    def show_total_summary_error(self,check,follow=False):
+        """Give work-order-wide total failures their own Live Summary row."""
+        iid=self._total_error_iid(check)
+        warning=str(check.get('warning') or '')
+        if check.get('passed') or not warning:
+            if self.tree.exists(iid): self.tree.delete(iid)
+            return
+        values=('','','','',str(check.get('wo','')),'','',warning)
+        tags=('total_warning',)
+        if self.tree.exists(iid):
+            self.tree.item(iid,values=values,tags=tags)
+        else:
+            children=list(self.tree.get_children())
+            same_wo=[]
+            for child in children:
+                try:
+                    if str(self.tree.set(child,'wo'))==str(check.get('wo','')):
+                        same_wo.append(self.tree.index(child))
+                except Exception:
+                    pass
+            insert_at=(max(same_wo)+1) if same_wo else 'end'
+            self.tree.insert('','end' if insert_at=='end' else insert_at,iid=iid,values=values,tags=tags)
+        if follow: self.tree.see(iid)
     def show_summary_record(self,index,follow=False):
         """Insert or refresh one summary row while analysis is still running."""
         r=self.records[index]
@@ -3658,9 +3748,6 @@ class App(tk.Tk):
         elif record_needs_review(r):
             tags=('check_warning',)
         display_status=review_status(r)
-        group_warning=self._total_warning_for_record_index(index)
-        if group_warning:
-            display_status=group_warning if display_status=='Matched' else display_status+'; '+group_warning
         values=(r['kind'],r['display_asset'],'' if r['video_length'] is None else f"{r['video_length']:.1f}",
                 fmt_date(r['date']),r['wo'],r['truck'],r['operator'],display_status)
         iid=f'record:{index}'
@@ -4052,6 +4139,7 @@ class App(tk.Tk):
             check['warning']=''
         if redraw:
             for index,_ in indexed: self.show_summary_record(index)
+        self.show_total_summary_error(check)
         self._schedule_total_outlines()
         return check['passed']
     def prompt_total_check(self,check):
@@ -4060,40 +4148,23 @@ class App(tk.Tk):
         expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
         page_text=', '.join(str(p) for p in check.get('pages',[])) or 'unknown'
         initial='' if expected is None else f'{float(expected):g}'
-        while True:
-            raw=simpledialog.askstring(
-                'Verify Total Length',
-                f"Work Order {check.get('wo','')} — {check.get('kind','')}\n\n"
-                f"PDF page(s): {page_text}\n"
-                f"PDF total read: {initial or 'UNREADABLE'}\n"
-                f"Summary length total: {check.get('summary_total',0):g}\n"
-                + (f"Difference: {abs(check.get('difference') or 0):g} ft\n" if expected is not None else '') +
-                f"Missing summary lengths: {check.get('missing',0)}\n\n"
-                'Enter the TOTAL LENGTH you verify by looking at the PDF.\n'
-                'Changing this value corrects only the OCR of the printed total; it does not change any row length.\n\n'
-                'The master update remains blocked until the verified total and the summary lengths match exactly.',
-                initialvalue=initial,parent=self)
-            if raw is None: return False
-            try:
-                verified=float(str(raw).replace(',','').strip())
-                if verified<=0: raise ValueError
-            except Exception:
-                messagebox.showerror('Invalid total','Enter a positive numeric total length.',parent=self)
-                continue
-            check['verified_total']=verified; check['manual_verified']=True
-            # A corrected total is a new validation target. Give the same suspect
-            # cells one conservative reread before asking the user to edit rows.
-            if check.get('kind')=='Cleaning':
-                self._retry_cleaning_total_mismatch(check,force=True)
-            passed=self.refresh_total_check(check)
-            if passed:
-                messagebox.showinfo('Total Length Verified',
-                    f"Work Order {check.get('wo','')} {check.get('kind','')} now reconciles exactly at {verified:g} ft.",parent=self)
-            else:
-                messagebox.showwarning('Total Still Does Not Match',
-                    f"The verified PDF total is {verified:g} ft, but the summary currently totals {check.get('summary_total',0):g} ft.\n\n"
-                    'The work-order group remains outlined in red and Update Master is blocked until the row lengths are corrected. Rows with their own length difference remain highlighted red.',parent=self)
-            return passed
+        dlg=TotalLengthVerifyDialog(self,check,initial); self.wait_window(dlg)
+        if dlg.result is None: return False
+        verified=float(dlg.result)
+        check['verified_total']=verified; check['manual_verified']=True
+        # A corrected total is a new validation target. Give the same suspect
+        # cells one conservative reread before asking the user to edit rows.
+        if check.get('kind')=='Cleaning':
+            self._retry_cleaning_total_mismatch(check,force=True)
+        passed=self.refresh_total_check(check)
+        if passed:
+            messagebox.showinfo('Total Length Verified',
+                f"Work Order {check.get('wo','')} {check.get('kind','')} now reconciles exactly at {verified:g} ft.",parent=self)
+        else:
+            messagebox.showwarning('Total Still Does Not Match',
+                f"The verified PDF total is {verified:g} ft, but the summary currently totals {check.get('summary_total',0):g} ft.\n\n"
+                'The work-order group remains outlined in red and Update Master is blocked until the row lengths are corrected. Rows with their own length difference remain highlighted red.',parent=self)
+        return passed
     def verify_length_totals(self,total_sources):
         self.total_validations=[]
         for (wo,kind),sources in total_sources.items():
@@ -4122,6 +4193,9 @@ class App(tk.Tk):
         iid=sel[0]
         if iid.startswith('ticket:'):
             self.edit_trouble_ticket(int(iid.split(':',1)[1]))
+            return
+        if iid.startswith('group-error:'):
+            messagebox.showinfo('Work Order Validation','This row is a work-order-wide validation message, not an individual asset row.',parent=self)
             return
         i=int(iid.split(':',1)[1]); r=self.records[i]
         win=tk.Toplevel(self); apply_app_icon(win); win.title('Edit extracted row'); win.transient(self); win.grab_set()

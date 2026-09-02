@@ -1,0 +1,76 @@
+name: Patch v82 layout confidence threshold
+
+on:
+  push:
+    branches:
+      - v82-work
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.event.head_commit.message == 'PATCH_V82_LAYOUT_THRESHOLD' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v82 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v82-work
+          fetch-depth: 0
+
+      - name: Lower auto-accept threshold and add regression
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py')
+          text=app.read_text(encoding='utf-8')
+          old="""                        if layout.get('confidence',0)>=100 and all(k in detected_roles for k in ('up','down','value','date')):
+                            # A complete 100% native detection is already unambiguous;
+                            # do not interrupt analysis with a confirmation dialog.
+"""
+          new="""                        if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):
+                            # A complete native detection above 80% confidence is reliable enough;
+                            # do not interrupt analysis with a confirmation dialog.
+"""
+          if old not in text:
+              raise SystemExit('Expected v81 layout confidence block not found')
+          text=text.replace(old,new,1)
+          app.write_text(text,encoding='utf-8')
+
+          test=Path('working_source/tests/regression_v82_layout_threshold.py')
+          test.write_text("""from pathlib import Path
+
+src = Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+
+new = \"if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):\"
+old = \"if layout.get('confidence',0)>=100 and all(k in detected_roles for k in ('up','down','value','date')):\"
+assert new in src
+assert old not in src
+assert 'A complete native detection above 80% confidence is reliable enough' in src
+
+# Auto-accept still requires all four mapped roles; lowering confidence alone
+# must never bypass confirmation for an incomplete layout.
+assert \"all(k in detected_roles for k in ('up','down','value','date'))\" in new
+
+print('v82 layout confidence threshold regression passed.')
+""",encoding='utf-8')
+          PY
+
+      - name: Compile and run focused regressions
+        run: |
+          python -m pip install --disable-pip-version-check -q numpy opencv-python-headless
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          python working_source/tests/regression_v82_layout_threshold.py
+          python working_source/tests/regression_v81_header_outline.py
+          python working_source/tests/regression_v79_layout_speed.py
+          python working_source/tests/regression_v76_layout_skip.py
+
+      - name: Commit validated v82 threshold change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v82_layout_threshold.py
+          git commit -m 'Lower layout confirmation threshold to over 80 percent'
+          git push origin HEAD:v82-work

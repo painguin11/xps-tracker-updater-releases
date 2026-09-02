@@ -3131,6 +3131,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             asset='' if status=='NEW PIPE' else f'UNMATCHED ROW {len(rows)+1}'
         rec={'kind':'Cleaning' if kind=='cleaning' else 'Pipe','asset':asset,
              'up':up,'down':down,'video_length':value,'row_date':d,'status':status}
+        date_cell=cut(date_box)
+        rec['_field_previews']={
+            'activity_value':value_cell.copy() if getattr(value_cell,'size',0) else None,
+            'date':date_cell.copy() if getattr(date_cell,'size',0) else None,
+        }
         rec['_length_value_cell']=value_cell.copy() if getattr(value_cell,'size',0) else None
         expanded_value_cell=cut(val_box,vertical_bleed=3)
         rec['_length_expanded_cell']=expanded_value_cell.copy() if getattr(expanded_value_cell,'size',0) else None
@@ -3204,6 +3209,9 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None):
             if near: row_date=min(near,key=lambda x:abs(x[0]-yc))[1]
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
                  'video_length':None,'row_date':row_date,'status':status}
+            preview_half=max(8,int(round(h*.018)))
+            date_preview=img[max(0,int(yc)-preview_half):min(h,int(yc)+preview_half),int(w*.60):w]
+            rec['_field_previews']={'date':date_preview.copy() if getattr(date_preview,'size',0) else None}
             if item is None: rec['skip_update']=True
             seen.add(unique_key); out.append(rec)
             if on_row: on_row(rec)
@@ -3220,6 +3228,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None):
         date_img=img[y1:y2,int(left+.74*tw):right]
         rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
              'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
+        rec['_field_previews']={'date':date_img.copy() if getattr(date_img,'size',0) else None}
         if item is None: rec['skip_update']=True
         if rec['asset'] in seen: continue
         seen.add(rec['asset']); rows.append(rec)
@@ -3362,10 +3371,11 @@ def split_pipe_identity(record):
 
 
 def _length_part_snapshot(record):
-    """Retain one physical PDF row so split-pipe rereads stay part-by-part."""
+    """Retain one physical PDF row so split-pipe rereads/previews stay part-by-part."""
     return {'value':record.get('video_length'),
             'cell':record.get('_length_value_cell'),
-            'expanded':record.get('_length_expanded_cell')}
+            'expanded':record.get('_length_expanded_cell'),
+            'page':record.get('source_page')}
 
 
 def _independent_split_pipe_read(record):
@@ -3630,6 +3640,19 @@ class LayoutConfirmDialog(tk.Toplevel):
             messagebox.showwarning('Check column mappings','UP_MH, DN_MH, activity value, and activity date must use four different columns.',parent=self); return
         self.result=indices; self.destroy()
     def cancel(self): self.result=None; self.destroy()
+
+
+def _preview_unavailable_text(pages):
+    """Describe where to verify a field when its image crop is unavailable."""
+    if isinstance(pages,(list,tuple,set)):
+        values=[str(page).strip() for page in pages if str(page).strip()]
+    else:
+        raw=str(pages or '').strip()
+        values=[part.strip() for part in raw.split(',') if part.strip()]
+    values=list(dict.fromkeys(values))
+    if len(values)>1:
+        return 'Preview unavailable — check PDF pages ' + ', '.join(values) + '.'
+    return 'Preview unavailable — check PDF page ' + (values[0] if values else 'unknown') + '.'
 
 
 class ConfirmDialog(tk.Toplevel):
@@ -4033,6 +4056,18 @@ class App(tk.Tk):
         rec_date=rec.pop('row_date',None) or use_date
         rec.update({'wo':current_wo['wo'],'truck':current_wo['truck'],
                     'operator':current_wo['operator'],'date':rec_date})
+        field_previews=dict(rec.get('_field_previews') or {})
+        field_pages={key:list(value) if isinstance(value,(list,tuple)) else [value]
+                     for key,value in (rec.get('_field_preview_pages') or {}).items()}
+        for key in ('activity_value','date'):
+            field_pages.setdefault(key,[page_number])
+        wo_previews=current_wo.get('_field_previews') or {}
+        wo_pages=current_wo.get('_field_preview_pages') or {}
+        for key in ('wo','truck','operator'):
+            if key in wo_previews: field_previews[key]=wo_previews.get(key)
+            field_pages[key]=list(wo_pages.get(key) or [current_wo.get('_workorder_page') or page_number])
+        rec['_field_previews']=field_previews
+        rec['_field_preview_pages']=field_pages
         if rec['kind'] in ('Pipe','Cleaning'):
             if rec['kind']=='Pipe' and str(rec.get('status','')).startswith('NEW PIPE') and not rec.get('up') and not rec.get('down'):
                 rec['display_asset']=rec.get('asset','')
@@ -4129,8 +4164,22 @@ class App(tk.Tk):
                 dlg=ConfirmDialog(self,item['guesses']); self.wait_window(dlg)
                 if dlg.result is None:
                     self.status.set('Analysis cancelled.'); return
+                guesses=item['guesses']
+                def confirmed_preview(key):
+                    crop=guesses.get(key)
+                    if crop is None: crop=guesses.get('preview')
+                    return crop.copy() if getattr(crop,'size',0) else None
+                dlg.result['_field_previews']={
+                    'wo':confirmed_preview('wo_preview'),
+                    'truck':confirmed_preview('truck_preview'),
+                    'operator':confirmed_preview('operator_preview'),
+                }
+                dlg.result['_field_preview_pages']={
+                    'wo':[item['index']+1],'truck':[item['index']+1],'operator':[item['index']+1]}
+                dlg.result['_workorder_page']=item['index']+1
                 confirmed_by_page[item['index']]=dlg.result
-                self.groups.append(dlg.result.copy())
+                # Persistent confirmation history needs values, not large image arrays.
+                self.groups.append({key:value for key,value in dlg.result.items() if not key.startswith('_')})
 
             # Prepare and confirm every unique pair-table layout before any asset
             # rows are processed. Continuation pages inherit the preceding list kind.
@@ -4476,10 +4525,62 @@ class App(tk.Tk):
             return
         i=int(iid.split(':',1)[1]); r=self.records[i]
         win=tk.Toplevel(self); apply_app_icon(win); win.title('Edit extracted row'); win.transient(self); win.grab_set()
-        fields=['Activity Value','Date','W/O','Truck','Operator']; vars={}
+        win.crop_photos=[]
+        fields=[('Activity Value','activity_value'),('Date','date'),('W/O','wo'),('Truck','truck'),('Operator','operator')]; vars={}
         values=[('' if r['video_length'] is None else str(r['video_length'])),fmt_date(r['date']),r['wo'],r['truck'],r['operator']]
-        for n,(lab,val) in enumerate(zip(fields,values)):
-            ttk.Label(win,text=lab+':').grid(row=n,column=0,padx=8,pady=6,sticky='e'); v=tk.StringVar(value=val); vars[lab]=v; ttk.Entry(win,textvariable=v,width=30).grid(row=n,column=1,padx=8,pady=6)
+        field_previews=dict(r.get('_field_previews') or {})
+        field_pages=dict(r.get('_field_preview_pages') or {})
+
+        def preview_items(key):
+            crops=[]; pages=[]
+            if key=='activity_value' and int(r.get('part_count') or 0)>1:
+                for part in r.get('_length_part_reads',[]) or []:
+                    crop=part.get('cell')
+                    if crop is None: crop=part.get('expanded')
+                    if getattr(crop,'size',0):
+                        crops.append(crop); pages.append(part.get('page'))
+            if not crops:
+                raw=field_previews.get(key)
+                raw_items=list(raw) if isinstance(raw,(list,tuple)) else [raw]
+                crops=[crop for crop in raw_items if getattr(crop,'size',0)]
+                pages=list(field_pages.get(key) or [])
+            if not pages:
+                pages=list(r.get('source_pages') or [])
+                if not pages and r.get('source_page') is not None: pages=[r.get('source_page')]
+            return crops,pages
+
+        def add_preview(row,key):
+            holder=ttk.Frame(win); holder.grid(row=row,column=2,padx=(6,12),pady=4,sticky='w')
+            crops,pages=preview_items(key)
+            if not crops:
+                ttk.Label(holder,text=_preview_unavailable_text(pages),foreground='#8A5200').pack(anchor='w')
+                return
+            for crop_index,crop in enumerate(crops):
+                try:
+                    image=Image.fromarray(crop)
+                    if image.width<260:
+                        scale=min(3.0,260.0/max(1,image.width))
+                        image=image.resize((max(1,int(image.width*scale)),max(1,int(image.height*scale))),Image.Resampling.LANCZOS)
+                    image.thumbnail((400,82),Image.Resampling.LANCZOS)
+                    photo=ImageTk.PhotoImage(image,master=win); win.crop_photos.append(photo)
+                    line=ttk.Frame(holder); line.pack(anchor='w',pady=1)
+                    page=pages[crop_index] if crop_index<len(pages) else (pages[0] if pages else r.get('source_page','?'))
+                    ttk.Label(line,text=f'PDF page {page}:',width=12).pack(side='left',padx=(0,5))
+                    ttk.Label(line,image=photo).pack(side='left')
+                except Exception:
+                    ttk.Label(holder,text=_preview_unavailable_text(pages),foreground='#8A5200').pack(anchor='w')
+                    break
+
+        ttk.Label(win,text=r.get('display_asset') or r.get('asset',''),font=('Segoe UI',11,'bold')).grid(
+            row=0,column=0,columnspan=3,padx=12,pady=(12,6),sticky='w')
+        for n,((lab,key),val) in enumerate(zip(fields,values),1):
+            ttk.Label(win,text=lab+':').grid(row=n,column=0,padx=8,pady=6,sticky='e')
+            v=tk.StringVar(value=val); vars[lab]=v
+            ttk.Entry(win,textvariable=v,width=30).grid(row=n,column=1,padx=8,pady=6,sticky='w')
+            add_preview(n,key)
+        ttk.Label(win,text='Compare each value with its PDF image before saving.',foreground='#8A5200').grid(
+            row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
+        win.columnconfigure(2,weight=1)
         def save():
             try:
                 old_length=r.get('video_length')
@@ -4505,7 +4606,8 @@ class App(tk.Tk):
             else:
                 self.status.set(f'All rows matched; no length differences greater than {LENGTH_DIFF_THRESHOLD:.1f}.')
             win.destroy()
-        ttk.Button(win,text='Save',command=save,style='Primary.TButton').grid(row=len(fields),column=0,columnspan=2,pady=10)
+        ttk.Button(win,text='Save',command=save,style='Primary.TButton').grid(row=len(fields)+2,column=0,columnspan=3,pady=(6,12))
+        win.update_idletasks(); win.geometry(f'+{self.winfo_rootx()+70}+{self.winfo_rooty()+60}')
     def edit_trouble_ticket(self,index):
         ticket=self.trouble_tickets[index]
         win=tk.Toplevel(self); apply_app_icon(win); win.title('Edit trouble ticket'); win.transient(self); win.grab_set()

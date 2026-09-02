@@ -2,7 +2,7 @@ import ast
 from pathlib import Path
 
 
-SOURCE=Path('output/package_v69/XPS_Tracker_Updater/reno_scan_updater.py')
+SOURCE=Path('working_source/app/reno_scan_updater.py')
 tree=ast.parse(SOURCE.read_text(encoding='utf-8'))
 nodes=[]
 for node in tree.body:
@@ -92,4 +92,4 @@ green=namespace['APPROVED_NEW_ROW_GREEN']
 assert all(sheet.Cells(11,col).Interior.Color==green for col in range(1,6))
 assert all(sheet.Cells(11,col).Interior.Pattern==1 for col in range(1,6))
 
-print('Approved master-row insertion, clearing, and green highlight checks passed.')
+print('Approved master-row insertion, clearing, and green highlight checks passed against current source.')

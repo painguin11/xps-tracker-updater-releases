@@ -1,11 +1,12 @@
 {
-  "version": "83",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v83/XPS_Tracker_Updater_v83.zip",
-  "sha256": "0cf64a56b0690e5cd82c7b46a6df630d340fbe555f97fdbe9f58cfdbbe74a5bf",
+  "version": "84",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v84/XPS_Tracker_Updater_v84.zip",
+  "sha256": "5ad55fab78f590916bfeb1643e1c38764c01408be8566a886b4464f865ec0637",
   "release_notes": [
-    "Reject individual Pipe and Cleaning OCR lengths above 1700 ft or with more than two decimal places",
-    "When a work-order total fails, reread suspicious rows first and then independently cross-check all activity lengths before requesting manual review",
-    "Preserve valid aligned-column Cleaning values when weaker isolated-cell OCR disagrees during the all-row audit",
-    "Include the staged v82 pipe-length OCR, one-letter suffix corroboration, cleaning-header filtering, master-derived asset syntax, and above-80% layout auto-confirmation improvements"
+    "Keep printed activity-total OCR attached to the parsed layout so real total-mismatch recovery always runs when needed",
+    "Read printed activity totals with high-resolution OCR to prevent subtle total-digit errors",
+    "On a failed total, reread master-outlier rows first and then force an independent all-row OCR audit if the mismatch remains",
+    "Preserve and independently reread every physical split/MSA pipe part before recombining its exact length",
+    "Keep individual Pipe and Cleaning values at 1700 ft maximum and no more than two decimal places without rounding PDF measurements"
   ]
 }

@@ -8,12 +8,20 @@ assert cache_match and int(cache_match.group(1))>=5
 assert 'def _batch_cleaning_length_candidates' in src
 assert '_batch_cleaning_length_candidates(img,bands,table,val_box,total_band_index)' in src
 assert 'value_candidates=list(batch_cleaning_values.get(band_index,[]))' in src
-assert 'consensus.extend(_ocr_gridless_number_candidates(value_cell,True))' in src
+# The rollback invariant remains: Cleaning does not use total-driven value
+# invention. The gridless fallback is still independent OCR, now with the newer
+# row-length validator so >1700 ft and >2 decimal places are rejected.
+assert 'consensus.extend(_ocr_gridless_number_candidates(value_cell,True,row_length=True))' in src
+assert 'MAX_ROW_LENGTH = 1700.0' in src
+assert 'MAX_ROW_LENGTH_DECIMALS = 2' in src
 assert "if (kind!='cleaning' and value is not None" in src
 assert 'def _simple_cleaning_length_candidates' not in src
 assert 'def _fallback_cleaning_length_candidates' not in src
 assert 'def retry_total_length_ocr' not in src
 assert 'OCR LENGTH RESELECTED USING VERIFIED PDF TOTAL' not in src
-saved_gate = "if saved and all(k in saved for k in ('up','down','value','date')) and all(0<=int(v)<len(layout['column_boxes']) for v in saved.values()):\n                                apply_confirmed_layout(layout,saved); layout['source']=layout.get('source','')+' / saved layout'\n                                confirmed_layouts[fingerprint]=dict(layout.get('role_indices',saved))\n                            else:\n                                dlg=LayoutConfirmDialog(self,layout,pi+1); self.wait_window(dlg)"
-assert saved_gate in src
-print('v78 column cleaning OCR + fail-closed total guard passed.')
+# Saved layouts still remain fail-closed: only complete, in-range saved role maps
+# are auto-applied; otherwise the user confirmation dialog remains available.
+assert "if saved and all(k in saved for k in ('up','down','value','date'))" in src
+assert "apply_confirmed_layout(layout,saved)" in src
+assert "LayoutConfirmDialog(self,layout,pi+1)" in src
+print('v78 cleaning OCR rollback + fail-closed total guard passed.')

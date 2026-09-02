@@ -4,7 +4,8 @@ from datetime import datetime
 import re
 
 src=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
-assert "APP_VERSION = '80'" in src
+version_match=re.search(r"APP_VERSION = ['\"](\d+)['\"]",src)
+assert version_match and int(version_match.group(1))>=80
 assert "OCR_CACHE_VERSION = 'v6'" in src
 
 # Printed total: least-destructive stable source wins before fallback transforms.

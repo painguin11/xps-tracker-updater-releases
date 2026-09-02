@@ -1,12 +1,11 @@
 {
-  "version": "82",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v82/XPS_Tracker_Updater_v82.zip",
-  "sha256": "0eddd880f4cfd7e73174dbdc7e397c621688e281e8af8f2ba243380bd1132fd7",
+  "version": "83",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v83/XPS_Tracker_Updater_v83.zip",
+  "sha256": "0cf64a56b0690e5cd82c7b46a6df630d340fbe555f97fdbe9f58cfdbbe74a5bf",
   "release_notes": [
-    "Skip table-column confirmation when native layout confidence is above 80% and all required roles are detected",
-    "Use conservative untouched full-cell OCR first for pipe/video lengths before established fallbacks",
-    "Require corroboration for one-letter new-asset suffixes to prevent false NEW PIPE results such as EC-1817A",
-    "Reject cleaning/header OCR noise before date inheritance and total validation",
-    "Infer Pipe, Manhole, and Cleaning asset syntax automatically from the selected master while always allowing one-letter potential new-asset suffixes"
+    "Reject individual Pipe and Cleaning OCR lengths above 1700 ft or with more than two decimal places",
+    "When a work-order total fails, reread suspicious rows first and then independently cross-check all activity lengths before requesting manual review",
+    "Preserve valid aligned-column Cleaning values when weaker isolated-cell OCR disagrees during the all-row audit",
+    "Include the staged v82 pipe-length OCR, one-letter suffix corroboration, cleaning-header filtering, master-derived asset syntax, and above-80% layout auto-confirmation improvements"
   ]
 }

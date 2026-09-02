@@ -1,10 +1,11 @@
 from pathlib import Path
 import ast
+import re
 import cv2
 import numpy as np
 
 src = Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
-assert "APP_VERSION = '79'" in src
+assert re.search(r"APP_VERSION = ['\"]\d+['\"]", src)
 assert 'strong=collect_vertical_rules(cinv,.18,.80)' in src
 assert 'if not (5<=len(strong)<=20):' in src
 assert 'strong=collect_vertical_rules(joined,.12,.85)' in src

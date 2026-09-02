@@ -1,5 +1,6 @@
 import os, re, sys, shutil, statistics, csv, json, hashlib, time
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
@@ -396,6 +397,22 @@ def parse_float(s):
     s = str(s).strip().replace(',', '')
     m = re.search(r'\d+(?:\.\d+)?', s)
     return float(m.group()) if m else None
+
+
+def _pdf_decimal(value):
+    """Convert an OCR/user numeric value to base-10 without rounding it."""
+    if value is None: return None
+    try: return Decimal(str(value).replace(',','').strip())
+    except (InvalidOperation,ValueError,TypeError): return None
+
+
+def _format_pdf_number(value):
+    """Display a PDF numeric value without changing its numeric precision."""
+    number=_pdf_decimal(value)
+    if number is None: return ''
+    text=format(number,'f')
+    if '.' in text: text=text.rstrip('0').rstrip('.')
+    return text or '0'
 
 
 def parse_date_text(text):
@@ -1775,9 +1792,9 @@ def _choose_cleaning_length(cands, expected=None):
     or substitutes a value that OCR did not actually observe, so legitimate field
     differences remain visible as review warnings.
     """
-    rounded=[round(float(x),2) for x in cands if 0<float(x)<5000]
-    if not rounded: return None
-    counts={value:rounded.count(value) for value in set(rounded)}
+    values=[float(x) for x in cands if 0<float(x)<5000]
+    if not values: return None
+    counts={value:values.count(value) for value in set(values)}
     most=max(counts.values())
     winners=[value for value,count in counts.items() if count==most]
     if expected not in (None,0):
@@ -1818,9 +1835,9 @@ def _direct_pair_length_candidates(cell_img):
 
 
 def _stable_numeric_vote(cands,min_votes=2):
-    rounded=[round(float(x),2) for x in (cands or []) if 0<float(x)<5000]
-    if not rounded: return None,False
-    counts={value:rounded.count(value) for value in set(rounded)}
+    values=[float(x) for x in (cands or []) if 0<float(x)<5000]
+    if not values: return None,False
+    counts={value:values.count(value) for value in set(values)}
     most=max(counts.values()); winners=[value for value,count in counts.items() if count==most]
     if len(winners)!=1 or most<int(min_votes): return None,False
     return winners[0],True
@@ -1930,9 +1947,9 @@ def _batch_cleaning_length_candidates(img,bands,table,value_box,skip_band_index=
 
 def _choose_printed_total(cands):
     """Return a total-length OCR winner and whether its OCR vote is confident."""
-    rounded=[round(float(x),2) for x in cands if 0<float(x)<1000000]
-    if not rounded: return None,False
-    counts={value:rounded.count(value) for value in set(rounded)}
+    values=[float(x) for x in cands if 0<float(x)<1000000]
+    if not values: return None,False
+    counts={value:values.count(value) for value in set(values)}
     most=max(counts.values())
     winners=sorted(value for value,count in counts.items() if count==most)
     if len(winners)!=1: return None,False
@@ -2053,36 +2070,36 @@ def _resolve_printed_total_sources(sources):
     values=[]; confident=True
     for source in found:
         info=source.get('info') or {}
-        value=info.get('value')
-        if value is not None: values.append(float(value))
+        value=_pdf_decimal(info.get('value'))
+        if value is not None: values.append(value)
         if not info.get('confident'): confident=False
     pages=[source.get('page') for source in found if source.get('page') is not None]
     if len(found)==1 and len(values)==1:
-        total=round(values[0],2); mode='single printed work-order total'
+        total=float(values[0]); mode='single printed work-order total'
     elif len(found)==len(sources) and len(values)==len(found):
-        total=round(sum(values),2); mode='sum of printed page totals'
+        total=float(sum(values,Decimal('0'))); mode='sum of printed page totals'
     elif values:
-        total=round(sum(values),2); mode='partial printed page totals'; confident=False
+        total=float(sum(values,Decimal('0'))); mode='partial printed page totals'; confident=False
     else:
         total=None; mode='printed total unreadable'; confident=False
     return {'available':True,'value':total,'confident':confident,'mode':mode,'pages':pages}
 
 
 def _length_total_result(records,expected_total):
-    """Compare exactly what is visible in the summary with a verified PDF total."""
+    """Compare exact base-10 PDF values; never round rows or totals to reconcile."""
     values=[]; missing=0
     for record in records:
-        value=record.get('video_length')
+        value=_pdf_decimal(record.get('video_length'))
         if value is None: missing+=1
-        else:
-            try: values.append(float(value))
-            except Exception: missing+=1
-    summary_total=round(sum(values),2)
-    expected=None if expected_total is None else round(float(expected_total),2)
-    difference=None if expected is None else round(summary_total-expected,2)
-    matches=expected is not None and missing==0 and abs(difference)<=.01
-    return {'summary_total':summary_total,'expected_total':expected,
-            'difference':difference,'missing':missing,'matches':matches}
+        else: values.append(value)
+    summary_decimal=sum(values,Decimal('0'))
+    expected_decimal=_pdf_decimal(expected_total)
+    difference_decimal=None if expected_decimal is None else summary_decimal-expected_decimal
+    matches=expected_decimal is not None and missing==0 and difference_decimal==Decimal('0')
+    return {'summary_total':float(summary_decimal),
+            'expected_total':None if expected_decimal is None else float(expected_decimal),
+            'difference':None if difference_decimal is None else float(difference_decimal),
+            'missing':missing,'matches':matches}
 
 
 def _table_row_bands(img, min_y_ratio=.10, max_y_ratio=.86):
@@ -2816,11 +2833,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # The printed total is validation evidence, never an asset row.
             continue
         if on_progress: on_progress()
-        def cut(box,right_bleed=False):
+        def cut(box,right_bleed=False,vertical_bleed=0):
             x1=max(0,int(left+box[0]*tw)); x2=min(w,int(left+box[1]*tw))
             if right_bleed and x2>x1:
                 x2=min(w,x2+max(2,int(round((x2-x1)*.02))))
-            return img[y1:y2,x1:x2]
+            bleed=max(0,int(vertical_bleed or 0))
+            yy1=max(0,y1-bleed); yy2=min(h,y2+bleed)
+            return img[yy1:yy2,x1:x2]
         def read_id(box,fast=True):
             cell=cut(box); obs=_ocr_asset_candidates(cell,fast_plain=fast,asset_format=asset_format)
             if y2-y1>typical_band*1.45:
@@ -2870,7 +2889,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
                 if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
                 value=_choose_cleaning_length(value_candidates,None)
-                distinct={round(float(x),2) for x in value_candidates if 0<float(x)<5000}
+                distinct={float(x) for x in value_candidates if 0<float(x)<5000}
                 needs_consensus=(not value_candidates or value is None or len(distinct)>1)
                 if needs_consensus:
                     consensus=list(value_candidates)
@@ -2879,10 +2898,20 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                         value_candidates=consensus
                         value=_choose_cleaning_length(consensus,None)
         else:
-            # Pair-table video lengths get one non-destructive full-cell read
-            # before the established transformed OCR fallback. This prevents
-            # ruled-cell edge cleanup from clipping digits or decimal points.
+            # Pair-table video lengths start with the exact detected row band.
+            # If that untouched cell is missing or wildly implausible against the
+            # master, independently reread a view with two pixels of vertical
+            # breathing room. Both values remain OCR-observed; nothing is rounded
+            # or manufactured from the master/printed total.
             value_candidates=_direct_pair_length_candidates(value_cell)
+            direct_value=_choose_length(value_candidates,None) if value_candidates else None
+            needs_vertical_retry=(not value_candidates)
+            if (not needs_vertical_retry and expected not in (None,0) and direct_value is not None):
+                needs_vertical_retry=(abs(float(direct_value)-float(expected))/max(float(expected),1.0) >= .35)
+            if needs_vertical_retry:
+                expanded_candidates=_direct_pair_length_candidates(cut(val_box,vertical_bleed=2))
+                for candidate in expanded_candidates:
+                    if candidate not in value_candidates: value_candidates.append(candidate)
             if not value_candidates:
                 value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
                 if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
@@ -3460,9 +3489,9 @@ class TotalLengthVerifyDialog(tk.Toplevel):
         expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
         details=(f"PDF page(s): {page_text}\n"
                  f"PDF total read: {initial or 'UNREADABLE'}\n"
-                 f"Summary length total: {check.get('summary_total',0):g}\n")
+                 f"Summary length total: {_format_pdf_number(check.get('summary_total',0))}\n")
         if expected is not None:
-            details+=f"Difference: {abs(check.get('difference') or 0):g} ft\n"
+            details+=f"Difference: {_format_pdf_number(abs(check.get('difference') or 0))} ft\n"
         details+=f"Missing summary lengths: {check.get('missing',0)}"
         ttk.Label(self,text=details,justify='left').grid(row=preview_row,column=0,columnspan=2,sticky='w',padx=14,pady=(7,8))
         preview_row+=1
@@ -3748,7 +3777,7 @@ class App(tk.Tk):
         elif record_needs_review(r):
             tags=('check_warning',)
         display_status=review_status(r)
-        values=(r['kind'],r['display_asset'],'' if r['video_length'] is None else f"{r['video_length']:.1f}",
+        values=(r['kind'],r['display_asset'],_format_pdf_number(r.get('video_length')),
                 fmt_date(r['date']),r['wo'],r['truck'],r['operator'],display_status)
         iid=f'record:{index}'
         if self.tree.exists(iid): self.tree.item(iid,values=values,tags=tags)
@@ -3768,7 +3797,7 @@ class App(tk.Tk):
         status=trouble_ticket_status(ticket)
         ticket['review_status']=status
         values=('Trouble',ticket.get('pipe_id',''),
-                '' if ticket.get('map_length') is None else f"{ticket['map_length']:.1f}",
+                _format_pdf_number(ticket.get('map_length')),
                 fmt_date(ticket.get('date')),ticket.get('wo',''),ticket.get('truck',''),
                 ticket.get('operator',''),status)
         iid=f'ticket:{index}'
@@ -4126,14 +4155,14 @@ class App(tk.Tk):
             if expected is None:
                 warning='TOTAL LENGTH NEEDS VERIFICATION — PRINTED PDF TOTAL COULD NOT BE READ'
             elif result['missing']:
-                warning=(f"TOTAL LENGTH MISMATCH — {'VERIFIED' if check.get('manual_verified') else 'PDF'} TOTAL {expected:g}, "
-                         f"SUMMARY {result['summary_total']:g}; {result['missing']} LENGTH(S) MISSING")
+                warning=(f"TOTAL LENGTH MISMATCH — {'VERIFIED' if check.get('manual_verified') else 'PDF'} TOTAL {_format_pdf_number(expected)}, "
+                         f"SUMMARY {_format_pdf_number(result['summary_total'])}; {result['missing']} LENGTH(S) MISSING")
             elif not trusted:
-                warning=(f"TOTAL LENGTH NEEDS VERIFICATION — PDF TOTAL {expected:g}, "
-                         f"SUMMARY {result['summary_total']:g}")
+                warning=(f"TOTAL LENGTH NEEDS VERIFICATION — PDF TOTAL {_format_pdf_number(expected)}, "
+                         f"SUMMARY {_format_pdf_number(result['summary_total'])}")
             else:
-                warning=(f"TOTAL LENGTH MISMATCH — {'VERIFIED' if check.get('manual_verified') else 'PDF'} TOTAL {expected:g}, "
-                         f"SUMMARY {result['summary_total']:g}, DIFF {abs(result['difference']):g} FT")
+                warning=(f"TOTAL LENGTH MISMATCH — {'VERIFIED' if check.get('manual_verified') else 'PDF'} TOTAL {_format_pdf_number(expected)}, "
+                         f"SUMMARY {_format_pdf_number(result['summary_total'])}, DIFF {_format_pdf_number(abs(result['difference']))} FT")
             check['warning']=warning
         else:
             check['warning']=''
@@ -4147,7 +4176,7 @@ class App(tk.Tk):
         if check.get('passed'): return True
         expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
         page_text=', '.join(str(p) for p in check.get('pages',[])) or 'unknown'
-        initial='' if expected is None else f'{float(expected):g}'
+        initial=_format_pdf_number(expected)
         dlg=TotalLengthVerifyDialog(self,check,initial); self.wait_window(dlg)
         if dlg.result is None: return False
         verified=float(dlg.result)
@@ -4159,10 +4188,10 @@ class App(tk.Tk):
         passed=self.refresh_total_check(check)
         if passed:
             messagebox.showinfo('Total Length Verified',
-                f"Work Order {check.get('wo','')} {check.get('kind','')} now reconciles exactly at {verified:g} ft.",parent=self)
+                f"Work Order {check.get('wo','')} {check.get('kind','')} now reconciles exactly at {_format_pdf_number(verified)} ft.",parent=self)
         else:
             messagebox.showwarning('Total Still Does Not Match',
-                f"The verified PDF total is {verified:g} ft, but the summary currently totals {check.get('summary_total',0):g} ft.\n\n"
+                f"The verified PDF total is {_format_pdf_number(verified)} ft, but the summary currently totals {_format_pdf_number(check.get('summary_total',0))} ft.\n\n"
                 'The work-order group remains outlined in red and Update Master is blocked until the row lengths are corrected. Rows with their own length difference remain highlighted red.',parent=self)
         return passed
     def verify_length_totals(self,total_sources):

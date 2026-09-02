@@ -8,7 +8,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v81**. The repository's v75 source bundle contains
+Current production version: **v82**. The repository's v75 source bundle contains
 the complete app directory and regression scripts and must match the v75 release
 ZIP. In a new conversation, begin with:
 
@@ -182,6 +182,14 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - B&C cleaning tables can recover a narrow final Wheel Walk / Cleaning Date pair
   when OCR recognizes the last column as Date and the immediately preceding
   column as Length.
+
+## Current v82 fixes
+
+- Table-column confirmation auto-skips above 80% confidence when all required roles are detected.
+- Pipe/video lengths use an untouched full-cell agreement pass before older OCR fallbacks.
+- Potential one-letter new-asset suffixes receive independent OCR corroboration, preventing a stray suffix from creating a false new pipe.
+- Cleaning/header noise is rejected before dominant-date inheritance and printed-total validation.
+- Asset syntax for Pipe, Manhole, and Cleaning is inferred from the selected master rather than project-name configuration; one-letter suffixes always remain structurally possible new assets.
 
 ## Current v81 fixes
 

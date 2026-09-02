@@ -1,11 +1,12 @@
 {
-  "version": "81",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v81/XPS_Tracker_Updater_v81.zip",
-  "sha256": "5e1b69b1cebf138e7bec03e4c7176c51a1ea5f85daa1316b5fdc153a2d081f0f",
+  "version": "82",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v82/XPS_Tracker_Updater_v82.zip",
+  "sha256": "0eddd880f4cfd7e73174dbdc7e397c621688e281e8af8f2ba243380bd1132fd7",
   "release_notes": [
-    "Exclude the exact detected structural table-header band before pair-row asset OCR and matching",
-    "Keep printed total-row exclusion unchanged while preventing headers from becoming false asset rows",
-    "Align failed-total borders correctly with the top row by drawing them in Treeview-local coordinates",
-    "Extend the visual failed-total outline across the complete work-order group while keeping total arithmetic activity-specific"
+    "Skip table-column confirmation when native layout confidence is above 80% and all required roles are detected",
+    "Use conservative untouched full-cell OCR first for pipe/video lengths before established fallbacks",
+    "Require corroboration for one-letter new-asset suffixes to prevent false NEW PIPE results such as EC-1817A",
+    "Reject cleaning/header OCR noise before date inheritance and total validation",
+    "Infer Pipe, Manhole, and Cleaning asset syntax automatically from the selected master while always allowing one-letter potential new-asset suffixes"
   ]
 }

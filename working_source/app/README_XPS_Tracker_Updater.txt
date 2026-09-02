@@ -524,3 +524,13 @@ Version 79 compact-layout performance fix
 - The older gap-joining grid repair remains available only when the clean raw-grid pass cannot resolve a plausible rule set.
 - Master-assisted endpoint scoring refuses implausible layouts above 20 columns instead of launching hundreds of OCR calls.
 - No cleaning-length OCR, total validation, matching, or master-write behavior is changed.
+
+
+Version 80 OCR and total-review fixes
+-------------------------------------
+- Printed total OCR now trusts stable full-cell reads before destructive grid-removal or crop fallbacks.
+- A suspicious aligned-column cleaning value is verified with conservative per-cell OCR before it remains a length-difference warning.
+- Implausible far-future table years are rejected, and B&C work-order dates are preferred as the year anchor.
+- Total-length failures are displayed once per work-order/activity group with a red outline instead of turning every row dark red.
+- Individual rows whose measured length differs from the master remain highlighted red.
+- OCR cache advances to v6 so stale total/length/date reads are not reused.

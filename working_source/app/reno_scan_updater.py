@@ -17,10 +17,10 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '79'
+APP_VERSION = '80'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
-OCR_CACHE_VERSION = 'v5'
+OCR_CACHE_VERSION = 'v6'
 _OCR_CACHE = {}
 _OCR_CACHE_PATH = ''
 _OCR_CACHE_DIRTY = 0
@@ -1413,6 +1413,17 @@ def _parse_sheet_date(cell_img, expected_year=None):
     return None
 
 
+def _plausible_sheet_year(year):
+    try:
+        year=int(year)
+    except Exception:
+        return False
+    # These packets are operational records, not future schedules. Allow older
+    # supported records plus a small clock/rollover cushion, but reject OCR years
+    # such as 2096 before they can become the table's expected year.
+    return 2020 <= year <= datetime.now().year + 2
+
+
 def _parse_sheet_date_text_candidates(text, expected_date=None):
     """Return candidate sheet dates plus whether the printed year was read exactly.
 
@@ -1420,7 +1431,8 @@ def _parse_sheet_date_text_candidates(text, expected_date=None):
     an expected work-order/report date is available, its year may repair only the
     year component; month/day still come from the printed cell.
     """
-    expected_year=expected_date.year if isinstance(expected_date,datetime) else None
+    expected_year=(expected_date.year if isinstance(expected_date,datetime) and
+                   _plausible_sheet_year(expected_date.year) else None)
     date_text=str(text or '')
     date_text=re.sub(r'(?<=[/-])\s*(\d)\s+(\d)\s*(?=[/-])',r'\1\2',date_text)
     date_text=re.sub(r'\s*([/-])\s*',r'\1',date_text)
@@ -1439,7 +1451,7 @@ def _parse_sheet_date_text_candidates(text, expected_date=None):
             strong=(len(c_s)==4 and 2020<=y<=2100)
         if expected_year and y!=expected_year:
             y=expected_year; repaired=True; strong=False
-        if not (2020<=y<=2100 and 1<=m<=12 and 1<=d<=31):
+        if not (_plausible_sheet_year(y) and 1<=m<=12 and 1<=d<=31):
             continue
         try: out.append((datetime(y,m,d),bool(strong and not repaired)))
         except Exception: pass
@@ -1676,6 +1688,24 @@ def _choose_printed_total(cands):
     return winners[0],most>=2
 
 
+def _preferred_printed_total_candidates(direct,gridless,band_count):
+    """Prefer the least-destructive total OCR source that is independently stable.
+
+    Tight crops and rule-removal are fallbacks, not equal votes. This prevents a
+    correctly repeated full-cell total from being outvoted by several damaged
+    variants while still letting rule-removal recover a total when the raw cell is
+    not independently stable.
+    """
+    direct=list(direct or []); gridless=list(gridless or [])
+    value,confident=_choose_printed_total(direct)
+    if confident and _printed_total_value_is_plausible(value,band_count):
+        return direct,'direct full cell'
+    value,confident=_choose_printed_total(gridless)
+    if confident and _printed_total_value_is_plausible(value,band_count):
+        return gridless,'gridless fallback'
+    return direct+gridless,'combined fallback'
+
+
 def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=None,date_box=None):
     """Read the printed activity total independently from the data-row lengths."""
     result={'found':False,'value':None,'confident':False,'candidates':[],'method':'not found','band_index':None}
@@ -1690,14 +1720,20 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
     def read_value(y1,y2):
         cell=cut(value_box,y1,y2)
         if cell is None or cell.size==0: return []
-        found=[]; width=cell.shape[1]
-        for ratio in (0,.015,.030,.045,.060):
+        # Start with the untouched full cell. Grid removal is intentionally only
+        # the second source because it can occasionally erase interior digits.
+        direct=_ocr_digits(cell,True,fast_plain=True)
+        gridless=_ocr_gridless_number_candidates(cell,True)
+        found,mode=_preferred_printed_total_candidates(direct,gridless,len(bands))
+        if mode!='combined fallback':
+            return found
+        # Only when neither primary source is independently stable do progressively
+        # tighter crops participate. They are fallbacks, not a pile of equal votes.
+        width=cell.shape[1]
+        for ratio in (.015,.030,.045,.060):
             pad=max(0,int(round(width*ratio)))
-            sample=cell[:,pad:width-pad] if pad and width>pad*2+4 else cell
-            found.extend(_ocr_digits(sample,True,fast_plain=True))
-        # Total digits commonly touch the grid border, so also remove the printed
-        # rules before OCR. This is what recovers 4476 from the 8-11 fixture.
-        found.extend(_ocr_gridless_number_candidates(cell,True))
+            if pad and width>pad*2+4:
+                found.extend(_ocr_digits(cell[:,pad:width-pad],True,fast_plain=True))
         if not found: found.extend(_ocr_digits(cell,True,fast_plain=False))
         return found
 
@@ -2540,6 +2576,23 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             value_candidates=list(batch_cleaning_values.get(band_index,[]))
             if value_candidates:
                 value=_choose_cleaning_length(value_candidates,expected)
+                batch_suspect=(value is None or (expected not in (None,0) and
+                    abs(float(value)-float(expected))>LENGTH_DIFF_THRESHOLD))
+                if batch_suspect:
+                    # The batch column reader is normally the cleanest source, but
+                    # a dropped digit can produce a single plausible-looking value.
+                    # Verify only that suspicious cell; do not use the total to
+                    # manufacture a replacement and do not rewrite unrelated rows.
+                    cell_candidates=_ocr_digits(value_cell,True,fast_plain=True)
+                    if not cell_candidates:
+                        cell_candidates=_ocr_digits(value_cell,True,fast_plain=False)
+                    consensus=list(value_candidates)+list(cell_candidates)
+                    cell_distinct={round(float(x),2) for x in cell_candidates if 0<float(x)<5000}
+                    if not cell_candidates or len(cell_distinct)>1:
+                        consensus.extend(_ocr_gridless_number_candidates(value_cell,True))
+                    if consensus:
+                        value_candidates=consensus
+                        value=_choose_cleaning_length(consensus,expected)
             else:
                 value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
                 if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
@@ -3135,6 +3188,7 @@ class App(tk.Tk):
                      min(self.spx(620),max(560,int(screen_h*.85))))
         self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.pdf_hash=''
         self._analysis_running=False; self.cancel_requested=False
+        self._total_outline_widgets=[]; self._total_outline_job=None; self._tree_yscroll=None
         self.configure(background='#f3f6fa')
         self.configure_styles()
         self.build_ui()
@@ -3188,10 +3242,12 @@ class App(tk.Tk):
         bar.bind('<Configure>',lambda e:self.status_label.configure(wraplength=max(300,e.width-8)))
         cols=('type','asset','length','date','wo','truck','operator','status')
         table_frame=ttk.LabelFrame(self,text='Extracted rows',padding=(8,7)); table_frame.pack(fill='both',expand=True,padx=14,pady=(6,10))
+        self.table_frame=table_frame
         self.tree=ttk.Treeview(table_frame,columns=cols,show='headings',selectmode='browse')
         xscroll=ttk.Scrollbar(table_frame,orient='horizontal',command=self.tree.xview)
         yscroll=ttk.Scrollbar(table_frame,orient='vertical',command=self.tree.yview)
-        self.tree.configure(xscrollcommand=xscroll.set,yscrollcommand=yscroll.set)
+        self._tree_yscroll=yscroll
+        self.tree.configure(xscrollcommand=xscroll.set,yscrollcommand=self._on_tree_yscroll)
         heads={'type':'Type','asset':'Asset / Nodes','length':'Video / Wheel Walk / Map','date':'Date','wo':'W/O','truck':'Truck','operator':'Operator','status':'Status'}
         widths={'type':80,'asset':240,'length':145,'date':105,'wo':85,'truck':85,'operator':170,'status':520}
         for c in cols:
@@ -3199,6 +3255,7 @@ class App(tk.Tk):
             self.tree.heading(c,text=heads[c]); self.tree.column(c,width=scaled_width,minwidth=scaled_width,stretch=c in ('asset','status'),anchor='center' if c not in ('asset','status') else 'w')
         self.tree.grid(row=0,column=0,sticky='nsew')
         self.tree.bind('<Double-1>',self.edit_double_clicked)
+        self.tree.bind('<Configure>',lambda _event:self._schedule_total_outlines(),add='+')
         yscroll.grid(row=0,column=1,sticky='ns')
         xscroll.grid(row=1,column=0,sticky='ew')
         table_frame.rowconfigure(0,weight=1); table_frame.columnconfigure(0,weight=1)
@@ -3220,6 +3277,7 @@ class App(tk.Tk):
     def clear_extracted_rows(self,status_text=None):
         self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.pdf_hash=''
         if hasattr(self,'tree'): self.tree.delete(*self.tree.get_children())
+        self._clear_total_outlines()
         if status_text and hasattr(self,'status'): self.status.set(status_text)
     def edit_double_clicked(self,event):
         iid=self.tree.identify_row(event.y)
@@ -3246,22 +3304,85 @@ class App(tk.Tk):
         try: self.update()
         except tk.TclError: raise AnalysisCancelled()
         if getattr(self,'cancel_requested',False): raise AnalysisCancelled()
+    def _on_tree_yscroll(self,first,last):
+        if self._tree_yscroll is not None:
+            self._tree_yscroll.set(first,last)
+        self._schedule_total_outlines()
+    def _clear_total_outlines(self):
+        for widget in list(getattr(self,'_total_outline_widgets',[]) or []):
+            try: widget.destroy()
+            except Exception: pass
+        self._total_outline_widgets=[]
+    def _schedule_total_outlines(self):
+        if not hasattr(self,'tree') or not hasattr(self,'table_frame'):
+            return
+        if getattr(self,'_total_outline_job',None) is not None:
+            try: self.after_cancel(self._total_outline_job)
+            except Exception: pass
+        try: self._total_outline_job=self.after_idle(self._draw_total_outlines)
+        except Exception: self._total_outline_job=None
+    def _draw_total_outlines(self):
+        self._total_outline_job=None
+        self._clear_total_outlines()
+        if not hasattr(self,'tree') or not self.tree.winfo_exists():
+            return
+        thickness=max(2,self.spx(2)); color='#d00000'
+        tree_x=self.tree.winfo_x(); tree_y=self.tree.winfo_y(); tree_w=max(1,self.tree.winfo_width())
+        for check in self.total_validations:
+            if check.get('passed'):
+                continue
+            indexed=self._total_check_records(check)
+            if not indexed:
+                continue
+            visible=[]
+            for record_index,_record in indexed:
+                iid=f'record:{record_index}'
+                if not self.tree.exists(iid):
+                    continue
+                bbox=self.tree.bbox(iid)
+                if bbox:
+                    visible.append((record_index,bbox))
+            if not visible:
+                continue
+            visible.sort(key=lambda item:item[0])
+            y_top=tree_y+min(box[1] for _,box in visible)
+            y_bottom=tree_y+max(box[1]+box[3] for _,box in visible)
+            height=max(thickness,y_bottom-y_top)
+            specs=[(tree_x,y_top,thickness,height),(tree_x+tree_w-thickness,y_top,thickness,height)]
+            first_index=indexed[0][0]; last_index=indexed[-1][0]
+            if any(i==first_index for i,_ in visible):
+                specs.append((tree_x,y_top,tree_w,thickness))
+            if any(i==last_index for i,_ in visible):
+                specs.append((tree_x,y_bottom-thickness,tree_w,thickness))
+            for x,y,width,line_height in specs:
+                frame=tk.Frame(self.table_frame,background=color,borderwidth=0,highlightthickness=0,takefocus=0)
+                frame.place(x=x,y=y,width=max(1,width),height=max(1,line_height))
+                frame.lift(); self._total_outline_widgets.append(frame)
+    def _total_warning_for_record_index(self,index):
+        for check in self.total_validations:
+            if check.get('passed') or check.get('first_record_index')!=index:
+                continue
+            return str(check.get('warning') or '')
+        return ''
     def show_summary_record(self,index,follow=False):
         """Insert or refresh one summary row while analysis is still running."""
         r=self.records[index]
         tags=()
-        if any(str(w).startswith('TOTAL LENGTH') for w in r.get('warnings',[])):
-            tags=('total_warning',)
-        elif str(r.get('status','')).startswith('LENGTH DIFF'):
+        if str(r.get('status','')).startswith('LENGTH DIFF'):
             tags=('length_warning',)
         elif record_needs_review(r):
             tags=('check_warning',)
+        display_status=review_status(r)
+        group_warning=self._total_warning_for_record_index(index)
+        if group_warning:
+            display_status=group_warning if display_status=='Matched' else display_status+'; '+group_warning
         values=(r['kind'],r['display_asset'],'' if r['video_length'] is None else f"{r['video_length']:.1f}",
-                fmt_date(r['date']),r['wo'],r['truck'],r['operator'],review_status(r))
+                fmt_date(r['date']),r['wo'],r['truck'],r['operator'],display_status)
         iid=f'record:{index}'
         if self.tree.exists(iid): self.tree.item(iid,values=values,tags=tags)
         else: self.tree.insert('', 'end',iid=iid,values=values,tags=tags)
         if follow: self.tree.see(iid)
+        self._schedule_total_outlines()
         # OCR runs synchronously on the GUI thread. update_idletasks() can leave
         # native Windows painting queued until a long OCR loop ends, so process a
         # complete Tk event cycle before starting the next row.
@@ -3493,7 +3614,10 @@ class App(tk.Tk):
                 page_date=parse_date_text(txt)
                 if page_date:
                     current_report_date=page_date
-                use_date=current_report_date or current_wo.get('date') or parse_date_text(txt)
+                if idx.get('profile') in ('year15','phase2_year1'):
+                    use_date=current_wo.get('date') or current_report_date or page_date
+                else:
+                    use_date=current_report_date or current_wo.get('date') or parse_date_text(txt)
 
                 emit=lambda rec: self.commit_extracted_record(rec,current_wo,use_date,idx,pi+1,processed)
                 if idx.get('profile') in ('year15', 'phase2_year1'):
@@ -3569,11 +3693,15 @@ class App(tk.Tk):
                 if str(r.get('wo',''))==str(check.get('wo','')) and r.get('kind')==check.get('kind')]
     def refresh_total_check(self,check,redraw=True):
         indexed=self._total_check_records(check); rows=[r for _,r in indexed]
+        check['record_indices']=[index for index,_ in indexed]
+        check['first_record_index']=indexed[0][0] if indexed else None
         expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
         result=_length_total_result(rows,expected)
         check.update(result)
         trusted=bool(check.get('manual_verified') or check.get('pdf_total_confident'))
         check['passed']=bool(result['matches'] and trusted)
+        # Remove legacy row-level total warnings if this record set came from an
+        # older in-memory path. Total validation now belongs to the W/O group.
         for _,record in indexed:
             record['warnings']=[w for w in record.get('warnings',[]) if not str(w).startswith('TOTAL LENGTH')]
         if not check['passed']:
@@ -3589,12 +3717,11 @@ class App(tk.Tk):
                 warning=(f"TOTAL LENGTH MISMATCH — {'VERIFIED' if check.get('manual_verified') else 'PDF'} TOTAL {expected:g}, "
                          f"SUMMARY {result['summary_total']:g}, DIFF {abs(result['difference']):g} FT")
             check['warning']=warning
-            for _,record in indexed:
-                if warning not in record.setdefault('warnings',[]): record['warnings'].append(warning)
         else:
             check['warning']=''
         if redraw:
             for index,_ in indexed: self.show_summary_record(index)
+        self._schedule_total_outlines()
         return check['passed']
     def prompt_total_check(self,check):
         self.refresh_total_check(check)
@@ -3630,7 +3757,7 @@ class App(tk.Tk):
             else:
                 messagebox.showwarning('Total Still Does Not Match',
                     f"The verified PDF total is {verified:g} ft, but the summary currently totals {check.get('summary_total',0):g} ft.\n\n"
-                    'The affected summary rows remain dark red and Update Master is blocked until the row lengths are corrected.',parent=self)
+                    'The work-order group remains outlined in red and Update Master is blocked until the row lengths are corrected. Rows with their own length difference remain highlighted red.',parent=self)
             return passed
     def verify_length_totals(self,total_sources):
         self.total_validations=[]

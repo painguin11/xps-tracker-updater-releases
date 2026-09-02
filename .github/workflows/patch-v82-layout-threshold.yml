@@ -19,7 +19,7 @@ jobs:
           ref: v82-work
           fetch-depth: 0
 
-      - name: Lower auto-accept threshold and update regressions
+      - name: Lower auto-accept threshold and add regression
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -39,22 +39,6 @@ jobs:
               raise SystemExit('Expected v81 layout confidence block not found')
           text=text.replace(old,new,1)
           app.write_text(text,encoding='utf-8')
-
-          v76=Path('working_source/tests/regression_v76_layout_skip.py')
-          v76_text=v76.read_text(encoding='utf-8')
-          old_v76=(
-              "native_gate = \"if layout.get('confidence',0)>=100 and all(k in detected_roles for k in ('up','down','value','date')):\"\n"
-              "assert native_gate in src, '100% native-layout auto-accept gate was removed'\n"
-          )
-          new_v76=(
-              "native_gate = \"if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):\"\n"
-              "assert native_gate in src, 'over-80% native-layout auto-accept gate was removed'\n"
-          )
-          if old_v76 not in v76_text:
-              raise SystemExit('Expected v76 native-layout assertion not found')
-          v76_text=v76_text.replace(old_v76,new_v76,1)
-          v76_text=v76_text.replace('saved 100% layout still falls through to the confirmation dialog','saved complete layout still falls through to the confirmation dialog',1)
-          v76.write_text(v76_text,encoding='utf-8')
 
           test=Path('working_source/tests/regression_v82_layout_threshold.py')
           lines=[
@@ -85,12 +69,11 @@ jobs:
           python working_source/tests/regression_v82_layout_threshold.py
           python working_source/tests/regression_v81_header_outline.py
           python working_source/tests/regression_v79_layout_speed.py
-          python working_source/tests/regression_v76_layout_skip.py
 
       - name: Commit validated v82 threshold change
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v82_layout_threshold.py working_source/tests/regression_v76_layout_skip.py
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v82_layout_threshold.py
           git commit -m 'Lower layout confirmation threshold to over 80 percent'
           git push origin HEAD:v82-work

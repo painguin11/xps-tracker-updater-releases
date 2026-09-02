@@ -18,7 +18,9 @@ jobs:
           ref: v83-work
           fetch-depth: 0
       - name: Apply v83 patch
-        run: python .github/scripts/apply_v83_length_recovery.py
+        run: |
+          python .github/scripts/apply_v83_length_recovery.py
+          python .github/scripts/fix_v83_length_recovery_test.py
       - name: Compile and run current regressions
         run: |
           python -m py_compile working_source/app/reno_scan_updater.py

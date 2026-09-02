@@ -1923,32 +1923,62 @@ def _select_independent_length_candidate(gray_values,threshold_values,kind='Pipe
     values=gray+threshold
     if not values:
         return None,False,'no valid OCR values'
-    counts={value:values.count(value) for value in set(values)}
-    # A reread must have at least two independent observations of the same value.
-    eligible={value:count for value,count in counts.items() if count>=2}
-    if not eligible:
-        return None,False,'independent views disagree'
-    strongest=max(eligible.values())
-    winners=[value for value,count in eligible.items() if count==strongest]
-    if len(winners)==1:
-        return winners[0],True,'strongest independent support'
-    if kind=='Pipe':
-        # On this B&C scan grayscale can preserve a damaged grid-connected glyph
-        # while the 4x threshold view resolves it (242.15 -> 242.16, 260.3 -> 360.3).
-        threshold_counts={value:threshold.count(value) for value in winners}
-        best_threshold=max(threshold_counts.values()) if threshold_counts else 0
-        threshold_winners=[value for value,count in threshold_counts.items()
-                           if count==best_threshold and count>=2]
-        if len(threshold_winners)==1:
-            return threshold_winners[0],True,'threshold-supported tie break'
+
+    # During mismatch recovery the master is allowed to reject a wildly implausible
+    # OCR hallucination, but it never supplies a replacement value. If at least one
+    # actually-observed candidate is within 35% of the master, ignore observations
+    # outside that window before comparing independent views. This is what keeps a
+    # grid-connected 774 from outvoting the visibly printed 77.4.
+    master_filtered=False
     if expected not in (None,0):
-        # The master may only choose between equally supported OCR observations.
-        distances={value:abs(value-float(expected)) for value in winners}
-        nearest=min(distances.values())
-        nearest_values=[value for value,distance in distances.items() if distance==nearest]
-        if len(nearest_values)==1:
-            return nearest_values[0],True,'master tie break between OCR values'
-    return None,False,'independent views remain tied'
+        expected_value=float(expected)
+        plausible=[value for value in values
+                   if abs(value-expected_value)/max(abs(expected_value),1.0)<.35]
+        if plausible:
+            allowed=set(plausible); master_filtered=True
+            gray=[value for value in gray if value in allowed]
+            threshold=[value for value in threshold if value in allowed]
+            values=gray+threshold
+
+    counts={value:values.count(value) for value in set(values)}
+    if master_filtered and len(counts)==1:
+        # The value still came from OCR. The master only eliminated impossible
+        # alternatives; it did not create or round this measurement.
+        value=next(iter(counts))
+        return value,True,'sole master-plausible OCR value'
+
+    # Prefer values repeated by independent views whenever possible.
+    eligible={value:count for value,count in counts.items() if count>=2}
+    if eligible:
+        strongest=max(eligible.values())
+        winners=[value for value,count in eligible.items() if count==strongest]
+        if len(winners)==1:
+            return winners[0],True,'strongest independent support'
+        if kind=='Pipe':
+            threshold_counts={value:threshold.count(value) for value in winners}
+            best_threshold=max(threshold_counts.values()) if threshold_counts else 0
+            threshold_winners=[value for value,count in threshold_counts.items()
+                               if count==best_threshold and count>=1]
+            if len(threshold_winners)==1:
+                return threshold_winners[0],True,'threshold-supported tie break'
+        if expected not in (None,0):
+            distances={value:abs(value-float(expected)) for value in winners}
+            nearest=min(distances.values())
+            nearest_values=[value for value,distance in distances.items() if distance==nearest]
+            if len(nearest_values)==1:
+                return nearest_values[0],True,'master tie break between OCR values'
+        return None,False,'independent views remain tied'
+
+    # A subtle one-hundredth glyph difference can leave exactly one grayscale and
+    # one threshold observation (242.15 vs 242.16). When both are already inside
+    # the master-plausible window and differ by no more than five hundredths, the
+    # high-resolution threshold view is the safer reading of the printed digit.
+    unique=sorted(counts)
+    if kind=='Pipe' and master_filtered and len(unique)==2:
+        threshold_unique=sorted(set(threshold))
+        if len(threshold_unique)==1 and all(abs(threshold_unique[0]-v)<=.05 for v in unique):
+            return threshold_unique[0],True,'threshold-supported close disagreement'
+    return None,False,'independent views disagree'
 
 
 def _independent_row_length_read(cell_img,expanded_img=None,kind='Pipe',expected=None):
@@ -2936,6 +2966,15 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
     printed_total_info=_read_pair_table_printed_total(
         img,bands,table,val_box,up_box,dn_box,date_box)
     total_band_index=printed_total_info.get('band_index')
+    header_band_index=prepared.get('header_band_index')
+    mandatory_data_bands=set()
+    if (header_band_index is not None and total_band_index is not None and
+            int(total_band_index)>int(header_band_index)):
+        # Once both structural anchors are known, every physical grid band between
+        # the printed header and total is a real table row. OCR failure may make the
+        # row review-only, but it must never make the row disappear from the summary
+        # or from total-length arithmetic.
+        mandatory_data_bands=set(range(int(header_band_index)+1,int(total_band_index)))
     batch_cleaning_values=(
         _batch_cleaning_length_candidates(img,bands,table,val_box,total_band_index)
         if kind=='cleaning' else {})
@@ -2955,7 +2994,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 return True
         return False
     for band_index,(y1,y2) in enumerate(bands):
-        header_band_index=prepared.get('header_band_index')
+        mandatory_data_band=band_index in mandatory_data_bands
         if header_band_index is not None and band_index==header_band_index:
             # Layout detection already proved this band contains the printed
             # column headers. Never let OCR/master coincidence turn it into
@@ -3064,9 +3103,9 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         # dominant table date can be inferred.
         edge_band=band_index in (0,len(bands)-1)
         tall_band=(y2-y1)>typical_band*1.45
-        if not match and (edge_band or tall_band) and not endpoint_signal:
+        if not mandatory_data_band and not match and (edge_band or tall_band) and not endpoint_signal:
             continue
-        if not match and not endpoint_signal:
+        if not mandatory_data_band and not match and not endpoint_signal:
             continue
         if not match:
             # Run this before dominant-date repair. A header band must not gain a
@@ -3074,12 +3113,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # OCR garbage such as EN -> SUNAA into a summary record.
             unresolved_up=_best_observed_asset_id(up_obs,endpoint_items) or (canonical_asset_id(up_obs[0]) if up_obs else '')
             unresolved_dn=_best_observed_asset_id(dn_obs,endpoint_items) or (canonical_asset_id(dn_obs[0]) if dn_obs else '')
-            if not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,asset_format=asset_format):
+            if (not mandatory_data_band and
+                    not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,asset_format=asset_format)):
                 continue
         if dominant_date is not None and (match or endpoint_signal):
             if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date):
                 d=dominant_date
-        if d is None:
+        if d is None and not mandatory_data_band:
             continue
         if match:
             status='Matched' if value is not None else ('CHECK WHEEL WALK' if kind=='cleaning' else 'CHECK LENGTH')
@@ -3111,7 +3151,12 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         key=(asset_key(rec['up']),asset_key(rec['down'])) if not rec.get('skip_update') else ('unmatched',len(rows))
         # Cleaning still represents one measurement per pipe. Pipe video rows may
         # repeat when the same pipe was surveyed in multiple parts.
-        if key in seen and kind!='pipes': continue
+        if key in seen and kind!='pipes':
+            # A duplicated OCR identity is not permission to delete a physical
+            # table row. Keep it visible and review-only so its printed length still
+            # participates in total validation.
+            rec.setdefault('validation_warnings',[]).append('DUPLICATE IN PDF')
+            rec['skip_update']=True
         seen.add(key); rows.append(rec)
         if on_row: on_row(rec)
     prepared['printed_total_info']=printed_total_info

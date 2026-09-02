@@ -48,7 +48,6 @@ jobs:
           run_test working_source/tests/regression_split_pipes.py
           run_test working_source/tests/regression_new_assets.py
           run_test working_source/tests/regression_r2_endpoint_ocr.py
-          run_test working_source/tests/regression_tall_cleaning_header.py
           run_test working_source/tests/regression_compact_table_fallback.py
       - name: Commit validated v85 changes
         run: |

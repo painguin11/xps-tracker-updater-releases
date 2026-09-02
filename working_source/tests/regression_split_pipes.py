@@ -63,4 +63,8 @@ pipe_parser=source[source.index('def parse_pipe_list'):source.index('def parse_m
 assert 'pid in seen' not in pipe_parser
 pair_parser=source[source.index('def parse_year15_pair_list'):source.index('def parse_year15_manholes')]
 assert "if key in seen and kind!='pipes': continue" in pair_parser
-print('Split-pipe summing, MSA feedback, and missing-part review checks passed.')
+# A detected MSA must leave a durable master note, without changing the
+# split-detection or summed-length behavior itself.
+assert "if r['kind']=='Pipe' and int(r.get('part_count') or 0)>1 and notes_col:" in source
+assert "append_note(ps.Cells(rr,notes_col),'MSA')" in source
+print('Split-pipe summing, MSA master note, feedback, and missing-part review checks passed.')

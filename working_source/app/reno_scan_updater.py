@@ -4006,6 +4006,11 @@ class App(tk.Tk):
                         ps.Cells(rr,ph['video length']).Value=r['video_length']; write_excel_date(ps.Cells(rr,ph['video date']),r['date']); ps.Cells(rr,ph['video w/o']).Value=master_text(r['wo']); ps.Cells(rr,ph['video truck']).Value=master_text(r['truck']); ps.Cells(rr,ph['video operator']).Value=master_text(r['operator'])
                     else:
                         ps.Cells(rr,ph['video length']).Value=r['video_length']; write_excel_date(ps.Cells(rr,ph['date']), r['date']); ps.Cells(rr,ph['w/o']).Value=master_text(r['wo']); ps.Cells(rr,ph['truck']).Value=master_text(r['truck']); ps.Cells(rr,ph['operator']).Value=master_text(r['operator'])
+                    # A split-pipe/MSA survey is stored as one combined master row.
+                    # Mark that row explicitly while preserving any existing notes.
+                    notes_col=ph.get('notes')
+                    if r['kind']=='Pipe' and int(r.get('part_count') or 0)>1 and notes_col:
+                        append_note(ps.Cells(rr,notes_col),'MSA')
                     # Carry configured length warnings into NOTES when the project
                     # provides that column, and highlight the measured value itself.
                     diff=r.get('length_diff')

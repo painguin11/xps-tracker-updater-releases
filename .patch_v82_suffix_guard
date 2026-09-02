@@ -1,1 +1,2 @@
 Apply and validate corroboration for one-letter new-asset OCR suffixes.
+Retry with current regression suite only.

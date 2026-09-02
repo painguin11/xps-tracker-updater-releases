@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   validate:
-    if: ${{ github.event.head_commit.message == 'APPLY_V83_LENGTH_RECOVERY' }}
+    if: ${{ github.event.head_commit.message == 'Validate v83 length recovery' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

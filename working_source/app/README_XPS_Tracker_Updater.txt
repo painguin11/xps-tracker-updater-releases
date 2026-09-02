@@ -534,3 +534,15 @@ Version 80 OCR and total-review fixes
 - Total-length failures are displayed once per work-order/activity group with a red outline instead of turning every row dark red.
 - Individual rows whose measured length differs from the master remain highlighted red.
 - OCR cache advances to v6 so stale total/length/date reads are not reused.
+
+
+Version 80 conservative B&C cleaning OCR and review
+----------------------------------------------------
+- Reads the aligned Wheel Walk column with the least-destructive OCR path first.
+- Runs targeted conservative rereads only after the work-order printed total fails.
+- Uses the master only to identify suspicious rows; the master never supplies replacement OCR values.
+- Preserves right-edge digits that touch table rules and uses a fresh v6 OCR cache.
+- Reads printed totals from the clean full cell first, then uses gridless fallback only when needed.
+- Rejects implausible OCR years and uses the confirmed work-order date as a safe packet anchor.
+- Shows a total mismatch once at the work-order group level while individual large length differences remain highlighted.
+- Writes MSA to the master Notes cell when a split pipe is detected and combined.

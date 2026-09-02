@@ -1,0 +1,58 @@
+name: Apply v85 edit row previews
+
+on:
+  push:
+    branches: [v85-work]
+    paths:
+      - '.trigger_v85_edit_previews'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout v85 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v85-work
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install regression dependencies
+        run: python -m pip install --disable-pip-version-check numpy opencv-python-headless pillow pytesseract pymupdf
+      - name: Apply edit-row preview patch
+        run: python .github/scripts/apply_v85_edit_row_previews.py
+      - name: Compile and run regressions
+        run: |
+          set -e
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          run_test() { if [ -f "$1" ]; then python "$1"; fi; }
+          run_test working_source/tests/regression_v85_edit_row_previews.py
+          run_test working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          run_test working_source/tests/regression_v83_length_recovery.py
+          run_test working_source/tests/regression_v83_exact_pdf_numbers.py
+          run_test working_source/tests/regression_v82_master_asset_format.py
+          run_test working_source/tests/regression_v82_cleaning_header_noise.py
+          run_test working_source/tests/regression_v82_suffix_guard.py
+          run_test working_source/tests/regression_v82_pair_video_lengths.py
+          run_test working_source/tests/regression_v82_layout_threshold.py
+          run_test working_source/tests/regression_v81_header_outline.py
+          run_test working_source/tests/regression_v80_ocr_total_ui.py
+          run_test working_source/tests/regression_v79_layout_speed.py
+          run_test working_source/tests/regression_v78_rollback.py
+          run_test working_source/tests/regression_length_totals.py
+          run_test working_source/tests/regression_split_pipes.py
+          run_test working_source/tests/regression_new_assets.py
+          run_test working_source/tests/regression_r2_endpoint_ocr.py
+          run_test working_source/tests/regression_compact_table_fallback.py
+      - name: Commit validated preview feature
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v85_edit_row_previews.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Show PDF field previews when editing extracted rows'
+          git push origin HEAD:v85-work

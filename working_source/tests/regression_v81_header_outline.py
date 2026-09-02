@@ -1,10 +1,9 @@
 from pathlib import Path
 
 src = Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
-updater = Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
 
-assert "APP_VERSION = '81'" in src
-assert 'CURRENT_VERSION = "81"' in updater
+# This regression protects the v81 behavior on later releases; the application
+# version itself is intentionally checked by each release's own validation.
 
 # The layout detector must identify the exact header band and preserve it in the
 # prepared layout. The row parser then rejects that band before endpoint OCR.

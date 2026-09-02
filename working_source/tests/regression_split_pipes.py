@@ -65,13 +65,19 @@ source=SOURCE.read_text(encoding='utf-8')
 pipe_parser=source[source.index('def parse_pipe_list'):source.index('def parse_manhole_list')]
 assert 'pid in seen' not in pipe_parser
 pair_parser=source[source.index('def parse_year15_pair_list'):source.index('def parse_year15_manholes')]
-assert "if key in seen and kind!='pipes': continue" in pair_parser
+# v85 must not delete a second physical Cleaning row just because endpoint OCR
+# makes it look like the same pipe. Keep it for total arithmetic, but protect the
+# master from a duplicate write by marking it review-only/skip_update.
+assert "if key in seen and kind!='pipes': continue" not in pair_parser
+assert "if key in seen and kind!='pipes':" in pair_parser
+assert "rec.setdefault('validation_warnings',[]).append('DUPLICATE IN PDF')" in pair_parser
+assert "rec['skip_update']=True" in pair_parser
 # A detected MSA must leave a durable master note, without changing the
 # split-detection or summed-length behavior itself.
 assert "if r['kind']=='Pipe' and int(r.get('part_count') or 0)>1 and notes_col:" in source
 assert "append_note(ps.Cells(rr,notes_col),'MSA')" in source
-# v84 preserves every physical row's OCR evidence so total mismatch recovery
+# v84+ preserves every physical row's OCR evidence so total mismatch recovery
 # never replaces a combined pipe with the value from only one part.
 assert "existing['_length_part_reads']=part_reads" in source
 assert 'def _independent_split_pipe_read(record):' in source
-print('Split-pipe summing, OCR-part retention, MSA note, feedback, and missing-part review checks passed.')
+print('Split-pipe summing, OCR-part retention, duplicate-row retention, MSA note, feedback, and missing-part review checks passed.')

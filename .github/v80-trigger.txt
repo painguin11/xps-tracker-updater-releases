@@ -1,1 +1,0 @@
-Trigger v80 OCR/total/group-review validation, attempt 4.

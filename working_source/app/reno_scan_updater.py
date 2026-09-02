@@ -17,7 +17,7 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '80'
+APP_VERSION = '81'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 OCR_CACHE_VERSION = 'v6'
@@ -2285,7 +2285,7 @@ def _table_header_columns(img, header_bands, table, kind, column_bounds=None, re
     left,right=table; h,w=img.shape[:2]
     gray=cv2.cvtColor(img,cv2.COLOR_RGB2GRAY)
     inv=cv2.threshold(gray,205,255,cv2.THRESH_BINARY_INV)[1]
-    best={}; best_cells=[]
+    best={}; best_cells=[]; best_band_index=None
     # The first detected band is normally the header, but scans sometimes include
     # a title/spacer band. Try the first four bands rather than trusting one index.
     for band_index,(y1,y2) in enumerate(list(header_bands)[:4]):
@@ -2353,15 +2353,16 @@ def _table_header_columns(img, header_bands, table, kind, column_bounds=None, re
                 prev=next(((box,text,display) for ci,box,text,display in cells if ci==date_ci-1),None)
                 if prev and 'length' in (prev[1] or ''):
                     found['value']=prev[0]
-        if len(found)>len(best): best,best_cells=dict(found),list(cells)
+        if len(found)>len(best):
+            best,best_cells,best_band_index=dict(found),list(cells),band_index
         if all(x in found for x in ('up','down','value','date')):
-            if return_details: return found,cells,'header'
+            if return_details: return found,cells,'header',band_index
             return found
     # Preserve useful partial header evidence for the confirmable layout path.
     # Previously one missing role discarded all other recognized roles, which is
     # why an OCR-visible Date column could still default blank in the dialog.
     if return_details:
-        return (best or None),best_cells,'header' if all(x in best for x in ('up','down','value','date')) else 'incomplete header'
+        return (best or None),best_cells,'header' if all(x in best for x in ('up','down','value','date')) else 'incomplete header',best_band_index
     return best if all(x in best for x in ('up','down','value','date')) else None
 
 
@@ -2423,7 +2424,7 @@ def prepare_year15_pair_layout(page,master_index,kind):
     else:
         # Header-cell detection will provide boxes when long vertical rules are unavailable.
         column_boxes=[]
-    mapping,cells,source=_table_header_columns(img,bands,table,kind,column_bounds,return_details=True)
+    mapping,cells,source,header_band_index=_table_header_columns(img,bands,table,kind,column_bounds,return_details=True)
     if cells and not column_boxes: column_boxes=[c[1] for c in sorted(cells,key=lambda x:x[0])]
     headers=[f'Column {i+1}' for i in range(len(column_boxes))]
     for ci,box,compact,display in cells:
@@ -2447,6 +2448,7 @@ def prepare_year15_pair_layout(page,master_index,kind):
     return {'kind':kind,'img':img,'bands':bands,'table':table,'mapping':mapping,'headers':headers,
             'column_boxes':column_boxes,'role_indices':role_indices,'confidence':confidence,
             'source':source+' / '+geometry_source,'warnings':warnings,'fingerprint':fingerprint,
+            'header_band_index':header_band_index,
             'master_pair_score':assisted_score,'master_pair_second':assisted_second}
 
 
@@ -2572,6 +2574,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 return True
         return False
     for band_index,(y1,y2) in enumerate(bands):
+        header_band_index=prepared.get('header_band_index')
+        if header_band_index is not None and band_index==header_band_index:
+            # Layout detection already proved this band contains the printed
+            # column headers. Never let OCR/master coincidence turn it into
+            # an asset row (for example a header accidentally resolving to
+            # a real master pair).
+            continue
         if total_band_index is not None and band_index==total_band_index:
             # The printed total is validation evidence, never an asset row.
             continue
@@ -3345,11 +3354,11 @@ class App(tk.Tk):
         if not hasattr(self,'tree') or not self.tree.winfo_exists():
             return
         thickness=max(2,self.spx(2)); color='#d00000'
-        tree_x=self.tree.winfo_x(); tree_y=self.tree.winfo_y(); tree_w=max(1,self.tree.winfo_width())
+        tree_w=max(1,self.tree.winfo_width())
         for check in self.total_validations:
             if check.get('passed'):
                 continue
-            indexed=self._total_check_records(check)
+            indexed=self._total_outline_records(check)
             if not indexed:
                 continue
             visible=[]
@@ -3363,17 +3372,20 @@ class App(tk.Tk):
             if not visible:
                 continue
             visible.sort(key=lambda item:item[0])
-            y_top=tree_y+min(box[1] for _,box in visible)
-            y_bottom=tree_y+max(box[1]+box[3] for _,box in visible)
+            y_top=min(box[1] for _,box in visible)
+            y_bottom=max(box[1]+box[3] for _,box in visible)
             height=max(thickness,y_bottom-y_top)
-            specs=[(tree_x,y_top,thickness,height),(tree_x+tree_w-thickness,y_top,thickness,height)]
+            specs=[(0,y_top,thickness,height),(tree_w-thickness,y_top,thickness,height)]
             first_index=indexed[0][0]; last_index=indexed[-1][0]
             if any(i==first_index for i,_ in visible):
-                specs.append((tree_x,y_top,tree_w,thickness))
+                specs.append((0,y_top,tree_w,thickness))
             if any(i==last_index for i,_ in visible):
-                specs.append((tree_x,y_bottom-thickness,tree_w,thickness))
+                specs.append((0,y_bottom-thickness,tree_w,thickness))
             for x,y,width,line_height in specs:
-                frame=tk.Frame(self.table_frame,background=color,borderwidth=0,highlightthickness=0,takefocus=0)
+                # Parent the border to the Treeview itself so bbox() and
+                # place() use the same coordinate system. This avoids the
+                # previous one-row vertical offset inside a LabelFrame.
+                frame=tk.Frame(self.tree,background=color,borderwidth=0,highlightthickness=0,takefocus=0)
                 frame.place(x=x,y=y,width=max(1,width),height=max(1,line_height))
                 frame.lift(); self._total_outline_widgets.append(frame)
     def _total_warning_for_record_index(self,index):
@@ -3709,6 +3721,11 @@ class App(tk.Tk):
     def _total_check_records(self,check):
         return [(i,r) for i,r in enumerate(self.records)
                 if str(r.get('wo',''))==str(check.get('wo','')) and r.get('kind')==check.get('kind')]
+    def _total_outline_records(self,check):
+        # The arithmetic check remains activity-specific, but the visual
+        # warning belongs to the entire work-order group.
+        return [(i,r) for i,r in enumerate(self.records)
+                if str(r.get('wo',''))==str(check.get('wo',''))]
     def _retry_cleaning_total_mismatch(self,check,force=False):
         if check.get('kind')!='Cleaning': return False
         indexed=self._total_check_records(check)

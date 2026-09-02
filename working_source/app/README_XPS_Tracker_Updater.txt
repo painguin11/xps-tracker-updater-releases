@@ -546,3 +546,11 @@ Version 80 conservative B&C cleaning OCR and review
 - Rejects implausible OCR years and uses the confirmed work-order date as a safe packet anchor.
 - Shows a total mismatch once at the work-order group level while individual large length differences remain highlighted.
 - Writes MSA to the master Notes cell when a split pipe is detected and combined.
+
+Version 81 structural header-row filtering and work-order outline
+-----------------------------------------------------------------
+- Carries the actual detected table-header band into pair-row parsing and excludes it before asset OCR/matching, preventing a header from becoming a false row even if OCR accidentally resolves it to a real master pair.
+- Keeps printed total-row exclusion unchanged.
+- Draws failed-total validation borders in Treeview-local coordinates so the top row is included correctly.
+- Extends the visual total-validation border across the entire work-order group while leaving the arithmetic validation activity-specific.
+

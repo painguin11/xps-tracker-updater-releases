@@ -7,7 +7,7 @@ assert 'value_candidates=_direct_pair_length_candidates(value_cell)' in src
 assert "for psm in (7,6):" in src
 assert "tessedit_char_whitelist=0123456789." in src
 assert "value,stable=_stable_numeric_vote(observed,2)" in src
-assert "if not value_candidates:\n                value_candidates=_ocr_digits(value_cell,True,fast_plain=True)" in src
+assert "if not value_candidates:\n                value_candidates=_ocr_length_candidates(value_cell,fast_plain=True)" in src
 
 helper=src[src.index('def _direct_pair_length_candidates'):src.index('def _stable_numeric_vote')]
 assert 'expected' not in helper
@@ -16,8 +16,10 @@ assert 'cv2.morphologyEx' not in helper
 
 tree=ast.parse(src)
 node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_stable_numeric_vote')
+max_node=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='MAX_ROW_LENGTH' for t in n.targets))
+valid_node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_valid_row_length_value')
 ns={}
-exec(compile(ast.Module(body=[node],type_ignores=[]),'<stable-vote>','exec'),ns)
+exec(compile(ast.Module(body=[max_node,valid_node,node],type_ignores=[]),'<stable-vote>','exec'),ns)
 vote=ns['_stable_numeric_vote']
 assert vote([410.96,410.96],2)==(410.96,True)
 assert vote([420.54,420.54],2)==(420.54,True)

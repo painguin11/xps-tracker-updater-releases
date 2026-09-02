@@ -1,0 +1,212 @@
+name: Publish XPS Tracker Updater v82
+
+on:
+  push:
+    branches:
+      - v82-work
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.head_commit.message == 'PUBLISH_V82' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out validated v82 source
+        uses: actions/checkout@v4
+        with:
+          ref: v82-work
+          fetch-depth: 0
+
+      - name: Finalize v82 versions and README
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py')
+          updater=Path('working_source/app/xps_update.py')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          a=app.read_text(encoding='utf-8')
+          u=updater.read_text(encoding='utf-8')
+          a,n=re.subn(r"APP_VERSION = ['\"]\d+['\"]", "APP_VERSION = '82'", a, count=1)
+          if n!=1: raise SystemExit('APP_VERSION replacement failed')
+          u,n=re.subn(r"CURRENT_VERSION = ['\"]\d+['\"]", 'CURRENT_VERSION = "82"', u, count=1)
+          if n!=1: raise SystemExit('CURRENT_VERSION replacement failed')
+          app.write_text(a,encoding='utf-8')
+          updater.write_text(u,encoding='utf-8')
+          r=readme.read_text(encoding='utf-8')
+          title='Version 82 OCR reliability and master-derived asset formats'
+          if title not in r:
+              r += "\n\nVersion 82 OCR reliability and master-derived asset formats\n------------------------------------------------------------\n- Skips the table-column confirmation popup when native layout confidence is above 80% and all required roles are present.\n- Reads pipe/video lengths from the untouched full cell first with independent OCR agreement before using the established fallback pipeline.\n- Scrutinizes one-letter new-asset suffixes with independent endpoint crops so OCR artifacts such as EC-1817A do not incorrectly create a new pipe.\n- Filters unresolved cleaning/header noise before date inheritance so header text cannot become a fake data row or corrupt printed-total validation.\n- Infers asset syntax automatically from the selected master for Pipe, Manhole, and Cleaning instead of project-name configuration. A single trailing letter remains a valid possible new-asset suffix even when the master has no suffixed examples.\n"
+              readme.write_text(r,encoding='utf-8')
+          PY
+
+      - name: Compile and run release regressions
+        run: |
+          python -m pip install --disable-pip-version-check -q numpy opencv-python-headless
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+          python working_source/tests/regression_v82_master_asset_format.py
+          python working_source/tests/regression_v82_cleaning_header_noise.py
+          python working_source/tests/regression_v82_suffix_guard.py
+          python working_source/tests/regression_v82_pair_video_lengths.py
+          python working_source/tests/regression_v82_layout_threshold.py
+          python working_source/tests/regression_v81_header_outline.py
+          python working_source/tests/regression_v80_ocr_total_ui.py
+          python working_source/tests/regression_v79_layout_speed.py
+          python working_source/tests/regression_v78_rollback.py
+          python working_source/tests/regression_v75_811_ocr.py
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_trouble_workbook.py
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '82'" in app
+          assert 'CURRENT_VERSION = "82"' in updater
+          assert "OCR_CACHE_VERSION = 'v6'" in app
+          assert "layout.get('confidence',0)>80" in app
+          assert 'def _direct_pair_length_candidates' in app
+          assert 'def _infer_asset_format(values):' in app
+          assert "'allow_suffix':True" in app
+          assert 'def _confirmed_suffix_asset_candidates' in app
+          assert 'def _keep_unresolved_pair_row' in app
+          assert "append_note(ps.Cells(rr,notes_col),'MSA')" in app
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in app, required
+          print('v82 release validation passed.')
+          PY
+
+      - name: Commit finalized v82 source branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Finalize v82 versions and README [skip ci]'
+            git push origin HEAD:v82-work
+          fi
+
+      - name: Package app and source bundle
+        run: |
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name __pycache__ -prune -exec rm -rf {} +
+          find dist -name '*.pyc' -delete
+          (cd dist && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_v82.zip" XPS_Tracker_Updater)
+          unzip -t "$RUNNER_TEMP/XPS_Tracker_Updater_v82.zip"
+          test "$(zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v82.zip" | head -1)" = 'XPS_Tracker_Updater/'
+          for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do
+            zipinfo -1 "$RUNNER_TEMP/XPS_Tracker_Updater_v82.zip" | grep -qx "XPS_Tracker_Updater/$required"
+          done
+          rm -rf "$RUNNER_TEMP/source_v82"
+          mkdir -p "$RUNNER_TEMP/source_v82/XPS_Tracker_Updater_Source_v82"
+          cp -a working_source/. "$RUNNER_TEMP/source_v82/XPS_Tracker_Updater_Source_v82/"
+          find "$RUNNER_TEMP/source_v82" -type d -name __pycache__ -prune -exec rm -rf {} +
+          find "$RUNNER_TEMP/source_v82" -name '*.pyc' -delete
+          (cd "$RUNNER_TEMP/source_v82" && zip -qr "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v82.zip" XPS_Tracker_Updater_Source_v82)
+          sha256sum "$RUNNER_TEMP/XPS_Tracker_Updater_v82.zip" | tee "$RUNNER_TEMP/v82.sha256"
+
+      - name: Create draft release and upload ZIP
+        run: |
+          existing="$(gh api -H 'Accept: application/vnd.github+json' repos/${{ github.repository }}/releases --jq '.[] | select(.tag_name=="v82") | .id' | head -1)"
+          if [ -n "$existing" ]; then
+            release_id="$existing"
+            gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=true -f name='XPS Tracker Updater v82' >/dev/null
+          else
+            release_id="$(gh api -X POST "repos/${{ github.repository }}/releases" -f tag_name='v82' -f target_commitish='v82-work' -f name='XPS Tracker Updater v82' -f body='v82 improves pipe/video length OCR, prevents false one-letter asset suffixes and cleaning header rows, lowers confident layout confirmation to above 80%, and derives asset syntax automatically from the selected master while keeping one-letter new-asset suffixes possible.' -F draft=true --jq .id)"
+          fi
+          existing_asset="$(gh api "repos/${{ github.repository }}/releases/$release_id" --jq '.assets[]? | select(.name=="XPS_Tracker_Updater_v82.zip") | .id' | head -1)"
+          if [ -n "$existing_asset" ]; then gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$existing_asset" >/dev/null; fi
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/zip" \
+            --data-binary @"$RUNNER_TEMP/XPS_Tracker_Updater_v82.zip" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/$release_id/assets?name=XPS_Tracker_Updater_v82.zip" >/dev/null
+          echo "$release_id" > "$RUNNER_TEMP/release_id"
+
+      - name: Verify checksum and publish release
+        run: |
+          release_id="$(cat "$RUNNER_TEMP/release_id")"
+          local_sha="$(cut -d' ' -f1 "$RUNNER_TEMP/v82.sha256")"
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            release_json="$(gh api "repos/${{ github.repository }}/releases/$release_id")"
+            asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v82.zip") | .size')"
+            asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v82.zip") | .digest')"
+            if [ "${asset_size:-0}" -gt 0 ] && [ "$asset_digest" = "sha256:$local_sha" ]; then ok=1; break; fi
+            sleep 3
+          done
+          test "$ok" = 1
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=false >/dev/null
+          final_json="$(gh api "repos/${{ github.repository }}/releases/$release_id")"
+          final_url="$(printf '%s' "$final_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v82.zip") | .browser_download_url')"
+          test "$final_url" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v82/XPS_Tracker_Updater_v82.zip'
+          printf '%s\n' "$local_sha" > "$RUNNER_TEMP/verified_sha"
+          printf '%s\n' "$final_url" > "$RUNNER_TEMP/verified_url"
+
+      - name: Check out main for manifest/source update
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Commit source bundle, context, and verified manifest
+        working-directory: mainrepo
+        run: |
+          cp "$RUNNER_TEMP/XPS_Tracker_Updater_Source_v82.zip" ./XPS_Tracker_Updater_Source_v82.zip
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          sha=Path(os.environ['RUNNER_TEMP']+'/verified_sha').read_text().strip()
+          url=Path(os.environ['RUNNER_TEMP']+'/verified_url').read_text().strip()
+          data={
+            'version':'82',
+            'download_url':url,
+            'sha256':sha,
+            'release_notes':[
+              'Skip table-column confirmation when native layout confidence is above 80% and all required roles are detected',
+              'Use conservative untouched full-cell OCR first for pipe/video lengths before established fallbacks',
+              'Require corroboration for one-letter new-asset suffixes to prevent false NEW PIPE results such as EC-1817A',
+              'Reject cleaning/header OCR noise before date inheritance and total validation',
+              'Infer Pipe, Manhole, and Cleaning asset syntax automatically from the selected master while always allowing one-letter potential new-asset suffixes'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          context=Path('PROJECT_CONTEXT.md')
+          if context.exists():
+              text=context.read_text(encoding='utf-8')
+              text=re.sub(r'Current production version: \*\*v\d+\*\*\.', 'Current production version: **v82**.', text, count=1)
+              if '## Current v82 fixes' not in text:
+                  marker='## Current v81 fixes'
+                  section="## Current v82 fixes\n\n- Table-column confirmation auto-skips above 80% confidence when all required roles are detected.\n- Pipe/video lengths use an untouched full-cell agreement pass before older OCR fallbacks.\n- Potential one-letter new-asset suffixes receive independent OCR corroboration, preventing a stray suffix from creating a false new pipe.\n- Cleaning/header noise is rejected before dominant-date inheritance and printed-total validation.\n- Asset syntax for Pipe, Manhole, and Cleaning is inferred from the selected master rather than project-name configuration; one-letter suffixes always remain structurally possible new assets.\n\n"
+                  if marker in text: text=text.replace(marker,section+marker,1)
+                  else: text += '\n\n'+section
+              context.write_text(text,encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add XPS_Tracker_Updater_Source_v82.zip update_manifest.json PROJECT_CONTEXT.md
+          git commit -m 'Publish v82 source bundle and update manifest'
+          git push origin HEAD:main
+          git pull --ff-only origin main
+          remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          printf '%s\n' "$remote_manifest" | jq -e '.version=="82"'
+          verified_sha="$(cat "$RUNNER_TEMP/verified_sha")"
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$verified_sha"
+          test -s XPS_Tracker_Updater_Source_v82.zip
+          echo 'v82 release, source bundle, context, and manifest verified.'

@@ -1290,6 +1290,19 @@ def _guard_unconfirmed_suffix_observations(observations,confirmed_suffixes,known
     return out
 
 
+def _keep_unresolved_pair_row(up_value,down_value,length_value,row_date):
+    """Reject empty header/footer OCR while preserving real unresolved data rows.
+
+    If an unresolved pair has no directly readable numeric/date evidence, both
+    displayed endpoints must still look like complete asset IDs. This prevents
+    header text such as EN -> SUNAA from becoming a fake cleaning row while
+    keeping a real EC-1234 -> EC-5678 row available for manual review.
+    """
+    if length_value is not None or row_date:
+        return True
+    return bool(_asset_id_parts(up_value) and _asset_id_parts(down_value))
+
+
 def _base_asset_key(value,known_items):
     """Resolve an exact ID or its one-letter suffixed version to the base master key."""
     known_keys={asset_key(key) for key in known_items}
@@ -2749,6 +2762,14 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             continue
         if not match and not endpoint_signal:
             continue
+        if not match:
+            # Run this before dominant-date repair. A header band must not gain a
+            # valid-looking date from the surrounding data rows and thereby turn
+            # OCR garbage such as EN -> SUNAA into a summary record.
+            unresolved_up=_best_observed_asset_id(up_obs,endpoint_items) or (canonical_asset_id(up_obs[0]) if up_obs else '')
+            unresolved_dn=_best_observed_asset_id(dn_obs,endpoint_items) or (canonical_asset_id(dn_obs[0]) if dn_obs else '')
+            if not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d):
+                continue
         if dominant_date is not None and (match or endpoint_signal):
             if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date):
                 d=dominant_date

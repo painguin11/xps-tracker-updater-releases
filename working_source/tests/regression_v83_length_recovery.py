@@ -38,3 +38,7 @@ assert parse('1700') == 1700.0
 assert parse('1700.01') is None
 assert parse('2401') is None
 print('v83 length recovery regression passed')
+
+assert "record.get('_length_value_cell') or record.get('_cleaning_value_cell')" not in s
+assert "cell=record.get('_length_value_cell')" in s
+print('v83 numpy cell-selection regression passed')

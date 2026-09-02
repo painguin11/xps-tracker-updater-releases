@@ -4205,7 +4205,10 @@ class App(tk.Tk):
             record['_length_crosscheck_attempted']=True
             kind=record.get('kind') or check.get('kind')
             if kind=='Cleaning' and not all_rows:
-                reread=_conservative_cleaning_reread(record.get('_length_value_cell') or record.get('_cleaning_value_cell'))
+                cell=record.get('_length_value_cell')
+                if cell is None:
+                    cell=record.get('_cleaning_value_cell')
+                reread=_conservative_cleaning_reread(cell)
             else:
                 reread=_independent_row_length_read(record.get('_length_value_cell'),record.get('_length_expanded_cell'),kind)
             record['_length_crosscheck_source']=reread.get('source')

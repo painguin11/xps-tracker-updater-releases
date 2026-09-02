@@ -554,3 +554,12 @@ Version 81 structural header-row filtering and work-order outline
 - Draws failed-total validation borders in Treeview-local coordinates so the top row is included correctly.
 - Extends the visual total-validation border across the entire work-order group while leaving the arithmetic validation activity-specific.
 
+
+
+Version 82 OCR reliability and master-derived asset formats
+------------------------------------------------------------
+- Skips the table-column confirmation popup when native layout confidence is above 80% and all required roles are present.
+- Reads pipe/video lengths from the untouched full cell first with independent OCR agreement before using the established fallback pipeline.
+- Scrutinizes one-letter new-asset suffixes with independent endpoint crops so OCR artifacts such as EC-1817A do not incorrectly create a new pipe.
+- Filters unresolved cleaning/header noise before date inheritance so header text cannot become a fake data row or corrupt printed-total validation.
+- Infers asset syntax automatically from the selected master for Pipe, Manhole, and Cleaning instead of project-name configuration. A single trailing letter remains a valid possible new-asset suffix even when the master has no suffixed examples.

@@ -1,12 +1,13 @@
 import ast
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 SOURCE=Path('working_source/app/reno_scan_updater.py')
 tree=ast.parse(SOURCE.read_text(encoding='utf-8'))
-wanted={'_choose_printed_total','_resolve_printed_total_sources','_length_total_result'}
+wanted={'_pdf_decimal','_choose_printed_total','_resolve_printed_total_sources','_length_total_result'}
 nodes=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in wanted]
 module=ast.Module(body=nodes,type_ignores=[]); ast.fix_missing_locations(module)
-ns={}; exec(compile(module,str(SOURCE),'exec'),ns)
+ns={'Decimal':Decimal,'InvalidOperation':InvalidOperation}; exec(compile(module,str(SOURCE),'exec'),ns)
 
 value,confident=ns['_choose_printed_total']([5690,5690,5690,5690])
 assert value==5690 and confident
@@ -42,9 +43,16 @@ bad[12]['video_length']=104
 result=ns['_length_total_result'](bad,5690)
 assert result['summary_total']==5680 and result['difference']==-10 and not result['matches']
 
+# Decimal measurements remain exact rather than being rounded before comparison.
+records=[{'video_length':'399.02'},{'video_length':'333.89'}]
+result=ns['_length_total_result'](records,'732.91')
+assert result['summary_total']==732.91 and result['matches']
+result=ns['_length_total_result'](records,'732.90')
+assert not result['matches'] and result['difference']==0.01
+
 source=SOURCE.read_text(encoding='utf-8')
 assert 'needs_consensus=(not value_candidates or value is None or len(distinct)>1' in source
 assert "printed_total_info=_read_pair_table_printed_total" in source
 assert "prepared['printed_total_info']=printed_total_info" in source
 assert 'TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED' in source
-print('Length-total reconciliation and invalid-first-pass OCR safeguards passed.')
+print('Length-total exact reconciliation and invalid-first-pass OCR safeguards passed.')

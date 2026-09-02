@@ -29,32 +29,11 @@ _OCR_CACHE_MISSES = 0
 _PAGE_CACHE_FOLDER = ''
 
 
-# Asset-ID syntax is project-specific. Add a new named rule here, then map a
-# future master profile to it in PROJECT_ASSET_FORMAT_RULES below. Recognition
-# code for Pipe, Manhole, and Cleaning all uses this single configuration.
-ASSET_FORMAT_RULES = {
-    'reno_numeric': {
-        'description': 'Legacy Reno asset IDs: digits only, no dash required',
-        'search_pattern': r'(?<![A-Z0-9-])(\d+)(?![A-Z0-9-])',
-        'full_pattern': r'\d+',
-        'requires_dash': False,
-    },
-    'prefixed_dash_1_4_optional_suffix': {
-        'description': 'Prefix + required dash + 1-4 digits + optional one-letter suffix',
-        'search_pattern': r'(?<![A-Z0-9])([A-Z][A-Z0-9]{0,5})\s*-\s*(\d{1,4})([A-Z]?)(?![A-Z0-9])',
-        'full_pattern': r'[A-Z][A-Z0-9]{0,5}-\d{1,4}[A-Z]?',
-        'requires_dash': True,
-    },
-}
-
-# Future project formats should be changed HERE rather than in individual OCR
-# parsers. Unknown profiles deliberately keep the legacy tolerant behavior until
-# a rule is assigned, so adding a project does not silently destroy its rows.
-PROJECT_ASSET_FORMAT_RULES = {
-    'reno': 'reno_numeric',
-    'year15': 'prefixed_dash_1_4_optional_suffix',
-    'phase2_year1': 'prefixed_dash_1_4_optional_suffix',
-}
+# Asset-ID syntax is inferred from the selected master workbook. The inferred
+# base format is used by Pipe, Manhole, and Cleaning OCR. A single trailing
+# letter is ALWAYS kept structurally possible for new assets even when the
+# current master contains no suffixed examples; suffix candidates still go
+# through the existing corroboration/new-asset review path.
 
 TROUBLE_TICKET_HEADERS_V60 = [
     'Date', 'Reported By', 'Pipe ID', 'Street Name', 'Panel',
@@ -310,49 +289,106 @@ def _ocr_id_text_variants(text):
     return list(dict.fromkeys(x for x in out if x))
 
 
-def _asset_format_rule(profile):
-    rule_name=PROJECT_ASSET_FORMAT_RULES.get(str(profile or '').strip().lower())
-    return ASSET_FORMAT_RULES.get(rule_name) if rule_name else None
+def _raw_master_asset(value):
+    """Normalize one master asset cell without inventing punctuation."""
+    if value is None:
+        return ''
+    raw=str(value).strip().upper()
+    if re.fullmatch(r'\d+\.0',raw):
+        raw=raw[:-2]
+    return re.sub(r'\s+','',raw)
 
 
-def _profile_requires_asset_dash(profile):
-    rule=_asset_format_rule(profile)
-    return bool(rule and rule.get('requires_dash'))
+def _infer_asset_format(values):
+    """Infer the base asset syntax from IDs actually present in the master.
 
-
-def _printed_asset_tokens(text,profile):
-    """Extract only asset tokens that satisfy this project's printed syntax.
-
-    This runs before punctuation normalization. For the current B&C profiles a
-    literal dash must therefore be present in OCR output; EC1817 cannot become a
-    valid EC-1817 merely because canonical_asset_id knows how to insert a dash.
+    The master determines whether IDs are numeric-only or prefix+dash+number and
+    the observed upper bounds for number/prefix size. One final letter is always
+    allowed as a *possible new-asset suffix* even if the master has zero suffixed
+    examples; absence from the master is never grounds to reject that suffix.
     """
-    rule=_asset_format_rule(profile)
-    if not rule:
+    dashed=[]; numeric=[]
+    for value in values or []:
+        raw=_raw_master_asset(value)
+        if not raw:
+            continue
+        m=re.fullmatch(r'([A-Z][A-Z0-9]{0,11})-+(\d+)([A-Z]?)',raw)
+        if m:
+            dashed.append(m.groups()); continue
+        m=re.fullmatch(r'(\d+)([A-Z]?)',raw)
+        if m:
+            numeric.append(m.groups())
+    if dashed and len(dashed)>=len(numeric):
+        max_digits=max(len(number) for _,number,_ in dashed)
+        max_prefix=max(len(prefix) for prefix,_,_ in dashed)
+        return {'mode':'prefixed_dash','requires_dash':True,
+                'max_digits':max(1,max_digits),'max_prefix_len':max(1,max_prefix),
+                'allow_suffix':True,'sample_count':len(dashed)}
+    if numeric:
+        max_digits=max(len(number) for number,_ in numeric)
+        return {'mode':'numeric','requires_dash':False,
+                'max_digits':max(1,max_digits),'max_prefix_len':0,
+                'allow_suffix':True,'sample_count':len(numeric)}
+    # Fail open only when the master contains no inferable asset examples. Existing
+    # matching still constrains results; unresolved/new rows remain review-only.
+    return {'mode':'generic','requires_dash':False,'max_digits':8,
+            'max_prefix_len':8,'allow_suffix':True,'sample_count':0}
+
+
+def _asset_format_requires_dash(asset_format):
+    return bool(isinstance(asset_format,dict) and asset_format.get('requires_dash'))
+
+
+def _printed_asset_tokens(text,asset_format):
+    """Extract asset tokens that satisfy the format inferred from the master.
+
+    Punctuation is checked before canonical normalization, so a dash-required
+    master cannot turn EC1817 into EC-1817. The optional final letter is deliberate:
+    it represents a potential new asset and does not need to already exist in master.
+    """
+    rule=asset_format if isinstance(asset_format,dict) else None
+    if not rule or rule.get('mode')=='generic':
         return []
     source=str(text or '').upper()
+    max_digits=max(1,int(rule.get('max_digits') or 1))
+    suffix=r'([A-Z]?)' if rule.get('allow_suffix',True) else r'()'
     out=[]
-    for match in re.finditer(rule['search_pattern'],source):
-        if rule.get('requires_dash'):
-            groups=match.groups()
-            value=f'{groups[0]}-{groups[1]}{groups[2] or ""}'
-        else:
-            value=match.group(1)
-        value=value.upper()
-        if re.fullmatch(rule['full_pattern'],value) and value not in out:
-            out.append(value)
+    if rule.get('mode')=='prefixed_dash':
+        max_prefix=max(1,int(rule.get('max_prefix_len') or 1))
+        pattern=(rf'(?<![A-Z0-9])([A-Z][A-Z0-9]{{0,{max_prefix-1}}})\s*-\s*'
+                 rf'(\d{{1,{max_digits}}}){suffix}(?![A-Z0-9])')
+        for match in re.finditer(pattern,source):
+            prefix,number,tail=match.groups()
+            value=f'{prefix}-{number}{tail or ""}'
+            if value not in out: out.append(value)
+    elif rule.get('mode')=='numeric':
+        # The dash in the boundaries prevents a numeric master from extracting the
+        # 1 inside DN-1 and calling it a valid Reno-style asset.
+        pattern=rf'(?<![A-Z0-9-])(\d{{1,{max_digits}}}){suffix}(?![A-Z0-9-])'
+        for match in re.finditer(pattern,source):
+            number,tail=match.groups()
+            value=f'{number}{tail or ""}'
+            if value not in out: out.append(value)
     return out
 
 
-def _asset_value_matches_profile(value,profile):
-    rule=_asset_format_rule(profile)
-    if not rule:
+def _asset_value_matches_format(value,asset_format):
+    rule=asset_format if isinstance(asset_format,dict) else None
+    if not rule or rule.get('mode')=='generic':
         return True
-    raw=str(value or '').strip().upper()
-    if rule.get('requires_dash') and '-' not in raw:
+    raw=_raw_master_asset(value)
+    if not raw:
         return False
-    compact=re.sub(r'\s+','',raw)
-    return bool(re.fullmatch(rule['full_pattern'],compact))
+    max_digits=max(1,int(rule.get('max_digits') or 1))
+    tail=r'[A-Z]?' if rule.get('allow_suffix',True) else ''
+    if rule.get('mode')=='prefixed_dash':
+        if '-' not in raw:
+            return False
+        max_prefix=max(1,int(rule.get('max_prefix_len') or 1))
+        return bool(re.fullmatch(rf'[A-Z][A-Z0-9]{{0,{max_prefix-1}}}-\d{{1,{max_digits}}}{tail}',raw))
+    if rule.get('mode')=='numeric':
+        return bool(re.fullmatch(rf'\d{{1,{max_digits}}}{tail}',raw))
+    return True
 
 
 def parse_float(s):
@@ -533,9 +569,12 @@ def _load_master_index_once(path):
                   'video length': hm[video_key][0], 'video date': hm['date'][1],
                   'video w/o': hm['w o'][1], 'video truck': hm['truck'][1], 'video operator': hm['operator'][1]}
             ph['notes']=hm.get('notes',[None])[0]
-            pipes={}; pipe_by_id={}
+            pipes={}; pipe_by_id={}; asset_format_samples=[]
             for r in range(pr+1,len(pvals)+1):
-                up=canonical_asset_id(_mv(pvals,r,ph['upstream'])); dn=canonical_asset_id(_mv(pvals,r,ph['downstream']))
+                raw_up=_mv(pvals,r,ph['upstream']); raw_dn=_mv(pvals,r,ph['downstream'])
+                if raw_up not in (None,''): asset_format_samples.append(raw_up)
+                if raw_dn not in (None,''): asset_format_samples.append(raw_dn)
+                up=canonical_asset_id(raw_up); dn=canonical_asset_id(raw_dn)
                 if not up or not dn: continue
                 item={'row':r,'expected':parse_float(_mv(pvals,r,ph['length'])),
                       'pipe_id':canonical_asset_id(_mv(pvals,r,ph['pipe_id'])),'up':up,'down':dn,
@@ -555,7 +594,9 @@ def _load_master_index_once(path):
             manholes={}
             manholes_by_number={}
             for r in range(mr+1,len(mvals)+1):
-                sid=canonical_asset_id(_mv(mvals,r,mh['st_id']))
+                raw_sid=_mv(mvals,r,mh['st_id'])
+                if raw_sid not in (None,''): asset_format_samples.append(raw_sid)
+                sid=canonical_asset_id(raw_sid)
                 if sid:
                     item={'row':r,'asset':sid,'asset_key':asset_key(sid),'existing':any(_mv(mvals,r,mh[x]) not in (None,'') for x in ('date','w/o','truck','operator')),'existing_wo':digits(_mv(mvals,r,mh['w/o']))}
                     manholes[item['asset_key']]=item
@@ -567,7 +608,8 @@ def _load_master_index_once(path):
             for vals,row,col in ((pvals,pr,ph['clean operator']),(pvals,pr,ph['video operator']),(mvals,mr,mh['operator'])):
                 for rr in range(row+1,len(vals)+1): _add_count(operator_counts,_mv(vals,rr,col),'operator')
             _merge_entry_history(truck_counts,operator_counts)
-            return {'profile':profile,'pipes':pipes,'pipe_by_id':pipe_by_id,'manholes':manholes,'trucks':set(truck_counts),
+            asset_format=_infer_asset_format(asset_format_samples)
+            return {'profile':profile,'asset_format':asset_format,'pipes':pipes,'pipe_by_id':pipe_by_id,'manholes':manholes,'trucks':set(truck_counts),
                     'truck_counts':truck_counts,'operator_counts':operator_counts,
                     'manholes_by_number':manholes_by_number,
                     'pipe_items':list({item['row']:item for item in pipes.values() if not item.get('reverse')}.values()),
@@ -578,8 +620,12 @@ def _load_master_index_once(path):
         pr, ph = _locate_headers_matrix(pvals, ['pipe_id','upstream','downstream','length','video length','date','w/o','truck','operator'],ps_name)
         pipes = {}
         pipe_by_id = {}
+        asset_format_samples=[]
         for r in range(pr + 1,len(pvals)+1):
-            up,dn=digits(_mv(pvals,r,ph['upstream'])),digits(_mv(pvals,r,ph['downstream']))
+            raw_up=_mv(pvals,r,ph['upstream']); raw_dn=_mv(pvals,r,ph['downstream']); raw_pid=_mv(pvals,r,ph['pipe_id'])
+            for raw_asset in (raw_up,raw_dn,raw_pid):
+                if raw_asset not in (None,''): asset_format_samples.append(raw_asset)
+            up,dn=digits(raw_up),digits(raw_dn)
             if not up or not dn: continue
             expected=parse_float(_mv(pvals,r,ph['length']))
             item={'row':r,'expected':expected,'pipe_id':digits(_mv(pvals,r,ph['pipe_id'])),'up':up,'down':dn,
@@ -595,7 +641,9 @@ def _load_master_index_once(path):
         mr,mh=_locate_headers_matrix(mvals,['st_id','date','w/o','truck','operator'],ms_name)
         manholes = {}
         for r in range(mr+1,len(mvals)+1):
-            sid=digits(_mv(mvals,r,mh['st_id']))
+            raw_sid=_mv(mvals,r,mh['st_id'])
+            if raw_sid not in (None,''): asset_format_samples.append(raw_sid)
+            sid=digits(raw_sid)
             if sid: manholes[sid] = {'row': r,
                                      'existing':any(_mv(mvals,r,mh[x]) not in (None,'') for x in ('date','w/o','truck','operator')),
                                      'existing_wo':digits(_mv(mvals,r,mh['w/o']))}
@@ -610,7 +658,8 @@ def _load_master_index_once(path):
             if oc:
                 for rr in range(header_row+1,len(vals)+1): _add_count(operator_counts,_mv(vals,rr,oc),'operator')
         _merge_entry_history(truck_counts,operator_counts)
-        return {'profile':'reno','pipes': pipes, 'pipe_by_id': pipe_by_id, 'manholes': manholes,
+        asset_format=_infer_asset_format(asset_format_samples)
+        return {'profile':'reno','asset_format':asset_format,'pipes': pipes, 'pipe_by_id': pipe_by_id, 'manholes': manholes,
                 'trucks':set(truck_counts),'truck_counts':truck_counts,'operator_counts':operator_counts}
     finally:
         # Cleanup must never replace a successful read or hide the original error.
@@ -1184,7 +1233,7 @@ def _best_known_id(candidates, known, max_dist=1):
     return best if best and score<=max_dist else ''
 
 
-def _ocr_asset_candidates(cell_img, fast_plain=False, profile=None):
+def _ocr_asset_candidates(cell_img, fast_plain=False, asset_format=None):
     """Return full-ID OCR candidates, retaining letter prefixes and digits."""
     if cell_img is None or cell_img.size==0: return []
     rgb=cv2.resize(cell_img,None,fx=2.4,fy=2.4,interpolation=cv2.INTER_CUBIC)
@@ -1200,9 +1249,9 @@ def _ocr_asset_candidates(cell_img, fast_plain=False, profile=None):
         for psm in ((7,) if fast_plain else ((7,6) if vi<2 else (7,))):
             txt=cached_ocr_string(im,config=f'--psm {psm}').strip().replace('\n',' ')
             if txt:
-                rule=_asset_format_rule(profile)
+                rule=asset_format if isinstance(asset_format,dict) else None
                 if rule:
-                    formatted=_printed_asset_tokens(txt,profile)
+                    formatted=_printed_asset_tokens(txt,asset_format)
                     for token in formatted:
                         out.append(token)
                         out.extend(_ocr_id_text_variants(token))
@@ -1214,7 +1263,7 @@ def _ocr_asset_candidates(cell_img, fast_plain=False, profile=None):
     return list(dict.fromkeys(x for x in out if x))
 
 
-def _ocr_known_r2_candidates(cell_img, known_items, profile=None):
+def _ocr_known_r2_candidates(cell_img, known_items, asset_format=None):
     """Recover exact known R2 IDs when the prefix becomes an OCR lookalike.
 
     This is intentionally a master-constrained fallback. It never creates a new
@@ -1240,7 +1289,7 @@ def _ocr_known_r2_candidates(cell_img, known_items, profile=None):
                 config=(f'--psm {psm} '
                         '-c tessedit_char_whitelist=Rr2-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
             ).strip()
-            if _profile_requires_asset_dash(profile) and '-' not in text:
+            if _asset_format_requires_dash(asset_format) and '-' not in text:
                 continue
             key=asset_key(text)
             if key in known_r2:
@@ -1332,7 +1381,7 @@ def _new_suffix_asset_candidates(observations,known_items):
     return out
 
 
-def _confirmed_suffix_asset_candidates(cell_img,known_items,profile=None):
+def _confirmed_suffix_asset_candidates(cell_img,known_items,asset_format=None):
     """Require a possible one-letter new-asset suffix to survive independent crops.
 
     A ruled table edge or neighboring stroke can occasionally be OCRed as a final
@@ -1351,7 +1400,7 @@ def _confirmed_suffix_asset_candidates(cell_img,known_items,profile=None):
     support={}
     for view in views:
         seen={asset_key(value) for value in _new_suffix_asset_candidates(
-            _ocr_asset_candidates(view,fast_plain=True,profile=profile),known_items)}
+            _ocr_asset_candidates(view,fast_plain=True,asset_format=asset_format),known_items)}
         for key in seen:
             support[key]=support.get(key,0)+1
     return [canonical_asset_id(key) for key,count in support.items() if count>=2]
@@ -1374,17 +1423,17 @@ def _guard_unconfirmed_suffix_observations(observations,confirmed_suffixes,known
     return out
 
 
-def _keep_unresolved_pair_row(up_value,down_value,length_value,row_date,profile=None):
+def _keep_unresolved_pair_row(up_value,down_value,length_value,row_date,asset_format=None):
     """Reject empty header/footer OCR while preserving real unresolved data rows.
 
-    If an unresolved pair has no directly readable numeric/date evidence, both
-    displayed endpoints must still look like complete asset IDs. This prevents
+    For a master with an inferred asset format, both displayed endpoints must
+    satisfy that format before an unresolved row may survive. This prevents
     header text such as EN -> SUNAA from becoming a fake cleaning row while
     keeping a real EC-1234 -> EC-5678 row available for manual review.
     """
-    if _asset_format_rule(profile):
-        return (_asset_value_matches_profile(up_value,profile) and
-                _asset_value_matches_profile(down_value,profile))
+    if isinstance(asset_format,dict) and asset_format.get('mode')!='generic':
+        return (_asset_value_matches_format(up_value,asset_format) and
+                _asset_value_matches_format(down_value,asset_format))
     if length_value is not None or row_date:
         return True
     return bool(_asset_id_parts(up_value) and _asset_id_parts(down_value))
@@ -2100,6 +2149,7 @@ def parse_pipe_list(page, master_index, quick_text, on_row=None, on_progress=Non
     img=np.array(Image.fromarray(base).rotate(270,expand=True))
     h,w=img.shape[:2]
     known=master_index['pipe_by_id']
+    asset_format=master_index.get('asset_format')
     expected_date=parse_date_text(quick_text)
     expected_year=expected_date.year if expected_date else None
 
@@ -2122,7 +2172,7 @@ def parse_pipe_list(page, master_index, quick_text, on_row=None, on_progress=Non
         # IMPORTANT: this is ONLY the final "Surveyed Length" column, not Scheduled Length.
         len_img=img[y1:y2, max(0,int(left+.918*tw)):min(w,int(left+.998*tw))]
 
-        full_pid_candidates=_ocr_asset_candidates(psr_img,fast_plain=False)
+        full_pid_candidates=_ocr_asset_candidates(psr_img,fast_plain=False,asset_format=asset_format)
         pid_candidates=_ocr_digits(psr_img,False)+full_pid_candidates
         new_options=_new_suffix_asset_candidates(full_pid_candidates,known.keys())
         new_pid=new_options[0] if new_options else ''
@@ -2158,6 +2208,7 @@ def parse_manhole_list(page, master_index, quick_text, on_row=None, on_progress=
     img=np.array(Image.fromarray(base).rotate(270,expand=True))
     h,w=img.shape[:2]
     known=master_index['manholes']
+    asset_format=master_index.get('asset_format')
     rows=[]; blanks=0; seen=set()
     start=.1680*h; step=.0260*h
     for i in range(40):
@@ -2167,7 +2218,7 @@ def parse_manhole_list(page, master_index, quick_text, on_row=None, on_progress=
         half=max(16,int(step*.50)); y1,y2=max(0,yc-half),min(h,yc+half)
         date_img=img[y1:y2,int(.090*w):int(.180*w)]
         id_img=img[y1:y2,int(.155*w):int(.300*w)]
-        full_sid_candidates=_ocr_asset_candidates(id_img,fast_plain=False)
+        full_sid_candidates=_ocr_asset_candidates(id_img,fast_plain=False,asset_format=asset_format)
         sid_candidates=_ocr_digits(id_img,False)+full_sid_candidates
         new_options=_new_suffix_asset_candidates(full_sid_candidates,known.keys())
         new_sid=new_options[0] if new_options else ''
@@ -2555,11 +2606,12 @@ def _master_assisted_endpoint_columns(img,bands,table,column_boxes,master_index)
     if len(column_boxes)>20: return None,0,0
     left,right=table; tw=max(1,right-left)
     sample_bands=list(bands[1:8])
+    asset_format=master_index.get('asset_format')
     observed=[[None for _ in sample_bands] for _ in column_boxes]
     for ci,box in enumerate(column_boxes):
         for ri,(y1,y2) in enumerate(sample_bands):
             cell=img[y1:y2,max(0,int(left+box[0]*tw)):min(img.shape[1],int(left+box[1]*tw))]
-            observed[ci][ri]=_ocr_asset_candidates(cell,fast_plain=True)
+            observed[ci][ri]=_ocr_asset_candidates(cell,fast_plain=True,asset_format=asset_format)
     scored=[]
     for up_i in range(len(column_boxes)):
         for dn_i in range(len(column_boxes)):
@@ -2703,7 +2755,7 @@ def validate_page_rows(data,kind,text,page_number,layout=None,profile=None):
 def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None, on_progress=None, expected_date=None):
     """Read Year 15 video/cleaning rows by the printed UP_MH + DN_MH pair."""
     prepared=prepared or prepare_year15_pair_layout(page,master_index,kind)
-    profile=master_index.get('profile','')
+    asset_format=master_index.get('asset_format')
     img=prepared['img']; h,w=img.shape[:2]; bands=prepared.get('bands',[]); table=prepared.get('table')
     if not bands or not table: return []
     left,right=table; tw=max(1,right-left)
@@ -2766,11 +2818,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 x2=min(w,x2+max(2,int(round((x2-x1)*.02))))
             return img[y1:y2,x1:x2]
         def read_id(box,fast=True):
-            cell=cut(box); obs=_ocr_asset_candidates(cell,fast_plain=fast,profile=profile)
+            cell=cut(box); obs=_ocr_asset_candidates(cell,fast_plain=fast,asset_format=asset_format)
             if y2-y1>typical_band*1.45:
                 ch=cell.shape[0]
-                obs+=_ocr_asset_candidates(cell[:max(1,int(ch*.62)),:],fast_plain=fast,profile=profile)
-                obs+=_ocr_asset_candidates(cell[int(ch*.38):,:],fast_plain=fast,profile=profile)
+                obs+=_ocr_asset_candidates(cell[:max(1,int(ch*.62)),:],fast_plain=fast,asset_format=asset_format)
+                obs+=_ocr_asset_candidates(cell[int(ch*.38):,:],fast_plain=fast,asset_format=asset_format)
             return list(dict.fromkeys(obs))
         up_obs=read_id(up_box,True); dn_obs=read_id(dn_box,True)
         match,match_status=_resolve_pipe_pair(up_obs,dn_obs,master_index)
@@ -2778,8 +2830,8 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # Some clean R2 prefixes are consistently read as 2/22/32/52. Re-run
             # only unresolved endpoint cells with a focused whitelist and accept
             # only complete IDs that already exist in the selected master.
-            up_obs=list(dict.fromkeys(up_obs+_ocr_known_r2_candidates(cut(up_box),endpoint_items,profile=profile)))
-            dn_obs=list(dict.fromkeys(dn_obs+_ocr_known_r2_candidates(cut(dn_box),endpoint_items,profile=profile)))
+            up_obs=list(dict.fromkeys(up_obs+_ocr_known_r2_candidates(cut(up_box),endpoint_items,asset_format=asset_format)))
+            dn_obs=list(dict.fromkeys(dn_obs+_ocr_known_r2_candidates(cut(dn_box),endpoint_items,asset_format=asset_format)))
             match,match_status=_resolve_pipe_pair(up_obs,dn_obs,master_index)
         if not match:
             # Escalate only uncertain endpoint cells to the slower OCR ensemble.
@@ -2790,8 +2842,8 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # A one-letter suffix can be a real new asset, but a table edge can
             # also create a stray final character. Require the suffix to survive
             # independent endpoint crops before allowing it to create a new pipe.
-            up_confirmed=_confirmed_suffix_asset_candidates(cut(up_box),endpoint_items,profile=profile)
-            dn_confirmed=_confirmed_suffix_asset_candidates(cut(dn_box),endpoint_items,profile=profile)
+            up_confirmed=_confirmed_suffix_asset_candidates(cut(up_box),endpoint_items,asset_format=asset_format)
+            dn_confirmed=_confirmed_suffix_asset_candidates(cut(dn_box),endpoint_items,asset_format=asset_format)
             guarded_up=_guard_unconfirmed_suffix_observations(up_obs,up_confirmed,endpoint_items)
             guarded_dn=_guard_unconfirmed_suffix_observations(dn_obs,dn_confirmed,endpoint_items)
             if guarded_up!=up_obs or guarded_dn!=dn_obs:
@@ -2856,7 +2908,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # OCR garbage such as EN -> SUNAA into a summary record.
             unresolved_up=_best_observed_asset_id(up_obs,endpoint_items) or (canonical_asset_id(up_obs[0]) if up_obs else '')
             unresolved_dn=_best_observed_asset_id(dn_obs,endpoint_items) or (canonical_asset_id(dn_obs[0]) if dn_obs else '')
-            if not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,profile=profile):
+            if not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,asset_format=asset_format):
                 continue
         if dominant_date is not None and (match or endpoint_signal):
             if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date):
@@ -2895,7 +2947,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
 
 
 def parse_year15_manholes(page, master_index, on_row=None, on_progress=None):
-    profile=master_index.get('profile','')
+    asset_format=master_index.get('asset_format')
     img=_year15_oriented(page,'manholes'); h,w=img.shape[:2]
     known=master_index['manholes']
     # This portrait report OCRs reliably as positioned words even when scan skew
@@ -2913,7 +2965,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None):
                 token_dates.append((y+hh//2,parsed_date))
             if x>w*.36: continue
             raw=str(txt)
-            formatted=_printed_asset_tokens(raw,profile)
+            formatted=_printed_asset_tokens(raw,asset_format)
             if not formatted: continue
             item,status=_resolve_full_asset(formatted,known)
             token_rows.append((y+hh//2,item,status,formatted[0]))
@@ -2945,7 +2997,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None):
     for y1,y2 in bands:
         if on_progress: on_progress()
         id_img=img[y1:y2,left:min(w,int(left+.27*tw))]
-        observations=_ocr_asset_candidates(id_img,profile=profile); item,status=_resolve_full_asset(observations,known)
+        observations=_ocr_asset_candidates(id_img,asset_format=asset_format); item,status=_resolve_full_asset(observations,known)
         if not observations: continue
         sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
         date_img=img[y1:y2,int(left+.74*tw):right]

@@ -3,14 +3,14 @@ import ast,re
 
 src=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
 assert 'def _keep_unresolved_pair_row' in src
-assert "if not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,profile=profile):" in src
+assert "if not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,asset_format=asset_format):" in src
 assert "unresolved_up=_best_observed_asset_id(up_obs,endpoint_items)" in src
 assert "unresolved_dn=_best_observed_asset_id(dn_obs,endpoint_items)" in src
 
 # The structural gate must happen before inferred dominant-date repair; otherwise
 # a header row can inherit the real rows' date and survive as fake data.
 parser=src[src.index('def parse_year15_pair_list'):src.index('def parse_year15_manholes')]
-assert parser.index('_keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,profile=profile)') < parser.index('if dominant_date is not None')
+assert parser.index('_keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,asset_format=asset_format)') < parser.index('if dominant_date is not None')
 
 tree=ast.parse(src)
 names={'asset_key','_asset_id_parts','_asset_format_rule','_asset_value_matches_profile','_keep_unresolved_pair_row'}
@@ -18,7 +18,7 @@ nodes=[]
 for n in tree.body:
     if isinstance(n,ast.Assign):
         targets=[t.id for t in n.targets if isinstance(t,ast.Name)]
-        if any(t in {'ASSET_FORMAT_RULES','PROJECT_ASSET_FORMAT_RULES'} for t in targets): nodes.append(n)
+        
     elif isinstance(n,ast.FunctionDef) and n.name in names:
         nodes.append(n)
 ns={'re':re}
@@ -35,11 +35,6 @@ assert keep('R2-380','R2-413',None,None) is True
 assert keep('EC-1521','SUNAA',240.0,None) is True
 assert keep('EN','SUNAA',None,'08/26/2026') is True
 
-# Current B&C profiles require correctly formatted endpoints regardless of other
-# evidence: a length/date must never rescue a dashless OCR asset.
-assert keep('EC-1521','EC-1475',None,None,profile='year15') is True
-assert keep('EC1521','EC-1475',240.0,None,profile='year15') is False
-assert keep('EC-1521','EC1475',240.0,'08/26/2026',profile='phase2_year1') is False
-assert keep('EN','SUNAA',None,'08/26/2026',profile='year15') is False
+# Master-format-specific acceptance/rejection is covered by regression_v82_master_asset_format.py.
 
 print('v82 cleaning header-noise structural regression passed.')

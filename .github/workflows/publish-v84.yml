@@ -1,0 +1,196 @@
+name: Publish v84
+
+on:
+  push:
+    branches:
+      - v84-work
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.head_commit.message == 'PUBLISH_V84' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v84 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v84-work
+          fetch-depth: 0
+
+      - name: Install regression dependencies
+        run: python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Bump release versions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          app=Path('working_source/app/reno_scan_updater.py')
+          src=app.read_text(encoding='utf-8')
+          src,n=re.subn(r"^APP_VERSION\s*=\s*['\"]83['\"]", "APP_VERSION = '84'", src, count=1, flags=re.M)
+          assert n==1, 'APP_VERSION 83 marker not found exactly once'
+          app.write_text(src,encoding='utf-8')
+
+          updater=Path('working_source/app/xps_update.py')
+          src=updater.read_text(encoding='utf-8')
+          src,n=re.subn(r'^CURRENT_VERSION\s*=\s*[\"\']83[\"\']', 'CURRENT_VERSION = "84"', src, count=1, flags=re.M)
+          assert n==1, 'CURRENT_VERSION 83 marker not found exactly once'
+          updater.write_text(src,encoding='utf-8')
+          PY
+
+      - name: Compile and run release regressions
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          python working_source/tests/regression_v84_real_packet_length_logic.py
+          python working_source/tests/regression_v83_length_recovery.py
+          python working_source/tests/regression_v83_exact_pdf_numbers.py
+          python working_source/tests/regression_v83_total_preview_group_errors.py
+          python working_source/tests/regression_v82_pair_video_lengths.py
+          python working_source/tests/regression_v82_master_asset_format.py
+          python working_source/tests/regression_v82_suffix_guard.py
+          python working_source/tests/regression_v82_cleaning_header_noise.py
+          python working_source/tests/regression_v82_layout_threshold.py
+          python working_source/tests/regression_v81_header_outline.py
+          python working_source/tests/regression_v80_ocr_total_ui.py
+          python working_source/tests/regression_v79_layout_speed.py
+          python working_source/tests/regression_v78_rollback.py
+          python working_source/tests/regression_v75_811_ocr.py
+          python working_source/tests/regression_v74_row_filtering.py
+          python working_source/tests/regression_v73_total_dates.py
+          python working_source/tests/regression_compact_table_fallback.py
+          python working_source/tests/regression_length_totals.py
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_new_assets.py
+          python working_source/tests/regression_master_insert.py
+          python working_source/tests/regression_r2_endpoint_ocr.py
+          python working_source/tests/regression_trouble_tickets.py
+          python working_source/tests/regression_trouble_workbook.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert re.search(r"^APP_VERSION\s*=\s*['\"]84['\"]",app,re.M)
+          assert re.search(r'^CURRENT_VERSION\s*=\s*[\"\']84[\"\']',updater,re.M)
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in app, required
+          for required in (
+              "prepared['printed_total_info']=printed_total_info",
+              'def _high_res_printed_total_candidates(cell_img):',
+              'def _select_independent_length_candidate(',
+              'def _independent_split_pipe_read(record):',
+              "self._retry_length_total_mismatch(check,all_rows=True,force=True)",
+              'MAX_ROW_LENGTH = 1700.0',
+              'MAX_ROW_LENGTH_DECIMALS = 2'):
+              assert required in app, required
+          print('v84 version, parser-preservation, and recovery checks passed.')
+          PY
+
+      - name: Build and validate release ZIP
+        run: |
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find dist -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+          test -f dist/XPS_Tracker_Updater/reno_scan_updater.py
+          test -f dist/XPS_Tracker_Updater/xps_update.py
+          test -f dist/XPS_Tracker_Updater/run_xps_tracker.bat
+          cd dist
+          zip -qr XPS_Tracker_Updater_v84.zip XPS_Tracker_Updater
+          unzip -t XPS_Tracker_Updater_v84.zip
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          archive=Path('XPS_Tracker_Updater_v84.zip')
+          with zipfile.ZipFile(archive) as z:
+              names=z.namelist()
+              assert names, 'empty ZIP'
+              assert all(n.startswith('XPS_Tracker_Updater/') for n in names), 'unexpected top-level ZIP entry'
+              for required in ('XPS_Tracker_Updater/reno_scan_updater.py','XPS_Tracker_Updater/xps_update.py','XPS_Tracker_Updater/run_xps_tracker.bat'):
+                  assert required in names, required
+          print('v84 ZIP structure passed.')
+          PY
+          echo "RELEASE_SHA=$(sha256sum XPS_Tracker_Updater_v84.zip | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "RELEASE_SIZE=$(stat -c%s XPS_Tracker_Updater_v84.zip)" >> "$GITHUB_ENV"
+
+      - name: Commit v84 version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          git commit -m 'Release v84 [skip ci]'
+          git push origin HEAD:v84-work
+
+      - name: Publish and verify GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v84 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v84 release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          RELEASE_COMMIT=$(git rev-parse HEAD)
+          gh release create v84 dist/XPS_Tracker_Updater_v84.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_COMMIT" \
+            --title 'XPS Tracker Updater v84' \
+            --notes 'v84 fixes the real application total-reconciliation path: printed totals are now retained for validation, activity totals use high-resolution OCR, failed totals first reread master-outlier rows and then force an independent all-row audit if needed, and split/MSA pipes preserve and reread every physical PDF part before recombining. Individual Pipe/Cleaning values remain limited to 1700 ft and at most two decimal places, PDF values are not rounded, and unresolved totals continue to require review rather than manufactured values.'
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/releases/tags/v84'],text=True))
+          assets=data.get('assets',[])
+          asset=next((a for a in assets if a.get('name')=='XPS_Tracker_Updater_v84.zip'),None)
+          assert asset, 'release ZIP missing'
+          digest=str(asset.get('digest') or '')
+          assert digest==f"sha256:{os.environ['RELEASE_SHA']}", (digest,os.environ['RELEASE_SHA'])
+          assert int(asset.get('size') or 0)==int(os.environ['RELEASE_SIZE']), (asset.get('size'),os.environ['RELEASE_SIZE'])
+          print('public release asset name, size, and SHA-256 verified')
+          PY
+
+      - name: Advance and re-verify public update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          rm -rf /tmp/xps-main
+          git worktree add --detach /tmp/xps-main origin/main
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          path=Path('/tmp/xps-main/update_manifest.json')
+          data={
+            'version':'84',
+            'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v84/XPS_Tracker_Updater_v84.zip',
+            'sha256':os.environ['RELEASE_SHA'],
+            'release_notes':[
+              'Keep printed activity-total OCR attached to the parsed layout so real total-mismatch recovery always runs when needed',
+              'Read printed activity totals with high-resolution OCR to prevent subtle total-digit errors',
+              'On a failed total, reread master-outlier rows first and then force an independent all-row OCR audit if the mismatch remains',
+              'Preserve and independently reread every physical split/MSA pipe part before recombining its exact length',
+              'Keep individual Pipe and Cleaning values at 1700 ft maximum and no more than two decimal places without rounding PDF measurements'
+            ]
+          }
+          path.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          cd /tmp/xps-main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update_manifest.json
+          git commit -m 'Publish v84 update manifest'
+          git push origin HEAD:main
+          git fetch origin main
+          git show origin/main:update_manifest.json > /tmp/public_manifest.json
+          python - <<'PY'
+          import json,os
+          data=json.load(open('/tmp/public_manifest.json',encoding='utf-8'))
+          assert data['version']=='84'
+          assert data['download_url']=='https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v84/XPS_Tracker_Updater_v84.zip'
+          assert data['sha256']==os.environ['RELEASE_SHA']
+          print('committed public manifest version, URL, and checksum verified')
+          PY

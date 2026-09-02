@@ -13,8 +13,14 @@ parser=src[src.index('def parse_year15_pair_list'):src.index('def parse_year15_m
 assert parser.index('_keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,profile=profile)') < parser.index('if dominant_date is not None')
 
 tree=ast.parse(src)
-names={'asset_key','_asset_id_parts','_keep_unresolved_pair_row'}
-nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in names]
+names={'asset_key','_asset_id_parts','_asset_format_rule','_asset_value_matches_profile','_keep_unresolved_pair_row'}
+nodes=[]
+for n in tree.body:
+    if isinstance(n,ast.Assign):
+        targets=[t.id for t in n.targets if isinstance(t,ast.Name)]
+        if any(t in {'ASSET_FORMAT_RULES','PROJECT_ASSET_FORMAT_RULES'} for t in targets): nodes.append(n)
+    elif isinstance(n,ast.FunctionDef) and n.name in names:
+        nodes.append(n)
 ns={'re':re}
 exec(compile(ast.Module(body=nodes,type_ignores=[]),'<header-noise>','exec'),ns)
 keep=ns['_keep_unresolved_pair_row']
@@ -25,8 +31,15 @@ assert keep('EN','SUNAA',None,None) is False
 assert keep('EC-1521','EC-1475',None,None) is True
 assert keep('R2-380','R2-413',None,None) is True
 # Direct row evidence keeps an uncertain row available for review when no project
-# format has been configured; configured profiles are covered by the v82 format test.
+# format has been configured.
 assert keep('EC-1521','SUNAA',240.0,None) is True
 assert keep('EN','SUNAA',None,'08/26/2026') is True
+
+# Current B&C profiles require correctly formatted endpoints regardless of other
+# evidence: a length/date must never rescue a dashless OCR asset.
+assert keep('EC-1521','EC-1475',None,None,profile='year15') is True
+assert keep('EC1521','EC-1475',240.0,None,profile='year15') is False
+assert keep('EC-1521','EC1475',240.0,'08/26/2026',profile='phase2_year1') is False
+assert keep('EN','SUNAA',None,'08/26/2026',profile='year15') is False
 
 print('v82 cleaning header-noise structural regression passed.')

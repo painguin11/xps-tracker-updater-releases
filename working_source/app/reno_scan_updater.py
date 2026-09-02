@@ -3584,8 +3584,8 @@ class App(tk.Tk):
                         apply_confirmed_layout(layout,confirmed_layouts[fingerprint])
                     else:
                         detected_roles=layout.get('role_indices',{})
-                        if layout.get('confidence',0)>=100 and all(k in detected_roles for k in ('up','down','value','date')):
-                            # A complete 100% native detection is already unambiguous;
+                        if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):
+                            # A complete native detection above 80% confidence is reliable enough;
                             # do not interrupt analysis with a confirmation dialog.
                             confirmed_layouts[fingerprint]=dict(detected_roles)
                         else:

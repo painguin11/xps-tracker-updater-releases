@@ -21,13 +21,13 @@ assert 'sample[:,-edge:]=255' not in src
 assert 'def _stable_numeric_vote' in src
 assert 'def _conservative_cleaning_reread' in src
 assert 'def _retry_cleaning_total_mismatch' in src
-# As of v83, total mismatch recovery is shared by Pipe and Cleaning: targeted
-# master-difference rereads run first, then an all-row independent OCR audit.
+# Total mismatch recovery is shared by Pipe and Cleaning: targeted master-
+# difference rereads run first, then an all-row independent OCR audit. v84 forces
+# the second pass so rows touched by stage one are still independently checked.
 assert 'def _retry_length_total_mismatch(self,check,all_rows=False,force=False):' in src
 assert 'self._retry_length_total_mismatch(check,all_rows=False)' in src
-assert 'self._retry_length_total_mismatch(check,all_rows=True)' in src
-assert 'self._retry_length_total_mismatch(check,all_rows=False,force=True)' in src
 assert 'self._retry_length_total_mismatch(check,all_rows=True,force=True)' in src
+assert 'self._retry_length_total_mismatch(check,all_rows=False,force=True)' in src
 assert "r['_length_user_edited']=True" in src
 assert "rec['_cleaning_value_cell']" in src
 assert "rec['_length_value_cell']" in src

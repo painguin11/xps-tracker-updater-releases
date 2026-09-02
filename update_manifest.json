@@ -1,11 +1,12 @@
 {
-  "version": "79",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v79/XPS_Tracker_Updater_v79.zip",
-  "sha256": "234014b4b47dabda1a3778ffa353d7ad4f2acaf6d9fefd8ca0af5faa34fb94d0",
+  "version": "80",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v80/XPS_Tracker_Updater_v80.zip",
+  "sha256": "1e6beb48f02b4eae93339dd4e57af1331336a5f921462630859fd8aca6cf22e9",
   "release_notes": [
-    "Detect clean compact B&C table grid rules before gap-repair",
-    "Prevent repeated text strokes from becoming dozens of fake columns",
-    "Reject implausible layouts above 20 columns before expensive master-assisted OCR",
-    "Preserve v78 aligned Wheel Walk column OCR and fail-closed total validation unchanged"
+    "Use conservative aligned-column OCR first for B&C cleaning lengths and stop immediately when the printed total reconciles",
+    "Reread only suspicious cleaning rows after a total mismatch, requiring repeated OCR support rather than arithmetic guessing",
+    "Preserve right-edge digits and use safer printed-total/date handling with a fresh v6 OCR cache",
+    "Show total mismatch at the work-order group level while keeping individual large length differences highlighted",
+    "Write MSA to the master Notes cell for detected split-pipe surveys"
   ]
 }

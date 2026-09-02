@@ -8,7 +8,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v75**. The repository's v75 source bundle contains
+Current production version: **v80**. The repository's v75 source bundle contains
 the complete app directory and regression scripts and must match the v75 release
 ZIP. In a new conversation, begin with:
 
@@ -182,6 +182,14 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - B&C cleaning tables can recover a narrow final Wheel Walk / Cleaning Date pair
   when OCR recognizes the last column as Date and the immediately preceding
   column as Length.
+
+## Current v80 fixes
+
+- B&C cleaning uses conservative aligned-column OCR first and escalates only after printed-total validation fails.
+- Targeted rereads inspect suspicious rows only and require repeated OCR evidence; the master never supplies a replacement value.
+- Printed totals and dates use safer fallback/consensus rules; OCR cache namespace is v6.
+- Total mismatches are shown once at the work-order group level while row-specific length differences remain highlighted.
+- Split-pipe/MSA updates append `MSA` to the master Notes cell.
 
 ## Current v69 fixes
 

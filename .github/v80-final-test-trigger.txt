@@ -1,0 +1,1 @@
+Run final v80 regression validation after OCR refactor and MSA note.

@@ -21,6 +21,8 @@ APP_NAME = 'XPS Tracker Updater'
 APP_VERSION = '82'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
+MAX_ROW_LENGTH = 1700.0
+MAX_ROW_LENGTH_DECIMALS = 2
 OCR_CACHE_VERSION = 'v6'
 _OCR_CACHE = {}
 _OCR_CACHE_PATH = ''
@@ -1192,6 +1194,51 @@ def ocr_workorder_guesses(page, master_index=None):
     return {'wo': wo, 'date': date, 'truck': truck, 'operator': operator, 'preview': img,
             'wo_preview': wo_preview, 'operator_preview': op_preview, 'truck_preview': truck_preview}
 
+def _row_length_token_value(token):
+    """Parse one OCR row-length token without rounding or repairing it."""
+    raw=str(token or '').strip().replace(',','')
+    if not re.fullmatch(rf'\d+(?:\.\d{{1,{MAX_ROW_LENGTH_DECIMALS}}})?',raw):
+        return None
+    try:
+        value=float(raw)
+    except Exception:
+        return None
+    return value if 0 < value <= MAX_ROW_LENGTH else None
+
+
+def _valid_row_length_value(value):
+    try:
+        numeric=float(value)
+    except Exception:
+        return False
+    return 0 < numeric <= MAX_ROW_LENGTH
+
+
+def _ocr_length_candidates(cell_img, fast_plain=False):
+    """OCR one Pipe/Cleaning measurement using the hard field-length rules."""
+    if cell_img is None or getattr(cell_img,'size',0)==0:
+        return []
+    gray=cv2.cvtColor(cell_img,cv2.COLOR_RGB2GRAY)
+    gray=cv2.resize(gray,None,fx=1.8,fy=1.8,interpolation=cv2.INTER_CUBIC)
+    variants=[gray,cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]]
+    if not fast_plain:
+        try:
+            green=cv2.normalize(cell_img[:,:,1],None,0,255,cv2.NORM_MINMAX)
+            green=cv2.resize(green,None,fx=1.8,fy=1.8,interpolation=cv2.INTER_CUBIC)
+            variants.extend(cv2.threshold(green,t,255,cv2.THRESH_BINARY)[1] for t in (120,140,160))
+        except Exception:
+            pass
+    found=[]
+    for image in variants:
+        for psm in ((7,) if fast_plain else (7,6)):
+            raw=cached_ocr_string(image,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789.').strip().replace(',','')
+            for token in re.findall(r'\d+(?:\.\d+)?',raw):
+                value=_row_length_token_value(token)
+                if value is not None:
+                    found.append(value)
+    return found
+
+
 def _ocr_digits(cell_img, decimal=False, fast_plain=False):
     if cell_img is None or cell_img.size == 0:
         return []
@@ -1735,7 +1782,7 @@ def _dominant_sheet_date(evidences, expected_date=None):
     return None
 
 
-def _ocr_gridless_number_candidates(cell_img, decimal=False):
+def _ocr_gridless_number_candidates(cell_img, decimal=False, row_length=False):
     """OCR a numeric cell after removing printed table rules.
 
     Total rows often put the digits directly against the bottom border; ordinary
@@ -1756,9 +1803,13 @@ def _ocr_gridless_number_candidates(cell_img, decimal=False):
         for psm in (11,6,7):
             raw=cached_ocr_string(clean,config=f'--psm {psm} -c tessedit_char_whitelist={wl}').strip()
             if decimal:
-                for value in re.findall(r'\d+(?:\.\d+)?',raw.replace(',','')):
-                    try: found.append(float(value))
-                    except Exception: pass
+                for token in re.findall(r'\d+(?:\.\d+)?',raw.replace(',','')):
+                    if row_length:
+                        value=_row_length_token_value(token)
+                        if value is not None: found.append(value)
+                    else:
+                        try: found.append(float(token))
+                        except Exception: pass
             else:
                 found.extend(re.findall(r'\d+',raw))
     return found
@@ -1776,7 +1827,7 @@ def _printed_total_value_is_plausible(value, band_count):
 
 
 def _choose_length(cands, expected=None):
-    cands=[float(x) for x in cands if 0 < float(x) < 5000]
+    cands=[float(x) for x in cands if _valid_row_length_value(x)]
     if not cands: return None
     if expected and expected > 0:
         # Surveyed length should usually be close to the GIS/master length.
@@ -1792,7 +1843,7 @@ def _choose_cleaning_length(cands, expected=None):
     or substitutes a value that OCR did not actually observe, so legitimate field
     differences remain visible as review warnings.
     """
-    values=[float(x) for x in cands if 0<float(x)<5000]
+    values=[float(x) for x in cands if _valid_row_length_value(x)]
     if not values: return None
     counts={value:values.count(value) for value in set(values)}
     most=max(counts.values())
@@ -1824,18 +1875,15 @@ def _direct_pair_length_candidates(cell_img):
             config=f'--psm {psm} -c tessedit_char_whitelist=0123456789.'
         ).strip().replace(',','')
         for token in re.findall(r'\d+(?:\.\d+)?',raw):
-            try:
-                value=float(token)
-                if 0<value<5000:
-                    observed.append(value)
-            except Exception:
-                pass
+            value=_row_length_token_value(token)
+            if value is not None:
+                observed.append(value)
     value,stable=_stable_numeric_vote(observed,2)
     return [value] if stable and value is not None else []
 
 
 def _stable_numeric_vote(cands,min_votes=2):
-    values=[float(x) for x in (cands or []) if 0<float(x)<5000]
+    values=[float(x) for x in (cands or []) if _valid_row_length_value(x)]
     if not values: return None,False
     counts={value:values.count(value) for value in set(values)}
     most=max(counts.values()); winners=[value for value,count in counts.items() if count==most]
@@ -1843,15 +1891,48 @@ def _stable_numeric_vote(cands,min_votes=2):
     return winners[0],True
 
 
+def _independent_row_length_read(cell_img,expanded_img=None,kind='Pipe'):
+    """Cross-check a row from independent OCR views without inventing a value."""
+    if cell_img is None or getattr(cell_img,'size',0)==0:
+        return {'value':None,'confident':False,'candidates':[],'source':'no cell'}
+    views=[cell_img]
+    if expanded_img is not None and getattr(expanded_img,'size',0):
+        views.append(expanded_img)
+    gray_values=[]; threshold_values=[]
+    for view in views:
+        gray=cv2.cvtColor(view,cv2.COLOR_RGB2GRAY)
+        normal=cv2.resize(gray,None,fx=3.0,fy=3.0,interpolation=cv2.INTER_CUBIC)
+        threshold_base=cv2.resize(gray,None,fx=4.0,fy=4.0,interpolation=cv2.INTER_CUBIC)
+        thresholded=cv2.threshold(threshold_base,200,255,cv2.THRESH_BINARY)[1]
+        for psm in (7,6):
+            for image,bucket in ((normal,gray_values),(thresholded,threshold_values)):
+                raw=cached_ocr_string(image,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789.').strip().replace(',','')
+                for token in re.findall(r'\d+(?:\.\d+)?',raw):
+                    value=_row_length_token_value(token)
+                    if value is not None: bucket.append(value)
+    threshold_value,threshold_stable=_stable_numeric_vote(threshold_values,2)
+    gray_value,gray_stable=_stable_numeric_vote(gray_values,2)
+    if kind=='Pipe' and threshold_stable:
+        return {'value':threshold_value,'confident':True,'candidates':gray_values+threshold_values,
+                'source':'independent threshold views'}
+    if gray_stable:
+        return {'value':gray_value,'confident':True,'candidates':gray_values+threshold_values,
+                'source':'independent grayscale views'}
+    if threshold_stable:
+        return {'value':threshold_value,'confident':True,'candidates':gray_values+threshold_values,
+                'source':'independent threshold views'}
+    return {'value':None,'confident':False,'candidates':gray_values+threshold_values,'source':'independent views disagree'}
+
+
 def _conservative_cleaning_reread(cell_img):
     """Reread one suspect cleaning cell without master/total arithmetic."""
     if cell_img is None or getattr(cell_img,'size',0)==0:
         return {'value':None,'confident':False,'source':'no cell','candidates':[]}
-    direct=_ocr_digits(cell_img,True,fast_plain=True)
+    direct=_ocr_length_candidates(cell_img,fast_plain=True)
     value,confident=_stable_numeric_vote(direct,2)
     if confident:
         return {'value':value,'confident':True,'source':'direct cell','candidates':direct}
-    gridless=_ocr_gridless_number_candidates(cell_img,True)
+    gridless=_ocr_gridless_number_candidates(cell_img,True,row_length=True)
     value,confident=_stable_numeric_vote(gridless,3)
     if confident:
         return {'value':value,'confident':True,'source':'gridless cell','candidates':gridless}
@@ -1935,13 +2016,10 @@ def _batch_cleaning_length_candidates(img,bands,table,value_box,skip_band_index=
             continue
         band_index=min(spans,key=lambda span:abs(yc-(span[1]+span[2])/2.0))[0]
         bucket=found.setdefault(band_index,[])
-        for value in values:
-            try:
-                numeric=float(value)
-                if 0<numeric<5000:
-                    bucket.append(numeric)
-            except Exception:
-                pass
+        for token in values:
+            numeric=_row_length_token_value(token)
+            if numeric is not None:
+                bucket.append(numeric)
     return found
 
 
@@ -2201,7 +2279,7 @@ def parse_pipe_list(page, master_index, quick_text, on_row=None, on_progress=Non
         if not pid and not new_pid:
             continue
         d=_parse_sheet_date(date_img,expected_year)
-        length_candidates=_ocr_digits(len_img,True)
+        length_candidates=_ocr_length_candidates(len_img,fast_plain=False)
         match=known.get(pid) if pid else None
         expected_length=match.get('expected') if match else None
         length=_choose_length(length_candidates,expected_length)
@@ -2886,14 +2964,14 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 # Missing batch OCR may fall back immediately because there is no
                 # usable first-pass value. Extra transforms are allowed only when
                 # the direct cell read is missing or internally ambiguous.
-                value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
-                if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
+                value_candidates=_ocr_length_candidates(value_cell,fast_plain=True)
+                if not value_candidates: value_candidates=_ocr_length_candidates(value_cell,fast_plain=False)
                 value=_choose_cleaning_length(value_candidates,None)
-                distinct={float(x) for x in value_candidates if 0<float(x)<5000}
+                distinct={float(x) for x in value_candidates if _valid_row_length_value(x)}
                 needs_consensus=(not value_candidates or value is None or len(distinct)>1)
                 if needs_consensus:
                     consensus=list(value_candidates)
-                    consensus.extend(_ocr_gridless_number_candidates(value_cell,True))
+                    consensus.extend(_ocr_gridless_number_candidates(value_cell,True,row_length=True))
                     if consensus:
                         value_candidates=consensus
                         value=_choose_cleaning_length(consensus,None)
@@ -2913,14 +2991,14 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 for candidate in expanded_candidates:
                     if candidate not in value_candidates: value_candidates.append(candidate)
             if not value_candidates:
-                value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
-                if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
+                value_candidates=_ocr_length_candidates(value_cell,fast_plain=True)
+                if not value_candidates: value_candidates=_ocr_length_candidates(value_cell,fast_plain=False)
             value=_choose_length(value_candidates,expected)
         if (kind!='cleaning' and value is not None and expected not in (None,0) and
                 abs(float(value)-float(expected))>max(100,float(expected)*1.5)):
             # Keep the established pipe-video fallback unchanged. Cleaning values
             # remain exactly what OCR observed, even when they differ from master.
-            expanded=_ocr_digits(cut(val_box),True,fast_plain=False)
+            expanded=_ocr_length_candidates(cut(val_box),fast_plain=False)
             if expanded:
                 value=_choose_length(list(value_candidates)+list(expanded),expected)
         date_evidence=date_reads.get(band_index,{'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{}})
@@ -2958,8 +3036,14 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             asset='' if status=='NEW PIPE' else f'UNMATCHED ROW {len(rows)+1}'
         rec={'kind':'Cleaning' if kind=='cleaning' else 'Pipe','asset':asset,
              'up':up,'down':down,'video_length':value,'row_date':d,'status':status}
+        rec['_length_value_cell']=value_cell.copy() if getattr(value_cell,'size',0) else None
+        expanded_value_cell=cut(val_box,vertical_bleed=2)
+        rec['_length_expanded_cell']=expanded_value_cell.copy() if getattr(expanded_value_cell,'size',0) else None
+        rec['_length_first_candidates']=list(value_candidates or [])
         if kind=='cleaning':
-            rec['_cleaning_value_cell']=value_cell.copy() if getattr(value_cell,'size',0) else None
+            # Retain the older names for compatibility with existing cleaning
+            # reread logic/tests while all activities use the shared cells above.
+            rec['_cleaning_value_cell']=rec['_length_value_cell']
             rec['_cleaning_first_candidates']=list(value_candidates or [])
         if not match: rec['skip_update']=True
         if kind in ('pipes','cleaning'):
@@ -4097,8 +4181,8 @@ class App(tk.Tk):
         # warning belongs to the entire work-order group.
         return [(i,r) for i,r in enumerate(self.records)
                 if str(r.get('wo',''))==str(check.get('wo',''))]
-    def _retry_cleaning_total_mismatch(self,check,force=False):
-        if check.get('kind')!='Cleaning': return False
+    def _retry_length_total_mismatch(self,check,all_rows=False,force=False):
+        """Reread suspect rows first; if requested, cross-check the whole activity."""
         indexed=self._total_check_records(check)
         if not indexed: return False
         expected_total=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
@@ -4107,36 +4191,47 @@ class App(tk.Tk):
         suspects=[]
         for index,record in indexed:
             if record.get('_length_user_edited'): continue
-            if record.get('_cleaning_reread_attempted') and not force: continue
-            cell=record.get('_cleaning_value_cell')
-            if cell is None or getattr(cell,'size',0)==0: continue
+            if record.get('_length_crosscheck_attempted') and not force: continue
             current=record.get('video_length'); master=record.get('master_length')
-            if current is None:
-                score=float('inf')
-            elif master not in (None,0):
-                score=abs(float(current)-float(master))
-                if score<=LENGTH_DIFF_THRESHOLD: continue
-            else:
-                continue
-            suspects.append((score,index,record))
+            invalid_current=(current is None or not _valid_row_length_value(current))
+            far_from_master=(current is not None and master not in (None,0) and
+                             abs(float(current)-float(master))>LENGTH_DIFF_THRESHOLD)
+            if all_rows or invalid_current or far_from_master:
+                priority=float('inf') if invalid_current else (abs(float(current)-float(master)) if master not in (None,0) else 0.0)
+                suspects.append((priority,index,record))
         suspects.sort(key=lambda item:item[0],reverse=True)
         changed=False
-        for _score,index,record in suspects[:6]:
-            record['_cleaning_reread_attempted']=True
-            reread=_conservative_cleaning_reread(record.get('_cleaning_value_cell'))
-            record['_cleaning_reread_source']=reread.get('source')
-            if not reread.get('confident') or reread.get('value') is None:
+        for _priority,index,record in suspects:
+            record['_length_crosscheck_attempted']=True
+            kind=record.get('kind') or check.get('kind')
+            if kind=='Cleaning' and not all_rows:
+                reread=_conservative_cleaning_reread(record.get('_length_value_cell') or record.get('_cleaning_value_cell'))
+            else:
+                reread=_independent_row_length_read(record.get('_length_value_cell'),record.get('_length_expanded_cell'),kind)
+            record['_length_crosscheck_source']=reread.get('source')
+            new_value=reread.get('value') if reread.get('confident') else None
+            if new_value is None or not _valid_row_length_value(new_value):
                 continue
-            new_value=float(reread['value']); old_value=record.get('video_length')
-            if old_value is not None and abs(float(old_value)-new_value)<=.01:
+            old_value=record.get('video_length')
+            if old_value is not None and float(old_value)==float(new_value):
                 continue
-            record['video_length']=new_value
-            refresh_length_status(record)
-            changed=True
+            # Cleaning's aligned-column first pass is intentionally conservative.
+            # During the all-row audit, a conflicting isolated-cell read is review
+            # evidence, not permission to overwrite an already valid batch value.
+            if kind=='Cleaning' and all_rows and _valid_row_length_value(old_value):
+                record['_length_crosscheck_conflict']=new_value
+                continue
+            record['video_length']=float(new_value)
+            refresh_length_status(record); changed=True
             current_rows=[r for _,r in self._total_check_records(check)]
             if _length_total_result(current_rows,expected_total).get('matches'):
                 break
         return changed
+
+    def _retry_cleaning_total_mismatch(self,check,force=False):
+        """Compatibility wrapper for the established cleaning recovery hook."""
+        if check.get('kind')!='Cleaning': return False
+        return self._retry_length_total_mismatch(check,all_rows=False,force=force)
 
     def refresh_total_check(self,check,redraw=True):
         indexed=self._total_check_records(check); rows=[r for _,r in indexed]
@@ -4183,8 +4278,10 @@ class App(tk.Tk):
         check['verified_total']=verified; check['manual_verified']=True
         # A corrected total is a new validation target. Give the same suspect
         # cells one conservative reread before asking the user to edit rows.
-        if check.get('kind')=='Cleaning':
-            self._retry_cleaning_total_mismatch(check,force=True)
+        self._retry_length_total_mismatch(check,all_rows=False,force=True)
+        self.refresh_total_check(check)
+        if not check.get('passed'):
+            self._retry_length_total_mismatch(check,all_rows=True,force=True)
         passed=self.refresh_total_check(check)
         if passed:
             messagebox.showinfo('Total Length Verified',
@@ -4204,8 +4301,11 @@ class App(tk.Tk):
                    'pdf_total_mode':resolved.get('mode',''),'verified_total':None,'manual_verified':False}
             self.total_validations.append(check)
             self.refresh_total_check(check)
-            if not check.get('passed') and kind=='Cleaning':
-                if self._retry_cleaning_total_mismatch(check):
+            if not check.get('passed'):
+                if self._retry_length_total_mismatch(check,all_rows=False):
+                    self.refresh_total_check(check)
+            if not check.get('passed'):
+                if self._retry_length_total_mismatch(check,all_rows=True):
                     self.refresh_total_check(check)
             if not check.get('passed'): self.prompt_total_check(check)
     def revalidate_total_checks_for_record(self,record):
@@ -4236,6 +4336,8 @@ class App(tk.Tk):
             try:
                 old_length=r.get('video_length')
                 r['video_length']=None if r['kind']=='Manhole' or not vars['Activity Value'].get().strip() else float(vars['Activity Value'].get())
+                if r.get('kind') in ('Pipe','Cleaning') and r.get('video_length') is not None and not _valid_row_length_value(r.get('video_length')):
+                    raise ValueError(f'Individual activity length must be greater than 0 and no more than {MAX_ROW_LENGTH:g} ft.')
                 if r.get('kind')=='Cleaning' and old_length!=r.get('video_length'):
                     r['_length_user_edited']=True
                 r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()

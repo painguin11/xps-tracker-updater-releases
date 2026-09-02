@@ -1,12 +1,11 @@
 {
-  "version": "80",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v80/XPS_Tracker_Updater_v80.zip",
-  "sha256": "1e6beb48f02b4eae93339dd4e57af1331336a5f921462630859fd8aca6cf22e9",
+  "version": "81",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v81/XPS_Tracker_Updater_v81.zip",
+  "sha256": "5e1b69b1cebf138e7bec03e4c7176c51a1ea5f85daa1316b5fdc153a2d081f0f",
   "release_notes": [
-    "Use conservative aligned-column OCR first for B&C cleaning lengths and stop immediately when the printed total reconciles",
-    "Reread only suspicious cleaning rows after a total mismatch, requiring repeated OCR support rather than arithmetic guessing",
-    "Preserve right-edge digits and use safer printed-total/date handling with a fresh v6 OCR cache",
-    "Show total mismatch at the work-order group level while keeping individual large length differences highlighted",
-    "Write MSA to the master Notes cell for detected split-pipe surveys"
+    "Exclude the exact detected structural table-header band before pair-row asset OCR and matching",
+    "Keep printed total-row exclusion unchanged while preventing headers from becoming false asset rows",
+    "Align failed-total borders correctly with the top row by drawing them in Treeview-local coordinates",
+    "Extend the visual failed-total outline across the complete work-order group while keeping total arithmetic activity-specific"
   ]
 }

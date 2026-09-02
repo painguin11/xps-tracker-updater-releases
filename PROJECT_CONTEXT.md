@@ -8,7 +8,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v80**. The repository's v75 source bundle contains
+Current production version: **v81**. The repository's v75 source bundle contains
 the complete app directory and regression scripts and must match the v75 release
 ZIP. In a new conversation, begin with:
 
@@ -182,6 +182,12 @@ asset and highlight the entire row green. Declined rows remain skipped and say
 - B&C cleaning tables can recover a narrow final Wheel Walk / Cleaning Date pair
   when OCR recognizes the last column as Date and the immediately preceding
   column as Length.
+
+## Current v81 fixes
+
+- The exact detected table-header band is carried into B&C pair-row parsing and excluded before endpoint OCR/matching.
+- Failed-total borders now use Treeview-local coordinates so the first row is outlined correctly.
+- The visual total-validation outline spans the full work-order group while arithmetic validation remains activity-specific.
 
 ## Current v80 fixes
 

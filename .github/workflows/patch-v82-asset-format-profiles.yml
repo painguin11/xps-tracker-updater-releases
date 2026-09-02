@@ -20,7 +20,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply centralized asset format rules
-        run: python .github/scripts/apply_v82_asset_format_profiles.py
+        run: |
+          python .github/scripts/apply_v82_asset_format_profiles.py
+          python .github/scripts/fix_v82_asset_format_reno_boundary.py
 
       - name: Compile and run current regressions
         run: |

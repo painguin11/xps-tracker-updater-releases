@@ -26,12 +26,15 @@ assert "self._retry_cleaning_total_mismatch(check,force=True)" in src
 assert "r['_length_user_edited']=True" in src
 assert "rec['_cleaning_value_cell']" in src
 
-# Date and group-level review behavior remain in place.
+# Date and group-level review behavior remain in place. As of v83, a total
+# failure has its own Live Summary row instead of being appended to the first
+# asset row in the work-order group.
 assert 'def _plausible_sheet_year' in src
 assert "use_date=current_wo.get('date') or current_report_date or page_date" in src
 assert 'def _draw_total_outlines' in src
-assert 'def _total_warning_for_record_index' in src
-assert "tags=('total_warning',)" not in src
+assert 'def show_total_summary_error(self,check,follow=False):' in src
+assert "tags=('total_warning',)" in src
+assert '_total_warning_for_record_index' not in src
 assert "record.setdefault('warnings',[]): record['warnings'].append(warning)" not in src
 assert 'work-order group remains outlined in red' in src
 

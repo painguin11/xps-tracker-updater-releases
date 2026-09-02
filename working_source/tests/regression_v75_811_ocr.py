@@ -6,7 +6,7 @@ from pathlib import Path
 SOURCE=Path('working_source/app/reno_scan_updater.py')
 text=SOURCE.read_text(encoding='utf-8')
 tree=ast.parse(text)
-wanted={'_parse_sheet_date_text_candidates','_choose_cleaning_length'}
+wanted={'_plausible_sheet_year','_parse_sheet_date_text_candidates','_choose_cleaning_length'}
 nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in wanted]
 ns={'datetime':datetime,'re':re}
 exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),ns)
@@ -35,6 +35,7 @@ choose=ns['_choose_cleaning_length']
 assert choose([75,75,275,275,275,275,275],273.4)==275
 assert choose([274,274,224,224,224,224,226],223.5)==224
 
-assert "OCR_CACHE_VERSION = 'v5'" in text
+m=re.search(r"OCR_CACHE_VERSION = 'v(\d+)'",text)
+assert m and int(m.group(1))>=5, m.group(0) if m else 'missing OCR cache version'
 assert 'consensus.extend(_ocr_gridless_number_candidates(value_cell,True))' in text
 print('v75 8/11 cleaning OCR/cache/date regression safeguards passed.')

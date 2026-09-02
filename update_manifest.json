@@ -1,12 +1,12 @@
 {
-  "version": "84",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v84/XPS_Tracker_Updater_v84.zip",
-  "sha256": "5ad55fab78f590916bfeb1643e1c38764c01408be8566a886b4464f865ec0637",
+  "version": "85",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v85/XPS_Tracker_Updater_v85.zip",
+  "sha256": "0e070cad7bdc587401cc57ff68eb060c3b3a97e4eb312a56867b371dbf3c59f1",
   "release_notes": [
-    "Keep printed activity-total OCR attached to the parsed layout so real total-mismatch recovery always runs when needed",
-    "Read printed activity totals with high-resolution OCR to prevent subtle total-digit errors",
-    "On a failed total, reread master-outlier rows first and then force an independent all-row OCR audit if the mismatch remains",
-    "Preserve and independently reread every physical split/MSA pipe part before recombining its exact length",
-    "Keep individual Pipe and Cleaning values at 1700 ft maximum and no more than two decimal places without rounding PDF measurements"
+    "Keep every confirmed physical table row in Live Summary and total-length arithmetic even when endpoint/date OCR needs review",
+    "Retain duplicate-looking Cleaning rows for validation while preventing duplicate master writes",
+    "Improve independent failed-total OCR selection for decimal and grid-line misreads without manufacturing PDF values",
+    "Show PDF image previews beside Activity Value, Date, W/O, Truck, and Operator in Edit Selected",
+    "When an edit-field crop is unavailable, direct the user to the exact PDF page for manual verification"
   ]
 }

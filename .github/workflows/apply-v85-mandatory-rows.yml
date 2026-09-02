@@ -1,0 +1,51 @@
+name: Apply v85 mandatory rows
+
+on:
+  push:
+    branches: [v85-work]
+    paths:
+      - '.trigger_v85_mandatory_rows'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout v85 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v85-work
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply v85 source patch
+        run: python .github/scripts/apply_v85_mandatory_rows_and_length_votes.py
+      - name: Compile and run regressions
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          python working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          python working_source/tests/regression_v84_real_packet_recovery.py
+          python working_source/tests/regression_v83_length_recovery.py
+          python working_source/tests/regression_v83_exact_pdf_numbers.py
+          python working_source/tests/regression_v83_total_preview.py
+          python working_source/tests/regression_v83_group_errors.py
+          python working_source/tests/regression_v82_master_asset_format.py
+          python working_source/tests/regression_v82_cleaning_header_noise.py
+          python working_source/tests/regression_v82_suffix_guard.py
+          python working_source/tests/regression_v82_pair_video_lengths.py
+          python working_source/tests/regression_v82_layout_threshold.py
+          python working_source/tests/regression_v81_header_outline.py
+          python working_source/tests/regression_v80_ocr_total_ui.py
+          python working_source/tests/regression_v79_layout_speed.py
+          python working_source/tests/regression_v78_rollback.py
+      - name: Commit validated v85 changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Preserve every confirmed table row during total validation'
+          git push origin HEAD:v85-work

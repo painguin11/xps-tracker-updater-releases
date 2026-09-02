@@ -17,6 +17,8 @@ jobs:
         with:
           ref: v83-work
           fetch-depth: 0
+      - name: Install regression dependencies
+        run: python -m pip install --quiet numpy opencv-python-headless
       - name: Apply v83 patch
         run: |
           python .github/scripts/apply_v83_length_recovery.py

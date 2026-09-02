@@ -1,0 +1,25 @@
+name: Inspect v83 total popup
+
+on:
+  push:
+    branches:
+      - v83-work
+
+jobs:
+  inspect:
+    if: ${{ github.event.head_commit.message == 'INSPECT_V83_TOTAL_POPUP' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v83-work
+      - name: Print relevant source
+        run: |
+          echo '=== total popup matches ==='
+          grep -n -C 45 "Verify Total Length" working_source/app/reno_scan_updater.py || true
+          echo '=== printed total info matches ==='
+          grep -n -C 35 "printed_total_info" working_source/app/reno_scan_updater.py || true
+          echo '=== pdf_total matches ==='
+          grep -n -C 30 "pdf_total" working_source/app/reno_scan_updater.py || true
+          echo '=== image popup helpers ==='
+          grep -n -C 40 "ImageTk.PhotoImage\|preview" working_source/app/reno_scan_updater.py | head -n 500 || true

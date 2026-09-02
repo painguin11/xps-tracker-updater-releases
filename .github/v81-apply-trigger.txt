@@ -1,2 +1,0 @@
-Apply and validate the v81 structural header-row and work-order outline fix.
-Retry after making the v80 behavior regression version-agnostic.

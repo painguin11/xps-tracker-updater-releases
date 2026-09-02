@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 
-SOURCE=Path('output/package_v69/XPS_Tracker_Updater/reno_scan_updater.py')
+SOURCE=Path('working_source/app/reno_scan_updater.py')
 tree=ast.parse(SOURCE.read_text(encoding='utf-8'))
 wanted={
     'digits','canonical_asset_id','asset_key','asset_number','_ocr_id_text_variants',
@@ -107,4 +107,4 @@ reno_info=namespace['new_asset_base_info'](
     {'status':'NEW PIPE','kind':'Pipe','up':'','down':'','asset':'12345A'},reno_master)
 assert reno_info=={'kind':'Pipe','row':11,'base_asset':'12345'}
 
-print('Exact matching and NEW MANHOLE/NEW PIPE safeguards passed.')
+print('Exact matching and NEW MANHOLE/NEW PIPE safeguards passed against current source.')

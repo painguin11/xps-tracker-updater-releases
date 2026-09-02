@@ -1594,6 +1594,30 @@ def _choose_cleaning_length(cands, expected=None):
     return min(winners)
 
 
+def _stable_numeric_vote(cands,min_votes=2):
+    rounded=[round(float(x),2) for x in (cands or []) if 0<float(x)<5000]
+    if not rounded: return None,False
+    counts={value:rounded.count(value) for value in set(rounded)}
+    most=max(counts.values()); winners=[value for value,count in counts.items() if count==most]
+    if len(winners)!=1 or most<int(min_votes): return None,False
+    return winners[0],True
+
+
+def _conservative_cleaning_reread(cell_img):
+    """Reread one suspect cleaning cell without master/total arithmetic."""
+    if cell_img is None or getattr(cell_img,'size',0)==0:
+        return {'value':None,'confident':False,'source':'no cell','candidates':[]}
+    direct=_ocr_digits(cell_img,True,fast_plain=True)
+    value,confident=_stable_numeric_vote(direct,2)
+    if confident:
+        return {'value':value,'confident':True,'source':'direct cell','candidates':direct}
+    gridless=_ocr_gridless_number_candidates(cell_img,True)
+    value,confident=_stable_numeric_vote(gridless,3)
+    if confident:
+        return {'value':value,'confident':True,'source':'gridless cell','candidates':gridless}
+    return {'value':None,'confident':False,'source':'unresolved','candidates':list(direct)+list(gridless)}
+
+
 def _batch_cleaning_length_candidates(img,bands,table,value_box,skip_band_index=None):
     """Read the printed Wheel Walk column in one OCR pass and map values to bands.
 
@@ -1612,6 +1636,11 @@ def _batch_cleaning_length_candidates(img,bands,table,value_box,skip_band_index=
     x1=max(0,int(left+value_box[0]*tw)); x2=min(w,int(left+value_box[1]*tw))
     if x2-x1<8:
         return {}
+    # Scanned B&C tables can put the final printed digit partly across the thick
+    # right grid stroke. A ~2% bleed is enough to retain that digit while staying
+    # well inside the neighboring date cell's text margin.
+    right_bleed=max(2,int(round((x2-x1)*.02)))
+    x2=min(w,x2+right_bleed)
     for band_index,(y1,y2) in enumerate(bands):
         if skip_band_index is not None and band_index==skip_band_index:
             continue
@@ -1630,10 +1659,9 @@ def _batch_cleaning_length_candidates(img,bands,table,value_box,skip_band_index=
         sample=cell[top:max(top+2,ch-bottom),left_pad:].copy()
         if sample.size==0:
             continue
-        # Keep the right-aligned final digit intact. Erase only the final ~1.5%
-        # containing the vertical grid stroke instead of cropping the right side.
-        edge=max(1,int(round(sample.shape[1]*.015)))
-        sample[:,-edge:]=255
+        # Do not blank the right edge. On slightly skewed scans that stroke can
+        # pass through the final digit itself (for example 366 -> 36). The small
+        # crop bleed above preserves the complete printed glyph instead.
         gray=cv2.cvtColor(sample,cv2.COLOR_RGB2GRAY)
         gray=cv2.resize(gray,None,fx=3.0,fy=3.0,interpolation=cv2.INTER_CUBIC)
         gray=cv2.copyMakeBorder(gray,12,12,20,20,cv2.BORDER_CONSTANT,value=255)
@@ -2548,7 +2576,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # The printed total is validation evidence, never an asset row.
             continue
         if on_progress: on_progress()
-        def cut(box): return img[y1:y2,max(0,int(left+box[0]*tw)):min(w,int(left+box[1]*tw))]
+        def cut(box,right_bleed=False):
+            x1=max(0,int(left+box[0]*tw)); x2=min(w,int(left+box[1]*tw))
+            if right_bleed and x2>x1:
+                x2=min(w,x2+max(2,int(round((x2-x1)*.02))))
+            return img[y1:y2,x1:x2]
         def read_id(box,fast=True):
             cell=cut(box); obs=_ocr_asset_candidates(cell,fast_plain=fast)
             if y2-y1>typical_band*1.45:
@@ -2570,46 +2602,29 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             up_obs=list(dict.fromkeys(up_obs+read_id(up_box,False)))
             dn_obs=list(dict.fromkeys(dn_obs+read_id(dn_box,False)))
             match,match_status=_resolve_pipe_pair(up_obs,dn_obs,master_index)
-        value_cell=cut(val_box)
+        value_cell=cut(val_box,right_bleed=(kind=='cleaning'))
         expected=match.get('expected') if match else None
         if kind=='cleaning':
             value_candidates=list(batch_cleaning_values.get(band_index,[]))
             if value_candidates:
-                value=_choose_cleaning_length(value_candidates,expected)
-                batch_suspect=(value is None or (expected not in (None,0) and
-                    abs(float(value)-float(expected))>LENGTH_DIFF_THRESHOLD))
-                if batch_suspect:
-                    # The batch column reader is normally the cleanest source, but
-                    # a dropped digit can produce a single plausible-looking value.
-                    # Verify only that suspicious cell; do not use the total to
-                    # manufacture a replacement and do not rewrite unrelated rows.
-                    cell_candidates=_ocr_digits(value_cell,True,fast_plain=True)
-                    if not cell_candidates:
-                        cell_candidates=_ocr_digits(value_cell,True,fast_plain=False)
-                    consensus=list(value_candidates)+list(cell_candidates)
-                    cell_distinct={round(float(x),2) for x in cell_candidates if 0<float(x)<5000}
-                    if not cell_candidates or len(cell_distinct)>1:
-                        consensus.extend(_ocr_gridless_number_candidates(value_cell,True))
-                    if consensus:
-                        value_candidates=consensus
-                        value=_choose_cleaning_length(consensus,expected)
+                # Clean aligned-column OCR is authoritative for the first pass.
+                # Do not re-read a row merely because it differs from the master.
+                value=_choose_cleaning_length(value_candidates,None)
             else:
+                # Missing batch OCR may fall back immediately because there is no
+                # usable first-pass value. Extra transforms are allowed only when
+                # the direct cell read is missing or internally ambiguous.
                 value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
                 if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
-                value=_choose_cleaning_length(value_candidates,expected)
+                value=_choose_cleaning_length(value_candidates,None)
                 distinct={round(float(x),2) for x in value_candidates if 0<float(x)<5000}
-                needs_consensus=(not value_candidates or value is None or len(distinct)>1 or
-                    (value is not None and expected not in (None,0) and
-                     abs(float(value)-float(expected))>LENGTH_DIFF_THRESHOLD))
+                needs_consensus=(not value_candidates or value is None or len(distinct)>1)
                 if needs_consensus:
                     consensus=list(value_candidates)
-                    width=value_cell.shape[1]
-                    for ratio in (.015,.030,.045,.060):
-                        pad=max(2,int(round(width*ratio)))
-                        if width>pad*2+4:
-                            consensus.extend(_ocr_digits(value_cell[:,pad:width-pad],True,fast_plain=True))
                     consensus.extend(_ocr_gridless_number_candidates(value_cell,True))
-                    value=_choose_cleaning_length(consensus,expected)
+                    if consensus:
+                        value_candidates=consensus
+                        value=_choose_cleaning_length(consensus,None)
         else:
             value_candidates=_ocr_digits(value_cell,True,fast_plain=True)
             if not value_candidates: value_candidates=_ocr_digits(value_cell,True,fast_plain=False)
@@ -2648,6 +2663,9 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             asset='' if status=='NEW PIPE' else f'UNMATCHED ROW {len(rows)+1}'
         rec={'kind':'Cleaning' if kind=='cleaning' else 'Pipe','asset':asset,
              'up':up,'down':down,'video_length':value,'row_date':d,'status':status}
+        if kind=='cleaning':
+            rec['_cleaning_value_cell']=value_cell.copy() if getattr(value_cell,'size',0) else None
+            rec['_cleaning_first_candidates']=list(value_candidates or [])
         if not match: rec['skip_update']=True
         if kind in ('pipes','cleaning'):
             rec['master_length']=match.get('expected') if match else None; rec['length_diff']=None
@@ -3691,6 +3709,47 @@ class App(tk.Tk):
     def _total_check_records(self,check):
         return [(i,r) for i,r in enumerate(self.records)
                 if str(r.get('wo',''))==str(check.get('wo','')) and r.get('kind')==check.get('kind')]
+    def _retry_cleaning_total_mismatch(self,check,force=False):
+        if check.get('kind')!='Cleaning': return False
+        indexed=self._total_check_records(check)
+        if not indexed: return False
+        expected_total=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
+        rows=[record for _,record in indexed]
+        if _length_total_result(rows,expected_total).get('matches'): return False
+        suspects=[]
+        for index,record in indexed:
+            if record.get('_length_user_edited'): continue
+            if record.get('_cleaning_reread_attempted') and not force: continue
+            cell=record.get('_cleaning_value_cell')
+            if cell is None or getattr(cell,'size',0)==0: continue
+            current=record.get('video_length'); master=record.get('master_length')
+            if current is None:
+                score=float('inf')
+            elif master not in (None,0):
+                score=abs(float(current)-float(master))
+                if score<=LENGTH_DIFF_THRESHOLD: continue
+            else:
+                continue
+            suspects.append((score,index,record))
+        suspects.sort(key=lambda item:item[0],reverse=True)
+        changed=False
+        for _score,index,record in suspects[:6]:
+            record['_cleaning_reread_attempted']=True
+            reread=_conservative_cleaning_reread(record.get('_cleaning_value_cell'))
+            record['_cleaning_reread_source']=reread.get('source')
+            if not reread.get('confident') or reread.get('value') is None:
+                continue
+            new_value=float(reread['value']); old_value=record.get('video_length')
+            if old_value is not None and abs(float(old_value)-new_value)<=.01:
+                continue
+            record['video_length']=new_value
+            refresh_length_status(record)
+            changed=True
+            current_rows=[r for _,r in self._total_check_records(check)]
+            if _length_total_result(current_rows,expected_total).get('matches'):
+                break
+        return changed
+
     def refresh_total_check(self,check,redraw=True):
         indexed=self._total_check_records(check); rows=[r for _,r in indexed]
         check['record_indices']=[index for index,_ in indexed]
@@ -3750,6 +3809,10 @@ class App(tk.Tk):
                 messagebox.showerror('Invalid total','Enter a positive numeric total length.',parent=self)
                 continue
             check['verified_total']=verified; check['manual_verified']=True
+            # A corrected total is a new validation target. Give the same suspect
+            # cells one conservative reread before asking the user to edit rows.
+            if check.get('kind')=='Cleaning':
+                self._retry_cleaning_total_mismatch(check,force=True)
             passed=self.refresh_total_check(check)
             if passed:
                 messagebox.showinfo('Total Length Verified',
@@ -3769,6 +3832,9 @@ class App(tk.Tk):
                    'pdf_total_mode':resolved.get('mode',''),'verified_total':None,'manual_verified':False}
             self.total_validations.append(check)
             self.refresh_total_check(check)
+            if not check.get('passed') and kind=='Cleaning':
+                if self._retry_cleaning_total_mismatch(check):
+                    self.refresh_total_check(check)
             if not check.get('passed'): self.prompt_total_check(check)
     def revalidate_total_checks_for_record(self,record):
         for check in self.total_validations:
@@ -3793,7 +3859,10 @@ class App(tk.Tk):
             ttk.Label(win,text=lab+':').grid(row=n,column=0,padx=8,pady=6,sticky='e'); v=tk.StringVar(value=val); vars[lab]=v; ttk.Entry(win,textvariable=v,width=30).grid(row=n,column=1,padx=8,pady=6)
         def save():
             try:
+                old_length=r.get('video_length')
                 r['video_length']=None if r['kind']=='Manhole' or not vars['Activity Value'].get().strip() else float(vars['Activity Value'].get())
+                if r.get('kind')=='Cleaning' and old_length!=r.get('video_length'):
+                    r['_length_user_edited']=True
                 r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
             refresh_length_status(r)

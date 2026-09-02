@@ -1,0 +1,45 @@
+name: Apply v80 MSA master note
+
+on:
+  push:
+    branches:
+      - v80-work
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.event.head_commit.message == 'APPLY_V80_MSA_NOTE' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v80 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v80-work
+          fetch-depth: 0
+
+      - name: Apply MSA master-note patch
+        run: python .github/scripts/apply_v80_msa_note.py
+
+      - name: Compile and prepare regression package path
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py
+          python -m py_compile working_source/app/xps_update.py
+          rm -rf output/package_v69
+          mkdir -p output/package_v69/XPS_Tracker_Updater
+          cp -a working_source/app/. output/package_v69/XPS_Tracker_Updater/
+
+      - name: Run relevant regressions
+        run: |
+          python working_source/tests/regression_split_pipes.py
+          python working_source/tests/regression_v80_ocr_total_ui.py
+          python working_source/tests/regression_master_insert.py
+
+      - name: Commit validated source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_split_pipes.py
+          git commit -m 'Add MSA note to master pipe rows in v80 [skip ci]'
+          git push origin HEAD:v80-work

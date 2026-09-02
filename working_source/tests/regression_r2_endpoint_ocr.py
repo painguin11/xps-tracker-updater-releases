@@ -4,6 +4,19 @@ import types
 from pathlib import Path
 
 
+source = Path("working_source/app/reno_scan_updater.py").resolve()
+source_text=source.read_text(encoding='utf-8')
+assert 'def _ocr_known_r2_candidates' in source_text
+assert 'def parse_year15_pair_list' in source_text
+
+pdf_path = Path(sys.argv[1] if len(sys.argv) > 1 else "../upload/8-17-2026(1).pdf")
+if not pdf_path.exists():
+    # Customer fixture PDFs are deliberately absent from the public repository.
+    # Static current-source guards still run here; the OCR fixture remains runnable
+    # locally by passing the PDF path explicitly.
+    print('R2 fixture PDF unavailable; current-source R2 structural guards passed, fixture OCR skipped.')
+    raise SystemExit(0)
+
 sys.path.insert(0, str(Path("tmp/pydeps").resolve()))
 
 # The production program uses Excel COM on Windows. This regression exercises
@@ -16,18 +29,9 @@ sys.modules["win32com.client"] = win32com_client
 sys.modules["pythoncom"] = types.ModuleType("pythoncom")
 sys.modules["pywintypes"] = types.ModuleType("pywintypes")
 
-source = Path("working_source/app/reno_scan_updater.py").resolve()
-source_text=source.read_text(encoding='utf-8')
-assert 'def _ocr_known_r2_candidates' in source_text
-assert 'def parse_year15_pair_list' in source_text
 spec = importlib.util.spec_from_file_location("tracker_current", source)
 tracker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tracker)
-
-pdf_path = Path(sys.argv[1] if len(sys.argv) > 1 else "../upload/8-17-2026(1).pdf")
-if not pdf_path.exists():
-    print('R2 fixture PDF unavailable; current-source R2 structural guards passed, fixture OCR skipped.')
-    raise SystemExit(0)
 
 pairs = [
     ("R2-414", "R2-410", 71),

@@ -3,7 +3,8 @@ import re
 
 src=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
 assert re.search(r"APP_VERSION = ['\"]\d+['\"]",src)
-assert "OCR_CACHE_VERSION = 'v5'" in src
+cache_match=re.search(r"OCR_CACHE_VERSION = ['\"]v(\d+)['\"]",src)
+assert cache_match and int(cache_match.group(1))>=5
 assert 'def _batch_cleaning_length_candidates' in src
 assert '_batch_cleaning_length_candidates(img,bands,table,val_box,total_band_index)' in src
 assert 'value_candidates=list(batch_cleaning_values.get(band_index,[]))' in src

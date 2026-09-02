@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-SOURCE=Path('output/package_v69/XPS_Tracker_Updater/reno_scan_updater.py')
+SOURCE=Path('working_source/app/reno_scan_updater.py')
 tree=ast.parse(SOURCE.read_text(encoding='utf-8'))
 names={'digits','asset_key','fmt_date','write_excel_date','legacy_trouble_ticket_key','trouble_ticket_key','trouble_ticket_asset_key','migrate_trouble_ticket_workbook_v60','prepare_trouble_ticket_workbook'}
 nodes=[]
@@ -22,7 +22,7 @@ exec(compile(module,str(SOURCE),'exec'),namespace)
 
 
 class Style:
-    def __init__(self): self.Bold=False; self.Color=None
+    def __init__(self): self.Bold=False; self.Color=None; self.Hidden=False
 
 
 class Cell:
@@ -132,4 +132,4 @@ with tempfile.TemporaryDirectory() as folder:
     assert migrated.sheet.Cells(2,3).Value=='Open'
     assert migrated.sheet.Cells(2,8).Value=='ANTHONY M'
     assert migrated.sheet.Cells(2,19).Value=='legacy-key'
-print('Trouble-ticket page deduplication and same-asset adjacency checks passed.')
+print('Trouble-ticket page deduplication and same-asset adjacency checks passed against current source.')

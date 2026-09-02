@@ -5,7 +5,7 @@ from pathlib import Path
 SOURCE=Path('working_source/app/reno_scan_updater.py')
 text=SOURCE.read_text(encoding='utf-8')
 tree=ast.parse(text)
-wanted={'_parse_sheet_date_text_candidates','_choose_sheet_date_evidence','_dominant_sheet_date','_printed_total_value_is_plausible'}
+wanted={'_plausible_sheet_year','_parse_sheet_date_text_candidates','_choose_sheet_date_evidence','_dominant_sheet_date','_printed_total_value_is_plausible'}
 nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in wanted]
 ns={'re':re,'datetime':datetime}; exec(compile(ast.Module(body=nodes,type_ignores=[]),str(SOURCE),'exec'),ns)
 expected=datetime(2026,8,11)

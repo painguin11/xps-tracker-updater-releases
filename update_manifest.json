@@ -1,11 +1,11 @@
 {
-  "version": "92",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v92/XPS_Tracker_Updater_v92.zip",
-  "sha256": "68e5e3f61025bf1583404cdbce6c2046426d14ae710f40156935d4f950b1db8b",
+  "version": "93",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v93/XPS_Tracker_Updater_v93.zip",
+  "sha256": "bddb268e2e0aebc6ee98cfb4022f0e05cc1c06e20d80f96895f8f9610a002329",
   "release_notes": [
-    "Correct the pink/magenta Work Order OCR path to accept both 4-digit and 5-digit machine-typed Work Order numbers",
-    "Keep color isolation as the primary Work Order read so green rules and black form labels do not interfere",
-    "Keep the editable Work Order confirmation popup and grayscale OCR fallback",
-    "Preserve all v91 new-asset preview, endpoint recovery, continuation, total-validation, and matching safeguards"
+    "Leave the Work Order confirmation field blank when pink/magenta W/O digits are too faded, incomplete, or inconsistent to trust",
+    "Require strong isolated-color OCR agreement and visible digit structure before auto-filling a 4- or 5-digit Work Order",
+    "Write NEW PIPE or NEW MANHOLE in the master Notes column for every approved new asset row, including Add to Master rows",
+    "Preserve all v92 and earlier new-asset, endpoint-recovery, continuation, total-validation, and matching safeguards"
   ]
 }

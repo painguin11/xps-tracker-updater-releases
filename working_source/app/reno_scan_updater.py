@@ -1489,14 +1489,45 @@ def _asset_body_digits(value):
 
 
 def _endpoint_digit_tokens(cell_img):
-    """Return numeric strings actually OCR-observed in one endpoint cell."""
+    """Return numeric strings actually OCR-observed in one endpoint cell.
+
+    The normal endpoint OCR keeps the complete printed ID.  This fallback is used
+    only after pair matching has already failed, so add an independent borderless,
+    padded digit read as well.  It repairs cases where a vertical table rule makes
+    a cell such as DN-1912 unreadable as a full ID while its printed numeric body is
+    still visible.  The caller still requires both OCR-observed endpoint numbers to
+    identify exactly one existing master pipe; no endpoint is invented from master
+    data and legitimate non-master pairs remain review-only.
+    """
     if cell_img is None or getattr(cell_img,'size',0)==0:
         return []
     out=[]
-    for value in _ocr_digits(cell_img,False,fast_plain=False):
+    def add(value):
         token=re.sub(r'\D','',str(value or ''))
         if token and token not in out:
             out.append(token)
+    for value in _ocr_digits(cell_img,False,fast_plain=False):
+        add(value)
+
+    # Give an unresolved grid cell a genuinely independent view.  Cropping the
+    # edge rules and adding white padding changes both the framing and OCR cache
+    # key, so a stale/failed tight-cell result cannot suppress this recovery pass.
+    h,w=cell_img.shape[:2]
+    trim_x=max(2,int(round(w*.035))); trim_y=max(1,int(round(h*.08)))
+    inner=(cell_img[trim_y:h-trim_y,trim_x:w-trim_x]
+           if w>trim_x*2+8 and h>trim_y*2+6 else cell_img)
+    if getattr(inner,'size',0):
+        gray=cv2.cvtColor(inner,cv2.COLOR_RGB2GRAY)
+        gray=cv2.resize(gray,None,fx=3.4,fy=3.4,interpolation=cv2.INTER_CUBIC)
+        variants=(gray,cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1])
+        for image in variants:
+            padded=cv2.copyMakeBorder(image,18,18,28,28,cv2.BORDER_CONSTANT,value=255)
+            for psm in (7,13):
+                text=cached_ocr_string(
+                    padded,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789'
+                )
+                for token in re.findall(r'\d+',str(text or '')):
+                    add(token)
     return out
 
 
@@ -4272,6 +4303,62 @@ class MsaConfirmDialog(tk.Toplevel):
     def cancel(self): self.result=None; self.destroy()
 
 
+class NewAssetApprovalDialog(tk.Toplevel):
+    """Preserve the immediate suffixed-new-asset Yes/No flow with PDF ID crops."""
+    def __init__(self,parent,record,base_info):
+        super().__init__(parent); self.result=False; self.crop_photos=[]
+        apply_app_icon(self)
+        is_manhole=record.get('kind')=='Manhole'
+        label='Manhole' if is_manhole else 'Pipe'
+        noun='manhole' if is_manhole else 'pipe'
+        self.title(f'New {label} Detected'); self.transient(parent); self.grab_set(); self.resizable(False,False)
+        scanned=(record.get('asset') or record.get('display_asset') or '') if is_manhole else f"{record.get('up','')} -> {record.get('down','')}"
+        text=(f"{record.get('status','NEW '+label.upper())}\n\nScanned asset:\n{scanned}\n\n"
+              f"Existing base {noun}:\n{base_info.get('base_asset','')}\n\n"
+              f"Add the new {noun} directly below its base row in the master?\n\n"
+              'The inserted master row will be highlighted green.')
+        ttk.Label(self,text=text,justify='left',wraplength=720).grid(row=0,column=0,columnspan=3,padx=16,pady=(16,8),sticky='w')
+
+        previews=dict(record.get('_field_previews') or {})
+        preview_pages=dict(record.get('_field_preview_pages') or {})
+        preview_frame=ttk.LabelFrame(self,text='PDF ID verification',padding=10)
+        preview_frame.grid(row=1,column=0,columnspan=3,padx=16,pady=(0,12),sticky='ew')
+        preview_specs=([('Manhole ID',record.get('asset') or '', 'asset')] if is_manhole else
+                       [('Upstream ID',record.get('up') or '', 'upstream'),
+                        ('Downstream ID',record.get('down') or '', 'downstream')])
+        for column,(field_label,value,key) in enumerate(preview_specs):
+            block=ttk.Frame(preview_frame); block.grid(row=0,column=column,padx=8,sticky='nw')
+            ttk.Label(block,text=f'{field_label}: {value}',font=('Segoe UI',10,'bold')).pack(anchor='w',pady=(0,4))
+            crop=previews.get(key)
+            pages=list(preview_pages.get(key) or [])
+            if not pages:
+                pages=list(record.get('source_pages') or [])
+                if not pages and record.get('source_page') is not None: pages=[record.get('source_page')]
+            if crop is None or not getattr(crop,'size',0):
+                ttk.Label(block,text=_preview_unavailable_text(pages),foreground='#8A5200').pack(anchor='w')
+                continue
+            try:
+                image=Image.fromarray(crop)
+                if image.width<260:
+                    scale=min(3.0,260.0/max(1,image.width))
+                    image=image.resize((max(1,int(image.width*scale)),max(1,int(image.height*scale))),Image.Resampling.LANCZOS)
+                image.thumbnail((360,95),Image.Resampling.LANCZOS)
+                photo=ImageTk.PhotoImage(image,master=self); self.crop_photos.append(photo)
+                page=pages[0] if pages else record.get('source_page','?')
+                ttk.Label(block,text=f'PDF page {page}:').pack(anchor='w')
+                ttk.Label(block,image=photo).pack(anchor='w',pady=(2,0))
+            except Exception:
+                ttk.Label(block,text=_preview_unavailable_text(pages),foreground='#8A5200').pack(anchor='w')
+        for column in range(len(preview_specs)): preview_frame.columnconfigure(column,weight=1)
+
+        buttons=ttk.Frame(self); buttons.grid(row=2,column=0,columnspan=3,pady=(0,14))
+        ttk.Button(buttons,text='Yes',command=lambda:self.finish(True),style='Primary.TButton').pack(side='left',padx=6)
+        ttk.Button(buttons,text='No',command=lambda:self.finish(False)).pack(side='left',padx=6)
+        self.protocol('WM_DELETE_WINDOW',lambda:self.finish(False))
+        self.update_idletasks(); self.geometry(f'+{parent.winfo_rootx()+70}+{parent.winfo_rooty()+55}')
+    def finish(self,value): self.result=bool(value); self.destroy()
+
+
 class UnmatchedAssetDecisionDialog(tk.Toplevel):
     def __init__(self,parent,record):
         super().__init__(parent); self.result=None; self.crop_photos=[]
@@ -4812,12 +4899,8 @@ class App(tk.Tk):
                 rec['new_asset_base_row']=base_info['row']
                 rec['new_asset_base_asset']=base_info['base_asset']
                 label='pipe' if base_info['kind']=='Pipe' else 'manhole'
-                rec['new_asset_approved']=messagebox.askyesno(
-                    f'New {label.title()} Detected',
-                    f"{rec['status']}\n\nScanned asset:\n{rec['display_asset']}\n\n"
-                    f"Existing base {label}:\n{base_info['base_asset']}\n\n"
-                    f"Add the new {label} directly below its base row in the master?\n\n"
-                    'The inserted master row will be highlighted green.')
+                dlg=NewAssetApprovalDialog(self,rec,base_info); self.wait_window(dlg)
+                rec['new_asset_approved']=bool(dlg.result)
             else:
                 rec['new_asset_approved']=False
                 rec['warnings'].append('BASE MASTER ROW NOT FOUND')

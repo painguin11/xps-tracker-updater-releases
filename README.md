@@ -31,3 +31,14 @@ No master spreadsheets, scanned PDFs, trouble tickets, OCR caches, logs, or comp
 - An unreadable page no longer aborts the whole PDF: readable rows are kept, later pages continue processing, and the live summary shows the affected work order and page numbers at the top.
 - Fixes continuation value-cell clipping, including the 8-24-2026 Cleaning continuation where pages 10-11 reconcile to the printed 4430-ft total.
 - Preserves v86 endpoint OCR, editable asset/node fields, split/MSA handling, and exact PDF-number safeguards.
+
+
+## v89
+
+- Verifies Manhole work orders against the user-confirmed survey count shown in the Description of work performed crop.
+- Uses only the final continuation page total for multi-page Pipe/Cleaning total verification.
+- Adds Add to Master / Ignore / Back to Summary decisions for unresolved Pipe and Manhole rows at Update Master time.
+- Limits automatic MSA combination to exactly two duplicate Pipe rows; three or more remain blocked for ID review.
+- Adds PDF field previews to Trouble Ticket editing and preserves all existing continuation, exact-number, and partial-page safeguards.
+- Preserves complete printed endpoint pairs that are absent from the master instead of fuzzy-mapping them to nearby assets.
+- Recovers a narrow left-grid OCR artifact such as IDN-1912 back to the established DN prefix, and recognizes common OCR variants of Length Surveyed headers.

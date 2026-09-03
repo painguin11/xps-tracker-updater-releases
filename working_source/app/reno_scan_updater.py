@@ -18,7 +18,7 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '88'
+APP_VERSION = '89'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 DUPLICATE_PIPE_REVIEW = 'Duplicate pipe - check IDs'
@@ -1570,8 +1570,16 @@ def _authoritative_asset_candidates(observations,known_items):
     out=[]
     for raw in observations:
         parts=_asset_id_parts(raw)
-        if parts and parts[0] in prefixes:
-            value=canonical_asset_id(''.join(parts))
+        if not parts:
+            continue
+        prefix,number,suffix=parts
+        # A left table rule can attach one narrow OCR glyph to an otherwise
+        # complete printed endpoint (for example DN-1912 -> IDN-1912). Repair
+        # only I/L plus a prefix that is already established by the master.
+        if prefix not in prefixes and len(prefix)>1 and prefix[0] in ('I','L') and prefix[1:] in prefixes:
+            prefix=prefix[1:]
+        if prefix in prefixes:
+            value=canonical_asset_id(f'{prefix}{number}{suffix}')
             if value not in out: out.append(value)
     return out
 
@@ -1760,6 +1768,12 @@ def _resolve_pipe_pair(up_observations,dn_observations,master_index):
         return None,'AMBIGUOUS PIPE PAIR'
     if _new_pipe_base_item(up_observations,dn_observations,master_index):
         return None,'NEW PIPE'
+    # Complete project-valid IDs are authoritative evidence from the PDF. If both
+    # endpoint cells contain them but they do not form an existing/new-suffix pair,
+    # preserve the printed IDs for Add/Ignore review instead of silently fuzzy-
+    # mapping them to a nearby master pipe.
+    if up_full and dn_full:
+        return None,'NOT MATCHED'
     # Pair matching can tolerate more surrounding OCR junk because both endpoints
     # must still form one real master pair; this is safer than loosening single-ID matches.
     up_scores=_rank_asset_candidates(up_observations,endpoints,max_full_dist=6)
@@ -2934,7 +2948,8 @@ def _header_role(compact,kind):
     if (('up' in compact or compact.startswith('u')) and any(x in compact for x in ('mh','ma','mn'))) or compact.startswith(('upm','uma')): return 'up'
     if (('dn' in compact or compact.startswith('d')) and any(x in compact for x in ('mh','nh','mn'))) or compact.startswith(('dnm','dnh')): return 'down'
     if kind=='cleaning' and any(x in compact for x in ('wheel','wwalk','wheelwal')): return 'value'
-    if kind=='pipes' and ('survey' in compact or ('length' in compact and 'scheduled' not in compact)): return 'value'
+    if kind=='pipes' and ('survey' in compact or 'survev' in compact or
+                          (('length' in compact or 'leneth' in compact) and 'scheduled' not in compact)): return 'value'
     if 'date' in compact: return 'date'
     return None
 

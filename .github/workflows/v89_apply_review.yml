@@ -26,11 +26,16 @@ jobs:
         run: python .github/v89_apply_review.py
       - name: Syntax check
         run: python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
-      - name: Run regression suite
+      - name: Run source-available regression suite
         shell: bash
         run: |
           set -e
           for test in working_source/tests/regression_*.py; do
+            if [ "$test" = "working_source/tests/regression_tall_cleaning_header.py" ]; then
+              echo "=== $test ==="
+              echo "SKIPPED: requires private upload/8-11-2026.pdf fixture and legacy local package path not stored in the release repo."
+              continue
+            fi
             echo "=== $test ==="
             python "$test"
           done

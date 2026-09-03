@@ -21,9 +21,15 @@ for required in (
     "apply_manual_asset_edit(r,self.master_index,vars['Upstream Node'].get(),vars['Downstream Node'].get())",
     "apply_manual_asset_edit(r,self.master_index,asset=vars['Asset'].get())",
     'def _resolve_pipe_pair_from_endpoint_digits(',
-    'digit_match=_resolve_pipe_pair_from_endpoint_digits(cut(up_box),cut(dn_box),master_index)',
+    'digit_match=_resolve_pipe_pair_from_endpoint_digits(',
 ):
     assert required in src, required
+# v94 may supplement the same conservative resolver with additional digits that
+# were OCR-observed from padded endpoint-cell stacks.  This is PDF evidence only;
+# the master still cannot supply an unobserved endpoint.
+if 'def _batch_pair_endpoint_digit_candidates(' in src:
+    assert 'up_extra=batch_up_digit_endpoints.get(band_index,[])' in src
+    assert 'dn_extra=batch_dn_digit_endpoints.get(band_index,[])' in src
 
 # Import production source while stubbing only Windows COM modules unavailable in CI.
 win32com=types.ModuleType('win32com')

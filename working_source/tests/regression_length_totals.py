@@ -23,14 +23,21 @@ pages=ns['_resolve_printed_total_sources']([
     {'page':2,'info':{'found':True,'value':2000,'confident':True}},
     {'page':3,'info':{'found':True,'value':3690,'confident':True}},
 ])
-assert pages['value']==5690 and pages['confident']
+assert pages['value']==3690 and pages['confident'] and pages['pages']==[3]
 
 partial=ns['_resolve_printed_total_sources']([
     {'page':2,'info':{'found':True,'value':2000,'confident':True}},
     {'page':3,'info':{'found':False,'value':None,'confident':False}},
     {'page':4,'info':{'found':True,'value':3690,'confident':True}},
 ])
-assert partial['value']==5690 and not partial['confident']
+assert partial['value']==3690 and partial['confident'] and partial['pages']==[4]
+
+final_unreadable=ns['_resolve_printed_total_sources']([
+    {'page':10,'info':{'found':True,'value':4232,'confident':True}},
+    {'page':11,'info':{'found':False,'value':None,'confident':False}},
+])
+assert final_unreadable['available'] and final_unreadable['value'] is None
+assert final_unreadable['pages']==[11] and not final_unreadable['confident']
 
 lengths=[56,163,190,165,190,60,35,206,296,171,47,262,114,101,105,140,299,299,296,258,300,299,317,305,301,319,396]
 records=[{'video_length':value} for value in lengths]

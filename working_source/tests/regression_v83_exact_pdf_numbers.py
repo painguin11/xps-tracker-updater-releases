@@ -18,7 +18,8 @@ assert 'distinct={float(x) for x in value_candidates' in src
 
 # The pipe retry may expose more of the original PDF cell, but it may only add
 # OCR-observed candidates. It cannot synthesize, round, or substitute a value.
-assert 'def cut(box,right_bleed=False,vertical_bleed=0):' in src
+assert ('def cut(box,right_bleed=False,vertical_bleed=0):' in src or
+        'def cut(box,right_bleed=False,vertical_bleed=0,horizontal_bleed=0):' in src)
 assert ("expanded_candidates=_direct_pair_length_candidates(cut(val_box,vertical_bleed=2))" in src or
         ("expanded_cell=cut(val_box,right_bleed=True,vertical_bleed=2)" in src and
          "expanded_candidates=_direct_pair_length_candidates(expanded_cell)" in src))

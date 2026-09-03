@@ -9,7 +9,7 @@ assert ("preview=cut(value_box,y1,y2)" in src or
 assert "'preview':preview.copy()" in src
 
 # The verification UI is no longer a text-only simpledialog; it displays each
-# available source-page total crop and returns the verified numeric value.
+# selected final-page total crop and returns the verified numeric value.
 assert 'class TotalLengthVerifyDialog(tk.Toplevel):' in src
 assert "PDF page {source.get('page','?')} printed total:" in src
 assert 'ImageTk.PhotoImage(image,master=self)' in src
@@ -30,3 +30,6 @@ assert "if kind=='pipes' and not match and match_status=='NEW PIPE':" in src
 assert "if kind=='pipe' and not match and match_status=='NEW PIPE':" not in src
 
 print('v83 total preview and group-error summary regression passed.')
+
+assert "'all_sources':sources" in src
+assert "'sources':([selected_source] if selected_source else [])" in src

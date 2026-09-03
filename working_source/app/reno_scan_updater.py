@@ -1023,7 +1023,7 @@ def _normalize_truck(raw):
                 return candidate
     return ''
 
-def ocr_workorder_guesses(page, master_index=None):
+def ocr_workorder_guesses(page, master_index=None, expect_manhole_count=False):
     """Read the Work Order form and PRE-FILL the confirmation dialog.
 
     These forms contain handwriting, so OCR is only a best guess. The popup remains
@@ -1191,8 +1191,28 @@ def ocr_workorder_guesses(page, master_index=None):
     wo_preview = crop(.04,.043,.325,.090)
     op_preview = op_crop
     truck_preview = veh_crop
+
+    # Manhole work orders usually write the expected survey count in the
+    # Description of work performed section (for example "24 - SZ Manhole
+    # Surveys").  Show this crop to the user and use OCR only as a suggestion;
+    # the confirmation dialog requires the user-confirmed integer before the
+    # table rows are processed.
+    description_preview=None; manhole_count_guess=''
+    if expect_manhole_count:
+        description_preview=crop(.035,.425,.72,.700)
+        try:
+            description_text=_best_ocr_text(description_preview,psms=(11,12,6))
+            for line in str(description_text or '').splitlines():
+                m=re.search(r'^\s*[^0-9]{0,6}(\d{1,3})(?!\d)',line)
+                if m and 1 <= int(m.group(1)) <= 999:
+                    manhole_count_guess=m.group(1); break
+        except Exception:
+            manhole_count_guess=''
     return {'wo': wo, 'date': date, 'truck': truck, 'operator': operator, 'preview': img,
-            'wo_preview': wo_preview, 'operator_preview': op_preview, 'truck_preview': truck_preview}
+            'wo_preview': wo_preview, 'operator_preview': op_preview, 'truck_preview': truck_preview,
+            'expect_manhole_count':bool(expect_manhole_count),
+            'manhole_count_guess':manhole_count_guess,
+            'description_preview':description_preview}
 
 def _row_length_token_value(token):
     """Parse one OCR row-length token without rounding or repairing it."""
@@ -2320,27 +2340,29 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
     return below if below is not None else result
 
 def _resolve_printed_total_sources(sources):
-    """Resolve page total readings into one work-order/activity expected total."""
+    """Use only the final page's printed total for a multi-page table run.
+
+    Brown & Caldwell continuation pages carry a work-order/activity total on the
+    final page. Earlier pages may contain row values or OCR noise that look like
+    totals; they must never be added together or shown as separate verification
+    images. The last physical source page is therefore authoritative.
+    """
     sources=list(sources or [])
-    found=[source for source in sources if (source.get('info') or {}).get('found')]
-    if not found:
-        return {'available':False,'value':None,'confident':False,'mode':'not found','pages':[]}
-    values=[]; confident=True
-    for source in found:
-        info=source.get('info') or {}
-        value=_pdf_decimal(info.get('value'))
-        if value is not None: values.append(value)
-        if not info.get('confident'): confident=False
-    pages=[source.get('page') for source in found if source.get('page') is not None]
-    if len(found)==1 and len(values)==1:
-        total=float(values[0]); mode='single printed work-order total'
-    elif len(found)==len(sources) and len(values)==len(found):
-        total=float(sum(values,Decimal('0'))); mode='sum of printed page totals'
-    elif values:
-        total=float(sum(values,Decimal('0'))); mode='partial printed page totals'; confident=False
-    else:
-        total=None; mode='printed total unreadable'; confident=False
-    return {'available':True,'value':total,'confident':confident,'mode':mode,'pages':pages}
+    if not sources:
+        return {'available':False,'value':None,'confident':False,'mode':'not found',
+                'pages':[],'source':None}
+    source=sources[-1]
+    info=source.get('info') or {}
+    page=source.get('page')
+    pages=[page] if page is not None else []
+    value=_pdf_decimal(info.get('value')) if info.get('found') else None
+    confident=bool(info.get('found') and info.get('confident') and value is not None)
+    mode='final page printed work-order total' if value is not None else 'final page printed total unreadable'
+    # A source page exists even when OCR could not read its total. Keep the check
+    # available so the user can verify that final page manually instead of silently
+    # falling back to an earlier continuation page.
+    return {'available':True,'value':None if value is None else float(value),
+            'confident':confident,'mode':mode,'pages':pages,'source':source}
 
 
 def _length_total_result(records,expected_total):
@@ -3243,15 +3265,21 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # The printed total is validation evidence, never an asset row.
             continue
         if on_progress: on_progress()
-        def cut(box,right_bleed=False,vertical_bleed=0):
+        def cut(box,right_bleed=False,vertical_bleed=0,horizontal_bleed=0):
             x1=max(0,int(left+box[0]*tw)); x2=min(w,int(left+box[1]*tw))
+            side_bleed=max(0,int(horizontal_bleed or 0))
+            if side_bleed:
+                x1=max(0,x1-side_bleed); x2=min(w,x2+side_bleed)
             if right_bleed and x2>x1:
                 x2=min(w,x2+max(2,int(round((x2-x1)*.02))))
             bleed=max(0,int(vertical_bleed or 0))
             yy1=max(0,y1-bleed); yy2=min(h,y2+bleed)
             return img[yy1:yy2,x1:x2]
         def read_id(box,fast=True):
-            cell=cut(box); obs=_ocr_asset_candidates(cell,fast_plain=fast,asset_format=asset_format)
+            # Some B&C grid rules land directly on the first/last endpoint glyph.
+            # Two rendered pixels of horizontal breathing room restores the actual
+            # printed DN-/EC-/R2- prefix without relaxing matching against the master.
+            cell=cut(box,horizontal_bleed=2); obs=_ocr_asset_candidates(cell,fast_plain=fast,asset_format=asset_format)
             if y2-y1>typical_band*1.45:
                 ch=cell.shape[0]
                 obs+=_ocr_asset_candidates(cell[:max(1,int(ch*.62)),:],fast_plain=fast,asset_format=asset_format)
@@ -3975,12 +4003,32 @@ class ConfirmDialog(tk.Toplevel):
             crop=Image.fromarray(guesses.get(preview_key,guesses['preview'])); crop.thumbnail((360,75))
             photo=ImageTk.PhotoImage(crop); self.crop_photos.append(photo)
             ttk.Label(self,image=photo).grid(row=r,column=2,sticky='w',padx=(6,12),pady=4)
+
+        next_row=4
+        self.manhole_count_var=None
+        if guesses.get('expect_manhole_count'):
+            ttk.Label(self,text='Expected Manholes:').grid(row=next_row,column=0,sticky='e',padx=(12,6),pady=6)
+            self.manhole_count_var=tk.StringVar(value=str(guesses.get('manhole_count_guess') or ''))
+            count_entry=ttk.Entry(self,textvariable=self.manhole_count_var,width=12)
+            count_entry.grid(row=next_row,column=1,sticky='w',padx=6,pady=6)
+            if not self.manhole_count_var.get().strip(): count_entry.focus_set()
+            crop=guesses.get('description_preview')
+            if crop is not None and getattr(crop,'size',0):
+                image=Image.fromarray(crop); image.thumbnail((420,125),Image.Resampling.LANCZOS)
+                photo=ImageTk.PhotoImage(image,master=self); self.crop_photos.append(photo)
+                ttk.Label(self,image=photo).grid(row=next_row,column=2,sticky='w',padx=(6,12),pady=4)
+            else:
+                ttk.Label(self,text='Description preview unavailable',foreground='#8A5200').grid(row=next_row,column=2,sticky='w',padx=(6,12),pady=4)
+            next_row+=1
+
         self.initials_var=tk.StringVar(value=operator_master_name(self.vars['Operator (full name)'].get()))
-        ttk.Label(self,text='Operator:').grid(row=4,column=0,sticky='e',padx=(12,6),pady=5)
-        ttk.Label(self,textvariable=self.initials_var,font=('Segoe UI',10,'bold')).grid(row=4,column=1,sticky='w',padx=6,pady=5)
+        ttk.Label(self,text='Operator:').grid(row=next_row,column=0,sticky='e',padx=(12,6),pady=5)
+        ttk.Label(self,textvariable=self.initials_var,font=('Segoe UI',10,'bold')).grid(row=next_row,column=1,sticky='w',padx=6,pady=5)
         self.vars['Operator (full name)'].trace_add('write', lambda *_: self.initials_var.set(operator_master_name(self.vars['Operator (full name)'].get()) or 'NEEDS FIRST + LAST'))
-        ttk.Label(self,text='Check each scan image beside its field. OCR is only a pre-filled suggestion.',foreground='#8A5200').grid(row=5,column=0,columnspan=3,padx=12,pady=(5,8))
-        b=ttk.Frame(self); b.grid(row=6,column=0,columnspan=3,pady=(0,12))
+        next_row+=1
+        ttk.Label(self,text='Check each scan image beside its field. OCR is only a pre-filled suggestion.',foreground='#8A5200').grid(row=next_row,column=0,columnspan=3,padx=12,pady=(5,8))
+        next_row+=1
+        b=ttk.Frame(self); b.grid(row=next_row,column=0,columnspan=3,pady=(0,12))
         ttk.Button(b,text='Cancel',command=self.cancel).pack(side='left',padx=6)
         ttk.Button(b,text='Confirm',command=self.ok,style='Primary.TButton').pack(side='left',padx=6)
         self.protocol('WM_DELETE_WINDOW',self.cancel)
@@ -3993,7 +4041,14 @@ class ConfirmDialog(tk.Toplevel):
         master_op=operator_master_name(full_op)
         if not master_op:
             messagebox.showwarning('Operator name','Confirm or enter the operator name.',parent=self); return
-        self.result={'wo':wo,'truck':truck,'operator':master_op,'operator_full':full_op,'date':self.guessed_date}; self.destroy()
+        expected_manhole_count=None
+        if self.manhole_count_var is not None:
+            raw_count=self.manhole_count_var.get().strip()
+            if not re.fullmatch(r'\d{1,3}',raw_count) or int(raw_count)<1:
+                messagebox.showwarning('Manhole count','Enter the total number of Manhole surveys written in the Description of work performed section.',parent=self); return
+            expected_manhole_count=int(raw_count)
+        self.result={'wo':wo,'truck':truck,'operator':master_op,'operator_full':full_op,'date':self.guessed_date,
+                     'expected_manhole_count':expected_manhole_count}; self.destroy()
     def cancel(self): self.result=None; self.destroy()
 
 
@@ -4111,7 +4166,7 @@ class App(tk.Tk):
         self.geometry(f'{default_w}x{default_h}')
         self.minsize(min(self.spx(960),max(760,int(screen_w*.90))),
                      min(self.spx(620),max(560,int(screen_h*.85))))
-        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.unprocessed_pages=[]; self.pdf_hash=''
+        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.manhole_count_validations=[]; self.unprocessed_pages=[]; self.pdf_hash=''
         self._analysis_running=False; self.cancel_requested=False
         self._total_outline_widgets=[]; self._total_outline_job=None; self._tree_yscroll=None
         self.configure(background='#f3f6fa')
@@ -4202,7 +4257,7 @@ class App(tk.Tk):
             if typ=='pdf' and changed:
                 self.clear_extracted_rows('New PDF selected. Click Analyze PDF to extract its rows.')
     def clear_extracted_rows(self,status_text=None):
-        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.unprocessed_pages=[]; self.pdf_hash=''
+        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.manhole_count_validations=[]; self.unprocessed_pages=[]; self.pdf_hash=''
         if hasattr(self,'tree'): self.tree.delete(*self.tree.get_children())
         self._clear_total_outlines()
         if status_text and hasattr(self,'status'): self.status.set(status_text)
@@ -4323,6 +4378,20 @@ class App(tk.Tk):
             self.tree.insert('',0,iid=iid,values=('UNPROCESSED','','','',wo,'','',status),tags=('page_error',))
         try: self.update_idletasks()
         except Exception: pass
+
+    def show_manhole_count_summary(self,check):
+        """Show only failed work-order Manhole count checks at the top."""
+        iid='manhole-count:'+hashlib.sha1(str(check.get('wo','')).encode()).hexdigest()[:16]
+        if check.get('passed'):
+            if self.tree.exists(iid): self.tree.delete(iid)
+            return
+        warning=(f"MANHOLE COUNT MISMATCH — EXPECTED {int(check.get('expected') or 0)}, "
+                 f"READ {int(check.get('actual') or 0)}")
+        values=('CHECK','','','',str(check.get('wo','')),'','',warning)
+        if self.tree.exists(iid):
+            self.tree.item(iid,values=values,tags=('check_warning',))
+        else:
+            self.tree.insert('',0,iid=iid,values=values,tags=('check_warning',))
 
     def _total_error_iid(self,check):
         key=f"{check.get('wo','')}|{check.get('kind','')}|total-length"
@@ -4468,7 +4537,7 @@ class App(tk.Tk):
             self.stop_analysis_animation(); self.status.set('Analysis cancelled.'); return
         except Exception as e:
             self.stop_analysis_animation(); messagebox.showerror('Master spreadsheet error',str(e)); return
-        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.unprocessed_pages=[]; self.tree.delete(*self.tree.get_children())
+        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.manhole_count_validations=[]; self.unprocessed_pages=[]; self.tree.delete(*self.tree.get_children())
         try: self.pdf_hash=hashlib.sha256(open(self.pdf_path.get(),'rb').read()).hexdigest()
         except Exception: self.pdf_hash=''
         init_ocr_cache(self.pdf_hash)
@@ -4493,11 +4562,22 @@ class App(tk.Tk):
             if not work_items and not trouble_items:
                 messagebox.showwarning('No work orders found','No work-order pages were detected, so no spreadsheet pages were processed.'); return
 
+            # Determine whether each work order owns a Manhole table before asking
+            # for confirmation. Continuation pages may be headerless, so only the
+            # first positively classified Manhole page is needed to activate the
+            # work-order count field.
+            for n,item in enumerate(work_items):
+                next_index=work_items[n+1]['index'] if n+1<len(work_items) else len(page_info)
+                item['expects_manhole_count']=any(
+                    page_item['kind']=='manholes'
+                    for page_item in page_info
+                    if item['index'] < page_item['index'] < next_index)
+
             # Prepare all handwriting crops/OCR guesses before displaying the first
             # dialog, so confirmation popups appear back-to-back without OCR waits.
             for n,item in enumerate(work_items,1):
                 self.status.set(f'Preparing work order {n} of {len(work_items)}...'); self.pump_analysis_ui()
-                item['guesses']=ocr_workorder_guesses(item['page'],idx)
+                item['guesses']=ocr_workorder_guesses(item['page'],idx,item.get('expects_manhole_count',False))
 
             confirmed_by_page={}
             for n,item in enumerate(work_items,1):
@@ -4613,7 +4693,7 @@ class App(tk.Tk):
             # Stage 2: every work order is now confirmed. Process spreadsheet pages
             # sequentially and attach them to the most recent confirmed work order.
             self.status.set('All work orders confirmed. Processing spreadsheet pages...'); self.pump_analysis_ui()
-            ignored_pages=[]; validation_reports=[]; total_sources={}
+            ignored_pages=[]; validation_reports=[]; total_sources={}; manhole_rows_by_wo={}
             for item in page_info:
                 pi=item['index']; page=item['page']; txt=item['text']; kind=item.get('effective_kind',item['kind'])
                 if kind=='workorder':
@@ -4693,6 +4773,20 @@ class App(tk.Tk):
                          'continuation':bool(item.get('is_continuation'))})
                 report=validate_page_rows(data,kind,txt,pi+1,item.get('pair_layout'),idx.get('profile'))
                 validation_reports.append(report)
+                if kind=='manholes':
+                    wo_key=str(current_wo.get('wo',''))
+                    manhole_rows_by_wo[wo_key]=manhole_rows_by_wo.get(wo_key,0)+int(report.get('rows') or 0)
+
+            self.manhole_count_validations=[]
+            for wo_info in confirmed_by_page.values():
+                expected=wo_info.get('expected_manhole_count')
+                if expected is None: continue
+                wo_key=str(wo_info.get('wo',''))
+                actual=int(manhole_rows_by_wo.get(wo_key,0))
+                check={'wo':wo_key,'kind':'Manhole','expected':int(expected),'actual':actual,
+                       'passed':actual==int(expected)}
+                self.manhole_count_validations.append(check)
+                self.show_manhole_count_summary(check)
 
             incomplete_total_keys=set()
             for failure in self.unprocessed_pages:
@@ -4741,9 +4835,11 @@ class App(tk.Tk):
         validation_warning_count=sum(len(r['issues']) for r in validation_reports)
         ticket_reviews=sum(1 for t in self.trouble_tickets if trouble_ticket_status(t).startswith('Review'))
         unprocessed_count=len({(str(item.get('wo')),int(item.get('page') or 0)) for item in self.unprocessed_pages})
-        if length_warnings or total_failures or other_warnings or validation_warning_count or ticket_reviews or unprocessed_count:
+        manhole_count_failures=sum(1 for check in self.manhole_count_validations if not check.get('passed'))
+        if length_warnings or total_failures or other_warnings or validation_warning_count or ticket_reviews or unprocessed_count or manhole_count_failures:
             bits=[]
             if unprocessed_count: bits.append(f'{unprocessed_count} PDF PAGE(S) COULD NOT BE PROCESSED — SEE TOP SUMMARY')
+            if manhole_count_failures: bits.append(f'{manhole_count_failures} MANHOLE COUNT MISMATCH(ES) — SEE TOP SUMMARY')
             if total_failures: bits.append(f'{total_failures} TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED')
             if length_warnings: bits.append(f'{length_warnings} length difference warning(s) > {LENGTH_DIFF_THRESHOLD:.1f}')
             if other_warnings: bits.append(f'{other_warnings} other row(s) need review')
@@ -4888,7 +4984,9 @@ class App(tk.Tk):
         for (wo,kind),sources in total_sources.items():
             resolved=_resolve_printed_total_sources(sources)
             if not resolved.get('available'): continue
-            check={'wo':wo,'kind':kind,'sources':sources,'pages':resolved.get('pages',[]),
+            selected_source=resolved.get('source')
+            check={'wo':wo,'kind':kind,'sources':([selected_source] if selected_source else []),
+                   'all_sources':sources,'pages':resolved.get('pages',[]),
                    'pdf_total':resolved.get('value'),'pdf_total_confident':resolved.get('confident',False),
                    'pdf_total_mode':resolved.get('mode',''),'verified_total':None,'manual_verified':False}
             self.total_validations.append(check)
@@ -4917,6 +5015,9 @@ class App(tk.Tk):
             return
         if iid.startswith('page-error:'):
             messagebox.showinfo('Unprocessed PDF Page','This is an analysis warning row. The listed PDF page(s) could not be processed, while readable pages were kept.',parent=self)
+            return
+        if iid.startswith('manhole-count:'):
+            messagebox.showinfo('Manhole Count Validation','This work order did not produce the same number of Manhole rows as the count confirmed from the work-order description.',parent=self)
             return
         if iid.startswith('group-error:'):
             messagebox.showinfo('Work Order Validation','This row is the work-order total-length status separator, not an individual asset row.',parent=self)
@@ -5068,6 +5169,16 @@ class App(tk.Tk):
         ttk.Button(win,text='Save',command=save,style='Primary.TButton').grid(row=(len(fields)+1)//2,column=0,columnspan=4,pady=12)
     def update_master(self):
         if not self.records and not self.trouble_tickets: messagebox.showwarning('Nothing to update','Analyze a PDF first.'); return
+        manhole_count_failures=[check for check in self.manhole_count_validations if not check.get('passed')]
+        if manhole_count_failures:
+            details='\n'.join(
+                f"W/O {check.get('wo','')}: expected {check.get('expected',0)} Manholes, read {check.get('actual',0)}"
+                for check in manhole_count_failures)
+            if not messagebox.askyesno(
+                    'Manhole Count Mismatch',
+                    'The Manhole row count does not match the number confirmed from the work order.\n\n'+details+
+                    '\n\nContinue with only the readable rows?'):
+                return
         unresolved=self.unresolved_total_checks()
         if unresolved:
             for check in list(unresolved): self.prompt_total_check(check)

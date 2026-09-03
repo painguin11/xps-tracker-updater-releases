@@ -55,6 +55,6 @@ end=s.index('\ndef _row_length_token_value',start)
 block=s[start:end]
 assert 'magenta_seen' in block
 assert "elif magenta_seen:\n        wo=''" in block
-assert 'if not magenta_seen:' in block
+assert '# A fully desaturated/black-and-white scan can destroy the color signal.' in block
 assert 'broad=_best_ocr_text' not in block, 'single broad OCR read must not prefill a low-confidence W/O'
 print('v93 low-confidence Work Order blank-prefill regression passed')

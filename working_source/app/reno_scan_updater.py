@@ -18,7 +18,7 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '91'
+APP_VERSION = '92'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 DUPLICATE_PIPE_REVIEW = 'Duplicate pipe - check IDs'
@@ -754,21 +754,21 @@ def _workorder_magenta_variants(cell_img):
 
 
 def _workorder_magenta_candidates(cell_img):
-    """OCR only five-digit values actually visible in the pink/magenta W/O ink."""
+    """OCR only 4- or 5-digit values actually visible in the pink/magenta W/O ink."""
     found=[]
     for image in _workorder_magenta_variants(cell_img):
         for psm in (7,8,13,6):
             text=cached_ocr_string(
                 image,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789'
             ).strip()
-            found.extend(re.findall(r'(?<!\d)\d{5}(?!\d)',text))
+            found.extend(re.findall(r'(?<!\d)\d{4,5}(?!\d)',text))
     return found
 
 def orient_and_classify(page):
     """Classify pages with work-order detection biased toward the fixed form layout.
 
     A work-order page starts a new group. We do not rely only on OCR reading the
-    words 'Work Order Number': a 5-digit value in the known upper-left W/O box is
+    words 'Work Order Number': a 4- or 5-digit value in the known upper-left W/O box is
     enough to treat the page as a work order. This makes new groups much harder to miss.
     """
     base = render_page(page, 1.25)
@@ -793,7 +793,7 @@ def orient_and_classify(page):
         g=cv2.resize(g,None,fx=1.7,fy=1.7,interpolation=cv2.INTER_CUBIC)
         for psm in (6,7,11,13):
             t=cached_ocr_string(g,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789').strip()
-            wo_hits.extend(re.findall(r'\d{5}',t))
+            wo_hits.extend(re.findall(r'\d{4,5}',t))
     if wo_hits or 'work order number' in low_top or ('operator' in low_top and ('vehicle' in low_top or 'support' in low_top)):
         return base,0,top_txt,'workorder'
 
@@ -1144,7 +1144,7 @@ def ocr_workorder_guesses(page, master_index=None, expect_manhole_count=False):
         veh_crop=crop(.190,.382,.300,.410)
     # Work order number: isolate the machine-typed pink/magenta ink first.
     # Because the form itself is green/black, this leaves Tesseract almost nothing
-    # except the five printed W/O digits. Fixed-position variants still handle scan shift.
+    # except the four or five printed W/O digits. Fixed-position variants still handle scan shift.
     wo_crop=candidate_wo_crops[0]
     color_results=[]
     for candidate_crop in candidate_wo_crops:

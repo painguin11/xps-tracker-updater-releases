@@ -613,3 +613,10 @@ Version 91 review, endpoint, and work-order OCR improvements
 - Keeps legitimate non-master printed pairs unresolved for Add to Master / Ignore review instead of force-matching them.
 - Reads the five-digit Work Order number as machine-typed pink/magenta text by isolating its color before OCR, removing green form rules and black labels from the primary OCR input.
 - Keeps the established editable W/O confirmation popup and grayscale OCR only as a fallback for unusually faded/desaturated scans.
+
+
+Version 92 four- or five-digit Work Order correction
+------------------------------------------------------
+- Extends the v91 pink/magenta Work Order color-isolation path to accept both 4-digit and 5-digit machine-typed Work Order numbers.
+- Keeps the same color-first OCR design, editable confirmation popup, and grayscale fallback for faded/desaturated scans.
+- Preserves all v91 new-asset preview, conservative endpoint recovery, continuation, total-validation, and matching safeguards.

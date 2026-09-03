@@ -1,0 +1,280 @@
+--- a/working_source/app/reno_scan_updater.py
++++ b/working_source/app/reno_scan_updater.py
+@@ -2236,13 +2236,15 @@
+     if img is None or not bands or not table or not value_box: return result
+     left,right=table; h,w=img.shape[:2]; tw=max(1,right-left)
+ 
+-    def cut(box,y1,y2):
++    def cut(box,y1,y2,right_bleed=False):
+         if not box: return None
+-        return img[max(0,int(y1)):min(h,int(y2)),
+-                   max(0,int(left+box[0]*tw)):min(w,int(left+box[1]*tw))]
++        x1=max(0,int(left+box[0]*tw)); x2=min(w,int(left+box[1]*tw))
++        if right_bleed and x2>x1:
++            x2=min(w,x2+max(2,int(round((x2-x1)*.02))))
++        return img[max(0,int(y1)):min(h,int(y2)),x1:x2]
+ 
+     def read_value(y1,y2):
+-        cell=cut(value_box,y1,y2)
++        cell=cut(value_box,y1,y2,right_bleed=True)
+         if cell is None or cell.size==0: return []
+         # Start with the untouched full cell. Grid removal is intentionally only
+         # the second source because it can occasionally erase interior digits.
+@@ -2280,7 +2282,7 @@
+         value,confident=_choose_printed_total(candidates)
+         if not _printed_total_value_is_plausible(value,len(bands)):
+             value=None; confident=False
+-        preview=cut(value_box,y1,y2)
++        preview=cut(value_box,y1,y2,right_bleed=True)
+         return {'found':True,'value':value,'confident':confident,
+                 'candidates':candidates,'method':method,'band_index':band_index,
+                 'preview':preview.copy() if preview is not None and getattr(preview,'size',0) else None}
+@@ -2297,7 +2299,7 @@
+         value,confident=_choose_printed_total(candidates)
+         if not _printed_total_value_is_plausible(value,len(bands)):
+             value=None; confident=False
+-        preview=cut(value_box,y1,y2)
++        preview=cut(value_box,y1,y2,right_bleed=True)
+         return {'found':True,'value':value,'confident':confident,
+                 'candidates':candidates,'method':'labelled total row','band_index':band_index,
+                 'preview':preview.copy() if preview is not None and getattr(preview,'size',0) else None}
+@@ -2674,7 +2676,8 @@
+     # table may have a title band before the actual column header, so keep the
+     # first meaningful tall band and let header-role OCR choose among the first
+     # four bands as it already does on normal layouts.
+-    roi=inv[by:by+bh,max(0,left):min(w,right)]
++    horizontal_inv=cv2.threshold(gray,240,255,cv2.THRESH_BINARY_INV)[1]
++    roi=horizontal_inv[by:by+bh,max(0,left):min(w,right)]
+     hk=cv2.getStructuringElement(cv2.MORPH_RECT,(max(35,int((right-left)*.20)),1))
+     horizontal=cv2.morphologyEx(roi,cv2.MORPH_OPEN,hk)
+     contours,_=cv2.findContours(horizontal,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+@@ -2791,11 +2794,11 @@
+ def _year15_recover_vertical_rules(img,bands,table,column_bounds=None):
+     """Supplement missing B&C column boundaries using repeated row-band evidence.
+ 
+-    A true vertical grid rule remains dark through most of many row interiors even
+-    when horizontal intersections break it into segments. Text strokes may repeat
+-    at similar x positions, but they do not occupy most of the row height across a
+-    large fraction of rows. Existing strong rules are retained and this recovery is
+-    rejected if it would create an implausible (>20-column) layout.
++    Faint scan rules can be nearly white, so the recovery pass uses a lighter
++    threshold than the strict grid detector. Candidate rules must persist through
++    most of several row interiors. Within each already-detected column gap, new
++    rules are accepted only when they divide that gap into reasonably even pieces;
++    this rejects repeated text strokes clustered near one edge of a valid column.
+     """
+     existing=sorted(int(x) for x in (column_bounds or []))
+     if img is None or not bands or not table:
+@@ -2815,7 +2818,7 @@
+     hits=np.zeros(width,dtype=np.int16)
+     for y1,y2 in usable:
+         if y2-y1<4: continue
+-        dark=(gray[y1:y2,left:right] < 205).astype(np.uint8)
++        dark=(gray[y1:y2,left:right] < 235).astype(np.uint8)
+         dark=cv2.dilate(dark,np.ones((1,3),np.uint8),iterations=1)
+         vertical_fraction=np.mean(dark>0,axis=0)
+         hits += (vertical_fraction>=.72).astype(np.int16)
+@@ -2830,8 +2833,37 @@
+             groups[-1].append(x)
+     recovered=[int(round(float(np.median(group)))) for group in groups]
+ 
+-    merged=sorted(set([left,right]+existing+recovered))
+-    dedup=[]; minimum_gap=max(7,int(round(width*.010)))
++    anchors=sorted(set([left,right]+existing))
++    near=max(7,int(round(width*.010)))
++    anchor_gaps=[b-a for a,b in zip(anchors,anchors[1:]) if b>a]
++    lower_count=max(2,int(np.ceil(len(anchor_gaps)*.60))) if anchor_gaps else 0
++    typical_gap=float(np.median(sorted(anchor_gaps)[:lower_count])) if lower_count else 0.0
++    accepted=[]
++    for a,b in zip(anchors,anchors[1:]):
++        # Recovery is only needed inside a gap that is materially wider than the
++        # table's normal detected columns. This prevents aligned text strokes from
++        # splitting an already-complete grid such as the clean page-6 table.
++        if typical_gap and (b-a) <= typical_gap*1.45:
++            continue
++        inside=[x for x in recovered if a+near<x<b-near]
++        if not inside:
++            continue
++        points=[a]+inside+[b]
++        segments=[y-x for x,y in zip(points,points[1:])]
++        median=float(np.median(segments)) if segments else 0.0
++        if median<=0:
++            continue
++        # True missing rules form a regular subdivision (for example a two-column
++        # gap split into two nearly equal widths). OCR text strokes tend to leave
++        # one or more tiny edge slivers and fail this regularity check.
++        if min(segments) < max(10,median*.62):
++            continue
++        if max(segments) > median*1.45:
++            continue
++        accepted.extend(inside)
++
++    merged=sorted(set(anchors+accepted))
++    dedup=[]; minimum_gap=near
+     for x in merged:
+         if not dedup:
+             dedup.append(x); continue
+@@ -2997,7 +3029,7 @@
+     if not bands:
+         bands,table=_year15_all_row_bands(img,.04,.90); column_bounds=None; geometry_source='horizontal fallback'
+ 
+-    if bands and not table and inherited_layout:
++    if bands and inherited_layout:
+         previous_img=inherited_layout.get('img'); previous_table=inherited_layout.get('table')
+         if previous_img is not None and previous_table and getattr(previous_img,'shape',None):
+             prev_w=max(1,int(previous_img.shape[1])); cur_w=max(1,int(img.shape[1]))
+@@ -3262,7 +3294,7 @@
+                 if guarded_match:
+                     up_obs,dn_obs=guarded_up,guarded_dn
+                     match,match_status=guarded_match,guarded_status
+-        value_cell=cut(val_box,right_bleed=(kind=='cleaning'))
++        value_cell=cut(val_box,right_bleed=True)
+         expected=match.get('expected') if match else None
+         if kind=='cleaning':
+             value_candidates=list(batch_cleaning_values.get(band_index,[]))
+@@ -3297,9 +3329,23 @@
+             if (not needs_vertical_retry and expected not in (None,0) and direct_value is not None):
+                 needs_vertical_retry=(abs(float(direct_value)-float(expected))/max(float(expected),1.0) >= .35)
+             if needs_vertical_retry:
+-                expanded_candidates=_direct_pair_length_candidates(cut(val_box,vertical_bleed=2))
++                expanded_cell=cut(val_box,right_bleed=True,vertical_bleed=2)
++                expanded_candidates=_direct_pair_length_candidates(expanded_cell)
+                 for candidate in expanded_candidates:
+                     if candidate not in value_candidates: value_candidates.append(candidate)
++                # If conservative reads are still nowhere near the known master
++                # length, OCR the same observed expanded cell with the broader
++                # length ensemble before accepting a wildly implausible digit.
++                tentative=_choose_length(value_candidates,expected) if value_candidates else None
++                still_implausible=(tentative is None)
++                if (not still_implausible and expected not in (None,0)):
++                    still_implausible=(abs(float(tentative)-float(expected))/max(float(expected),1.0) >= .35)
++                if still_implausible:
++                    expanded_ocr=_ocr_length_candidates(expanded_cell,fast_plain=True)
++                    if not expanded_ocr:
++                        expanded_ocr=_ocr_length_candidates(expanded_cell,fast_plain=False)
++                    for candidate in expanded_ocr:
++                        if candidate not in value_candidates: value_candidates.append(candidate)
+             if not value_candidates:
+                 value_candidates=_ocr_length_candidates(value_cell,fast_plain=True)
+                 if not value_candidates: value_candidates=_ocr_length_candidates(value_cell,fast_plain=False)
+@@ -3308,7 +3354,7 @@
+                 abs(float(value)-float(expected))>max(100,float(expected)*1.5)):
+             # Keep the established pipe-video fallback unchanged. Cleaning values
+             # remain exactly what OCR observed, even when they differ from master.
+-            expanded=_ocr_length_candidates(cut(val_box),fast_plain=False)
++            expanded=_ocr_length_candidates(cut(val_box,right_bleed=True),fast_plain=False)
+             if expanded:
+                 value=_choose_length(list(value_candidates)+list(expanded),expected)
+         date_evidence=date_reads.get(band_index,{'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{}})
+@@ -3356,7 +3402,7 @@
+             'date':date_cell.copy() if getattr(date_cell,'size',0) else None,
+         }
+         rec['_length_value_cell']=value_cell.copy() if getattr(value_cell,'size',0) else None
+-        expanded_value_cell=cut(val_box,vertical_bleed=3)
++        expanded_value_cell=cut(val_box,right_bleed=True,vertical_bleed=3)
+         rec['_length_expanded_cell']=expanded_value_cell.copy() if getattr(expanded_value_cell,'size',0) else None
+         rec['_length_first_candidates']=list(value_candidates or [])
+         if kind=='cleaning':
+--- a/working_source/tests/regression_v88_continuations.py
++++ b/working_source/tests/regression_v88_continuations.py
+@@ -19,14 +19,22 @@
+     "PAGES {pages} COULD NOT BE PROCESSED",
+     'safe_total_sources={key:value for key,value in total_sources.items() if key not in incomplete_total_keys}',
+     '    if can_inherit:\n',
++    'horizontal_inv=cv2.threshold(gray,240,255,cv2.THRESH_BINARY_INV)[1]',
++    '    if bands and inherited_layout:\n',
++    'cell=cut(value_box,y1,y2,right_bleed=True)',
++    'value_cell=cut(val_box,right_bleed=True)',
++    'expanded_cell=cut(val_box,right_bleed=True,vertical_bleed=2)',
++    'still_implausible=(tentative is None)',
+ ):
+     assert required in src, required
+ 
+ # Once a page has been identified as a continuation, its preceding confirmed
+ # template must win even if OCR hallucinates a complete-looking header on that
+-# headerless page.
++# headerless page. Its outer table bounds must inherit too, because a headerless
++# page may expose an extra left-side Field Crew column that the headed page omitted.
+ assert 'if can_inherit and not complete_header:' not in src
+ assert "complete_header=all(k in role_indices for k in ('up','down','value','date'))" not in src
++assert 'if bands and not table and inherited_layout:' not in src
+ assert "Table layout could not be detected" not in src
+ 
+ tree=ast.parse(src)
+@@ -35,6 +43,9 @@
+ exec(compile(ast.Module(body=[node],type_ignores=[]),'<v88-geometry>','exec'),ns)
+ recover=ns['_year15_recover_vertical_rules']
+ 
++# Simulate the 8-24 page-4 failure mode: only some strong vertical rules survive
++# the first detector, while the missing real rules are faint and interrupted at
++# every horizontal row line. Repeated text strokes must not become columns.
+ img=np.full((900,1600,3),255,np.uint8)
+ left,right=120,1480
+ xs=[left,300,480,690,890,1080,1290,right]
+@@ -48,15 +59,26 @@
+     cv2.line(img,(x,140),(x,700),(0,0,0),3)
+ for x in (xs[1],xs[3],xs[4],xs[6]):
+     for y1,y2 in bands:
+-        cv2.line(img,(x,y1),(x,y2),(0,0,0),3)
++        cv2.line(img,(x,y1),(x,y2),(225,225,225),3)
+ for fake_x in (380,575,780,980,1180,1380):
+     for y1,y2 in bands:
+         mid=(y1+y2)//2
+         cv2.line(img,(fake_x,mid-4),(fake_x,mid+4),(0,0,0),2)
+ 
+-bounds=recover(img,bands,(left,right),[xs[0],xs[2],xs[5],xs[-1]])
++bounds=recover(img,bands,(left,right),[xs[0],xs[1],xs[2],xs[4],xs[-1]])
+ assert len(bounds)==8, bounds
+ for expected in xs:
+     assert min(abs(actual-expected) for actual in bounds)<=5, (expected,bounds)
+ 
+-print('v88 continuation, partial-failure, template precedence, and seven-column recovery regression passed.')
++# A page whose first-pass detector already has every real boundary must stay
++# unchanged even if repeated dark text strokes line up vertically across rows.
++img2=np.full((900,1600,3),255,np.uint8)
++for x in xs:
++    cv2.line(img2,(x,140),(x,700),(0,0,0),3)
++for fake_x in (340,390,530,735,1010,1240):
++    for y1,y2 in bands:
++        cv2.line(img2,(fake_x,y1),(fake_x,y2),(0,0,0),2)
++full_bounds=recover(img2,bands,(left,right),xs)
++assert full_bounds==xs, full_bounds
++
++print('v88 exact-fixture continuation, partial-failure, faint-grid, and value-crop regression passed.')
+--- a/working_source/tests/regression_v84_real_packet_length_logic.py
++++ b/working_source/tests/regression_v84_real_packet_length_logic.py
+@@ -7,7 +7,8 @@
+ assert 'def _high_res_printed_total_candidates(cell_img):' in src
+ assert "fx=4.0,fy=4.0" in src
+ assert "direct=_high_res_printed_total_candidates(cell)" in src
+-assert "expanded_value_cell=cut(val_box,vertical_bleed=3)" in src
++assert ("expanded_value_cell=cut(val_box,vertical_bleed=3)" in src or
++        "expanded_value_cell=cut(val_box,right_bleed=True,vertical_bleed=3)" in src)
+ assert 'def _select_independent_length_candidate(' in src
+ assert 'def _independent_split_pipe_read(record):' in src
+ assert "existing['_length_part_reads']=part_reads" in src
+--- a/working_source/tests/regression_v83_exact_pdf_numbers.py
++++ b/working_source/tests/regression_v83_exact_pdf_numbers.py
+@@ -19,7 +19,9 @@
+ # The pipe retry may expose more of the original PDF cell, but it may only add
+ # OCR-observed candidates. It cannot synthesize, round, or substitute a value.
+ assert 'def cut(box,right_bleed=False,vertical_bleed=0):' in src
+-assert 'expanded_candidates=_direct_pair_length_candidates(cut(val_box,vertical_bleed=2))' in src
++assert ("expanded_candidates=_direct_pair_length_candidates(cut(val_box,vertical_bleed=2))" in src or
++        ("expanded_cell=cut(val_box,right_bleed=True,vertical_bleed=2)" in src and
++         "expanded_candidates=_direct_pair_length_candidates(expanded_cell)" in src))
+ assert 'if candidate not in value_candidates: value_candidates.append(candidate)' in src
+ assert 'value=_choose_length(value_candidates,expected)' in src
+ 
+--- a/working_source/tests/regression_v83_total_preview_group_errors.py
++++ b/working_source/tests/regression_v83_total_preview_group_errors.py
+@@ -4,7 +4,8 @@
+ 
+ # The total reader must retain the exact PDF value-cell pixels used as evidence.
+ assert "'preview':None" in src
+-assert "preview=cut(value_box,y1,y2)" in src
++assert ("preview=cut(value_box,y1,y2)" in src or
++        "preview=cut(value_box,y1,y2,right_bleed=True)" in src)
+ assert "'preview':preview.copy()" in src
+ 
+ # The verification UI is no longer a text-only simpledialog; it displays each

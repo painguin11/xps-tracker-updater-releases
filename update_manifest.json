@@ -1,15 +1,12 @@
 {
-  "version": "89",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v89/XPS_Tracker_Updater_v89.zip",
-  "sha256": "379a0a14d3768e439382e29327d26a2458e0e41b555ccc10947feac30e4e6fa9",
+  "version": "90",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v90/XPS_Tracker_Updater_v90.zip",
+  "sha256": "f1f2a71f3c767727971857b0c9b70b89fee1ae4cd1fa4e158a1de1f09eccaf87",
   "release_notes": [
-    "Verify Manhole work-order row counts against the user-confirmed count from the Description of work performed crop",
-    "Use only the final continuation page printed total for multi-page Pipe/Cleaning verification",
-    "Offer Add to Master, Ignore, or Back to Summary for unresolved Pipe and Manhole rows before any master write",
-    "Limit automatic MSA combination to exactly two duplicate Pipe rows and block larger duplicate groups for ID review",
-    "Show PDF field previews while editing Trouble Tickets",
-    "Preserve complete printed endpoint pairs that are absent from the master instead of fuzzy-mapping them to nearby assets",
-    "Recover narrow left-grid endpoint OCR artifacts and common Length Surveyed header OCR variants",
-    "Preserve v88 continuation, partial-page, faint-grid, and exact PDF-number safeguards"
+    "Show upstream and downstream PDF ID image previews in the Add to Master / Ignore popup for unresolved Pipe and Cleaning assets",
+    "Show the PDF manhole ID image preview in the Add to Master / Ignore popup for unresolved Manholes",
+    "Preserve the Live Summary scroll position after editing a row",
+    "Restore the selected and focused summary row after the edit refresh",
+    "Preserve v89 printed-pair identity, new-asset, continuation, total-validation, MSA, and OCR safeguards"
   ]
 }

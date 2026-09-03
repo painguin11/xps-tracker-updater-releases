@@ -3,7 +3,7 @@ import ast
 
 src=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
 assert "'activity_value':value_cell.copy()" in src
-assert "rec['_field_previews']={'date':date_img.copy()" in src
+assert "'date':date_img.copy() if getattr(date_img,'size',0) else None" in src
 assert "dlg.result['_field_previews']" in src
 assert "'wo':confirmed_preview('wo_preview')" in src
 assert "'truck':confirmed_preview('truck_preview')" in src
@@ -23,7 +23,8 @@ assert label([4])=='Preview unavailable — check PDF page 4.'
 assert label([2,3])=='Preview unavailable — check PDF pages 2, 3.'
 assert label('10')=='Preview unavailable — check PDF page 10.'
 
-# Confirm the edit form requests previews for every editable field.
+# Confirm the edit form requests previews for every editable field. Newer versions
+# may add more fields; this v85 regression only guarantees the original five remain.
 edit=src[src.index('    def edit_selected(self):'):src.index('    def edit_trouble_ticket(self,index):')]
 for key in ('activity_value','date','wo','truck','operator'):
     assert repr(key) in edit

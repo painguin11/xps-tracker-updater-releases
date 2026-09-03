@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   validate-and-commit:
-    if: ${{ github.event.head_commit.message == 'RUN_V86_ASSET_NODE_PATCH' }}
+    if: ${{ github.event.head_commit.message == 'RUN_V86_ENDPOINT_RECOVERY' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,13 +19,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
-      - name: Apply patch
-        run: python .github/scripts/apply_v86_asset_nodes.py
+      - name: Apply endpoint recovery patch
+        run: python .github/scripts/apply_v86_endpoint_digit_recovery.py
       - name: Compile and regress
         run: |
           python -m py_compile working_source/app/reno_scan_updater.py
           python -m py_compile working_source/app/xps_update.py
-          python working_source/tests/regression_v86_asset_nodes.py
+          python working_source/tests/regression_v86_assets_and_edit.py
           python working_source/tests/regression_v85_edit_row_previews.py
           python working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
           python working_source/tests/regression_v84_real_packet_length_logic.py
@@ -56,6 +56,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v86_asset_nodes.py
-          git commit -m 'Edit asset nodes and recover damaged endpoint prefixes'
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v86_assets_and_edit.py
+          git commit -m 'Recover damaged endpoint prefixes safely'
           git push origin HEAD:v86-work

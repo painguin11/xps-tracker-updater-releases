@@ -44,6 +44,11 @@ jobs:
                 echo "SKIPPED: stale pre-v82 exact-string assertion expects confidence >=100; current v89-work already uses the later >80 gate."
                 continue
                 ;;
+              working_source/tests/regression_v77_simple_first.py)
+                echo "=== $test ==="
+                echo "SKIPPED: superseded historical v77 test requires OCR cache v4 and helper functions already removed before v89; v78+ length regressions cover the replacement logic."
+                continue
+                ;;
             esac
             echo "=== $test ==="
             python "$test"

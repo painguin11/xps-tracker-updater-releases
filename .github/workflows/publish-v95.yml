@@ -42,7 +42,7 @@ jobs:
               raise SystemExit('CURRENT_VERSION bump failed')
           upd.write_text(u,encoding='utf-8')
 
-          readme=Path('working_source/README.txt')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
           r=readme.read_text(encoding='utf-8')
           entry='''\nXPS Tracker Updater v95\n- Recover faint/dashed compact-table row rules so the 8-28 page-2 style B&C table can be processed instead of skipped.\n- Prefer exact endpoint numeric-body matches over tolerated leading-junk matches, fixing DN-1911 -> DN-1912 while preserving ambiguity safeguards.\n- Preserve v94 stacked endpoint recovery, v93 Work Order confidence behavior and NEW PIPE/NEW MANHOLE notes, plus all existing continuation, matching, total, review, and safety behavior.\n'''
           if 'XPS Tracker Updater v95' not in r:
@@ -102,7 +102,7 @@ jobs:
           grep -q 'if len(rule_ys)<=4:' working_source/app/reno_scan_updater.py
           grep -q 'def _endpoint_digit_match_score' working_source/app/reno_scan_updater.py
           git status --short
-          unexpected=$(git status --short | awk '{print $2}' | grep -vE '^(working_source/app/reno_scan_updater.py|working_source/app/xps_update.py|working_source/README.txt|working_source/app/__pycache__/.*\.pyc)$' || true)
+          unexpected=$(git status --short | awk '{print $2}' | grep -vE '^(working_source/app/reno_scan_updater.py|working_source/app/xps_update.py|working_source/app/README_XPS_Tracker_Updater.txt|working_source/app/__pycache__/.*\.pyc)$' || true)
           if [ -n "$unexpected" ]; then echo "Unexpected changed files:"; echo "$unexpected"; exit 1; fi
 
       - name: Build release ZIP
@@ -110,10 +110,12 @@ jobs:
           set -e
           rm -rf dist_v95
           mkdir -p dist_v95/XPS_Tracker_Updater_v95
-          cp -a working_source/app dist_v95/XPS_Tracker_Updater_v95/
-          cp working_source/README.txt dist_v95/XPS_Tracker_Updater_v95/README.txt
+          cp -a working_source/app/. dist_v95/XPS_Tracker_Updater_v95/
           find dist_v95 -type d -name __pycache__ -prune -exec rm -rf {} +
           find dist_v95 -type f \( -iname '*.pdf' -o -iname '*.xlsx' -o -iname '*.xls' -o -iname '*.xlsm' \) -print -quit | grep -q . && { echo 'Private/customer document found in package'; exit 1; } || true
+          test -f dist_v95/XPS_Tracker_Updater_v95/reno_scan_updater.py
+          test -f dist_v95/XPS_Tracker_Updater_v95/xps_update.py
+          test -f dist_v95/XPS_Tracker_Updater_v95/run_xps_tracker.bat
           cd dist_v95
           zip -qr ../XPS_Tracker_Updater_v95.zip XPS_Tracker_Updater_v95
           cd ..
@@ -125,7 +127,7 @@ jobs:
           set -e
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/README.txt
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
           git commit -m 'Release v95 [skip ci]'
           git push origin HEAD:v95-work
           echo "RELEASE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -151,6 +153,7 @@ jobs:
           test "$expected_size" = "$actual_size"
           echo "V95_SHA=$actual_sha" >> "$GITHUB_ENV"
           echo "V95_SIZE=$actual_size" >> "$GITHUB_ENV"
+          echo "Verified release asset SHA=$actual_sha size=$actual_size"
 
       - name: Advance public updater manifest to v95
         run: |
@@ -160,7 +163,7 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          p=Path('latest.json')
+          p=Path('update_manifest.json')
           data=json.loads(p.read_text(encoding='utf-8'))
           if str(data.get('version'))!='94':
               raise SystemExit(f"Expected public manifest v94 before advance, got {data.get('version')}")
@@ -177,15 +180,15 @@ jobs:
           }
           p.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
           PY
-          git add latest.json
+          git add update_manifest.json
           git commit -m 'Advance updater manifest to v95'
           git push origin main
           git pull --ff-only origin main
-          cat latest.json
+          cat update_manifest.json
           python - <<'PY'
           import json, os
           from pathlib import Path
-          data=json.loads(Path('latest.json').read_text())
+          data=json.loads(Path('update_manifest.json').read_text())
           assert data['version']=='95'
           assert data['sha256']==os.environ['V95_SHA']
           assert data['download_url'].endswith('/v95/XPS_Tracker_Updater_v95.zip')

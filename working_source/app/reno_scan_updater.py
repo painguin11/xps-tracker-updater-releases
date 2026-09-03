@@ -4029,6 +4029,7 @@ class App(tk.Tk):
         table_frame.rowconfigure(0,weight=1); table_frame.columnconfigure(0,weight=1)
         # Length warnings are deliberately prominent during review.  The warning is
         # Length warnings are also appended to the pipe NOTES field when the master is updated.
+        self.tree.tag_configure('total_verified', background='#16734a', foreground='white')
         self.tree.tag_configure('total_warning', background='#8b0000', foreground='white')
         self.tree.tag_configure('length_warning', background='#c62828', foreground='white')
         self.tree.tag_configure('check_warning', background='#ffcccc', foreground='#7a0000')
@@ -4133,14 +4134,16 @@ class App(tk.Tk):
         key=f"{check.get('wo','')}|{check.get('kind','')}|total-length"
         return 'group-error:'+hashlib.sha1(key.encode()).hexdigest()[:16]
     def show_total_summary_error(self,check,follow=False):
-        """Give work-order-wide total failures their own Live Summary row."""
+        """Keep one work-order total status/separator row in the Live Summary."""
         iid=self._total_error_iid(check)
-        warning=str(check.get('warning') or '')
-        if check.get('passed') or not warning:
-            if self.tree.exists(iid): self.tree.delete(iid)
-            return
+        if check.get('passed'):
+            expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
+            warning=f"Work order total length ({_format_pdf_number(expected)}) verified and matched, ready to update master"
+            tags=('total_verified',)
+        else:
+            warning=str(check.get('warning') or 'TOTAL LENGTH NEEDS VERIFICATION')
+            tags=('total_warning',)
         values=('','','','',str(check.get('wo','')),'','',warning)
-        tags=('total_warning',)
         if self.tree.exists(iid):
             self.tree.item(iid,values=values,tags=tags)
         else:
@@ -4665,7 +4668,7 @@ class App(tk.Tk):
             self.edit_trouble_ticket(int(iid.split(':',1)[1]))
             return
         if iid.startswith('group-error:'):
-            messagebox.showinfo('Work Order Validation','This row is a work-order-wide validation message, not an individual asset row.',parent=self)
+            messagebox.showinfo('Work Order Validation','This row is the work-order total-length status separator, not an individual asset row.',parent=self)
             return
         i=int(iid.split(':',1)[1]); r=self.records[i]
         win=tk.Toplevel(self); apply_app_icon(win); win.title('Edit extracted row'); win.transient(self); win.grab_set()

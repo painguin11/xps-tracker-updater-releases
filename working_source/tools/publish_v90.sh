@@ -46,43 +46,65 @@ assert "APP_TITLE = f'{APP_NAME} v{APP_VERSION}'" in app
 print('Version checks passed: app/display/updater = 90')
 PY
 
-# The clean GitHub runner does not have the production OCR stack installed.
-# Install only the cross-platform packages needed by the regression scripts.
+# Match the current release-audit environment used by v88, plus dependencies
+# needed by newer v89/v90 static/fixture regressions.
+sudo apt-get update -qq
+sudo apt-get install -y -qq python3-tk
 python -m pip install --disable-pip-version-check --quiet numpy pillow opencv-python-headless pymupdf pytesseract packaging openpyxl
 
 python - <<'PY'
 from pathlib import Path
 import subprocess, sys
 
-tests = sorted(Path('working_source/tests').glob('regression_*.py'))
-passed = []
-skipped = []
-for test in tests:
+# v76/v77 are intentionally not current release requirements: v78 removed the
+# v76 total-driven row reselection and v82 replaced the old 100%-confidence
+# layout gate with the current >80% + all-four-roles rule. This list follows the
+# v88 release audit and layers v87/v89/v90 safeguards on top.
+test_names = [
+    'regression_v90_review_ui.py',
+    'regression_v89_review_workflow.py',
+    'regression_v89_printed_pair_identity.py',
+    'regression_v89_manhole_count_and_final_total.py',
+    'regression_v88_continuations.py',
+    'regression_v87_total_summary_separator.py',
+    'regression_v86_assets_and_edit.py',
+    'regression_v85_edit_row_previews.py',
+    'regression_v85_mandatory_rows_and_length_votes.py',
+    'regression_v84_real_packet_length_logic.py',
+    'regression_v83_length_recovery.py',
+    'regression_v83_exact_pdf_numbers.py',
+    'regression_v83_total_preview_group_errors.py',
+    'regression_v82_pair_video_lengths.py',
+    'regression_v82_master_asset_format.py',
+    'regression_v82_suffix_guard.py',
+    'regression_v82_cleaning_header_noise.py',
+    'regression_v82_layout_threshold.py',
+    'regression_v81_header_outline.py',
+    'regression_v80_ocr_total_ui.py',
+    'regression_v79_layout_speed.py',
+    'regression_v78_rollback.py',
+    'regression_v75_811_ocr.py',
+    'regression_v74_row_filtering.py',
+    'regression_v73_total_dates.py',
+    'regression_compact_table_fallback.py',
+    'regression_length_totals.py',
+    'regression_split_pipes.py',
+    'regression_new_assets.py',
+    'regression_master_insert.py',
+    'regression_r2_endpoint_ocr.py',
+    'regression_trouble_tickets.py',
+    'regression_trouble_workbook.py',
+    'regression_workorder_preview.py',
+]
+passed=[]
+for name in test_names:
+    test=Path('working_source/tests') / name
+    if not test.exists():
+        raise SystemExit(f'Required current regression missing: {name}')
     print(f'===== {test} =====', flush=True)
-    proc = subprocess.run([sys.executable, str(test)], text=True, capture_output=True)
-    if proc.stdout:
-        print(proc.stdout, end='')
-    if proc.stderr:
-        print(proc.stderr, end='')
-    if proc.returncode == 0:
-        passed.append(test.name)
-        continue
-    combined = (proc.stdout or '') + '\n' + (proc.stderr or '')
-    missing_private_fixture = (
-        'FileNotFoundError' in combined and
-        any(marker in combined for marker in (
-            '/upload/', "'upload/", '/output/package_v69/', "'output/package_v69/",
-            '8-11-2026.pdf', '8-17-2026', 'fixture PDF unavailable',
-        ))
-    )
-    if missing_private_fixture:
-        skipped.append(test.name)
-        print(f'SKIP {test.name}: private/stale fixture is not present in the public release repository.')
-        continue
-    raise SystemExit(f'{test.name} failed with exit code {proc.returncode}')
-print(f'Regression summary: {len(passed)} passed, {len(skipped)} private/stale fixture skips.')
-if skipped:
-    print('Skipped:', ', '.join(skipped))
+    subprocess.run([sys.executable, str(test)], check=True)
+    passed.append(name)
+print(f'Current release regression summary: {len(passed)} passed.')
 PY
 
 python - <<'PY'
@@ -97,12 +119,26 @@ required = [
     'self.tree.yview_moveto(vertical_position)',
     'self.tree.selection_set(surviving)',
     'self.tree.focus(focused)',
+    "layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date'))",
 ]
 for item in required:
     assert item in source, item
-for legacy in ('parse_reno', 'parse_year15', 'parse_year15_manholes', 'Phase 2 Year 1 Manholes'):
+for legacy in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
     assert legacy in source, legacy
-print('v90 UI and unrelated-parser structural safeguards passed.')
+for safeguard in (
+    'def _year15_recover_vertical_rules(',
+    'def add_unprocessed_page(',
+    "item['is_continuation']=True",
+    "'source':'inherited continuation / '+geometry_source",
+    'safe_total_sources={key:value for key,value in total_sources.items() if key not in incomplete_total_keys}',
+    'def _batch_pair_endpoint_candidates(',
+    'def apply_manual_asset_edit(',
+    "mandatory_data_bands=set(range(int(header_band_index)+1,int(total_band_index)))",
+    'MAX_ROW_LENGTH = 1700.0',
+    'MAX_ROW_LENGTH_DECIMALS = 2',
+):
+    assert safeguard in source, safeguard
+print('v90 version, UI, parser-preservation, continuation, partial-failure, endpoint OCR, edit-node, and length safeguards passed.')
 PY
 
 git config user.name "github-actions[bot]"
@@ -138,17 +174,24 @@ with zipfile.ZipFile(zip_path) as z:
         f'{top}/xps_tracker_updater.ico',
     }
     assert not required.difference(names), required.difference(names)
+    forbidden=('.xlsx','.pdf','ocr_cache','8-24-2026','8-17-2026','8-11-2026','8-19-2026','8-26-2026')
+    assert not any(any(token.lower() in n.lower() for token in forbidden) for n in names), 'customer/test data leaked into ZIP'
     assert "APP_VERSION = '90'" in z.read(f'{top}/reno_scan_updater.py').decode('utf-8')
     assert 'CURRENT_VERSION = "90"' in z.read(f'{top}/xps_update.py').decode('utf-8')
 digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
 Path('v90.sha256').write_text(digest + '\n', encoding='ascii')
 print('ZIP size:', zip_path.stat().st_size)
 print('SHA256:', digest)
+print('v90 ZIP structure and privacy check passed.')
 PY
 unzip -t XPS_Tracker_Updater_v90.zip
 ZIP_SHA256=$(cat v90.sha256)
 ZIP_SIZE=$(stat -c%s XPS_Tracker_Updater_v90.zip)
 
+if GH_TOKEN="$GITHUB_TOKEN" gh release view v90 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+  echo 'v90 release already exists; refusing to overwrite it.' >&2
+  exit 1
+fi
 GH_TOKEN="$GITHUB_TOKEN" gh release create v90 XPS_Tracker_Updater_v90.zip \
   --repo "$GITHUB_REPOSITORY" \
   --target "$RELEASE_COMMIT" \

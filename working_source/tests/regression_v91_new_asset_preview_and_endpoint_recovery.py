@@ -32,8 +32,8 @@ cell=np.full((28,90,3),255,dtype=np.uint8)
 assert ns['_endpoint_digit_tokens'](cell)==['1912']
 
 # The downstream recovery remains conservative: both OCR-observed numeric bodies
-# must identify exactly one existing directional master pair.
-for name in ('_asset_body_digits','_digit_token_matches_asset_body','_resolve_pipe_pair_from_endpoint_digits'):
+# must identify exactly one best existing directional master pair.
+for name in ('_asset_body_digits','_digit_token_asset_body_quality','_digit_token_matches_asset_body','_resolve_pipe_pair_from_endpoint_digits'):
     node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[node],type_ignores=[]),str(SOURCE),'exec'),ns)
 reads=iter((['1911'],['1912']))

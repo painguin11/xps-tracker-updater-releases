@@ -1,4 +1,4 @@
-name: Apply v88 dev patch
+name: Validate v88 continuation fix
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch-and-test:
-    if: ${{ github.event.head_commit.message == 'APPLY_V88_DEV_PATCH' }}
+    if: ${{ github.event.head_commit.message == 'APPLY_V88_TEMPLATE_FIX' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out v88 work branch
@@ -27,17 +27,20 @@ jobs:
       - name: Install regression dependencies
         run: python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
 
-      - name: Apply continuation patch
+      - name: Make confirmed template authoritative on continuations
         run: |
-          python .github/scripts/apply_v88_continuation_patch.py
           python - <<'PY'
           from pathlib import Path
           path=Path('working_source/app/reno_scan_updater.py')
           src=path.read_text(encoding='utf-8')
-          needle="                        if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):"
-          comment="                        # A complete native detection above 80% confidence is reliable enough\n                        # to skip a confirmation popup, but all four required roles remain mandatory.\n"
-          assert src.count(needle)==1
-          path.write_text(src.replace(needle,comment+needle,1),encoding='utf-8')
+          old="""    complete_header=all(k in role_indices for k in ('up','down','value','date'))
+    if can_inherit and not complete_header:
+"""
+          new="""    if can_inherit:
+"""
+          assert src.count(old)==1, src.count(old)
+          src=src.replace(old,new,1)
+          path.write_text(src,encoding='utf-8')
           PY
 
       - name: Compile and run regressions
@@ -79,6 +82,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add working_source/app/reno_scan_updater.py
-          git diff --cached --quiet && { echo 'No source changes produced'; exit 1; }
-          git commit -m 'Handle headerless table continuations and nonfatal page failures [skip ci]'
+          git diff --cached --quiet && { echo 'No source change produced'; exit 1; }
+          git commit -m 'Prefer confirmed layout on headerless continuation pages [skip ci]'
           git push origin HEAD:v88-work

@@ -1,13 +1,15 @@
 {
-  "version": "88",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v88/XPS_Tracker_Updater_v88.zip",
-  "sha256": "431d717b271d42f520fdc58082cacd14eaf995abea93ce4b6e98bf8f8e728601",
+  "version": "89",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v89/XPS_Tracker_Updater_v89.zip",
+  "sha256": "379a0a14d3768e439382e29327d26a2458e0e41b555ccc10947feac30e4e6fa9",
   "release_notes": [
-    "Fix faint/interrupted Brown & Caldwell table grid detection so printed columns are not merged",
-    "Support headerless continuation pages for Pipe, Cleaning, and Manhole tables within the same work order",
-    "Reuse the preceding confirmed Pipe/Cleaning layout and preserve Manhole continuation orientation",
-    "Continue processing readable pages when one page cannot be safely parsed and show the affected work order/page at the top of the live summary",
-    "Fix continuation value-cell clipping and preserve exact printed totals, including the 8-24-2026 page 10-11 Cleaning continuation",
-    "Preserve v86 endpoint OCR, editable asset/node fields, split/MSA handling, and exact PDF-number safeguards"
+    "Verify Manhole work-order row counts against the user-confirmed count from the Description of work performed crop",
+    "Use only the final continuation page printed total for multi-page Pipe/Cleaning verification",
+    "Offer Add to Master, Ignore, or Back to Summary for unresolved Pipe and Manhole rows before any master write",
+    "Limit automatic MSA combination to exactly two duplicate Pipe rows and block larger duplicate groups for ID review",
+    "Show PDF field previews while editing Trouble Tickets",
+    "Preserve complete printed endpoint pairs that are absent from the master instead of fuzzy-mapping them to nearby assets",
+    "Recover narrow left-grid endpoint OCR artifacts and common Length Surveyed header OCR variants",
+    "Preserve v88 continuation, partial-page, faint-grid, and exact PDF-number safeguards"
   ]
 }

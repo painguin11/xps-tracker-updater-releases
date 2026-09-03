@@ -1,11 +1,11 @@
 {
-  "version": "93",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v93/XPS_Tracker_Updater_v93.zip",
-  "sha256": "bddb268e2e0aebc6ee98cfb4022f0e05cc1c06e20d80f96895f8f9610a002329",
+  "version": "94",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v94/XPS_Tracker_Updater_v94.zip",
+  "sha256": "e9bd5f096ac47fe808c68116150d705272c1355c0b2a3bb1a3d46b52ff5700a7",
   "release_notes": [
-    "Leave the Work Order confirmation field blank when pink/magenta W/O digits are too faded, incomplete, or inconsistent to trust",
-    "Require strong isolated-color OCR agreement and visible digit structure before auto-filling a 4- or 5-digit Work Order",
-    "Write NEW PIPE or NEW MANHOLE in the master Notes column for every approved new asset row, including Add to Master rows",
-    "Preserve all v92 and earlier new-asset, endpoint-recovery, continuation, total-validation, and matching safeguards"
+    "Recover endpoint rows that whole-column OCR skips by re-reading padded individual endpoint cells as a clean stacked column",
+    "Run the stacked endpoint OCR only after normal pair matching fails, so already-readable rows keep the existing fast path",
+    "Require both endpoint numbers to be observed from the PDF and to identify exactly one existing directional master pipe before recovery",
+    "Keep valid non-master pairs unresolved for Add/Ignore review and preserve all v93 and earlier safeguards"
   ]
 }

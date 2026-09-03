@@ -30,11 +30,11 @@ new = '''    horizontal_inv=cv2.threshold(gray,240,255,cv2.THRESH_BINARY_INV)[1]
         return found
 
     rule_ys=compact_horizontal_rule_ys(roi)
-    if len(rule_ys)<4:
+    if len(rule_ys)<=4:
         # Some compact B&C scans have real row rules printed as faint/dashed
-        # segments.  Keep the normal raw-line pass authoritative; only when it
+        # segments. Keep the normal raw-line pass authoritative; only when it
         # finds almost no table rows, join tiny horizontal gaps and retry the
-        # same long-rule test.  This repairs the physical grid without inferring
+        # same long-rule test. This repairs the physical grid without inferring
         # rows from OCR text or from the master workbook.
         join_width=max(3,int(round((right-left)*.003)))
         repaired=cv2.morphologyEx(

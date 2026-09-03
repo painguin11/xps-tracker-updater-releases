@@ -1,8 +1,10 @@
 from pathlib import Path
+import re
 
 SOURCE=Path('working_source/app/reno_scan_updater.py')
 s=SOURCE.read_text(encoding='utf-8')
-assert any(f"APP_VERSION = '{v}'" in s for v in ('93','94'))
+version_match=re.search(r"APP_VERSION = '(\d+)'",s)
+assert version_match and int(version_match.group(1))>=93
 
 # Approved new pipe rows must be marked in the master Notes column whether they
 # are inserted below a detected base row or appended through Add to Master.

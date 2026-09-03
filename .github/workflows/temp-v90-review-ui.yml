@@ -15,6 +15,9 @@ jobs:
           fetch-depth: 0
       - name: Apply staged patch
         run: python working_source/tools/apply_v90_review_ui.py
+      - name: Preserve v89 dialog structure
+        run: >-
+          python -c "from pathlib import Path; p=Path('working_source/app/reno_scan_updater.py'); s=p.read_text(encoding='utf-8'); old=\"        scanned=(record.get('asset') or record.get('display_asset') or '') if is_manhole else f\\\"{record.get('up','')} → {record.get('down','')}\\\"\"; new=\"        if is_manhole:\\n            scanned=record.get('asset') or record.get('display_asset') or ''\\n        else:\\n            scanned=f\\\"{record.get('up','')} → {record.get('down','')}\\\"\"; assert old in s; p.write_text(s.replace(old,new,1),encoding='utf-8')"
       - name: Verify
         run: |
           python -m py_compile working_source/app/reno_scan_updater.py

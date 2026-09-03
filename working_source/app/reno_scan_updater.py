@@ -5872,6 +5872,8 @@ class App(tk.Tk):
                     ps.Cells(rr,ph['w/o']).Value=master_text(r['wo'])
                     ps.Cells(rr,ph['truck']).Value=master_text(r['truck'])
                     ps.Cells(rr,ph['operator']).Value=master_text(r['operator'])
+                notes_col=ph.get('notes')
+                if notes_col: append_note(ps.Cells(rr,notes_col),'NEW PIPE')
                 highlight_approved_master_row(ps,rr,last_col)
                 written+=1; log_rows.append(r)
 
@@ -5907,6 +5909,8 @@ class App(tk.Tk):
                     ps.Cells(rr,ph['w/o']).Value=master_text(r['wo'])
                     ps.Cells(rr,ph['truck']).Value=master_text(r['truck'])
                     ps.Cells(rr,ph['operator']).Value=master_text(r['operator'])
+                notes_col=ph.get('notes')
+                if notes_col: append_note(ps.Cells(rr,notes_col),'NEW PIPE')
                 highlight_approved_master_row(ps,rr,last_col)
                 written+=1; log_rows.append(r)
 
@@ -5923,6 +5927,8 @@ class App(tk.Tk):
                 ms.Cells(rr,mh['w/o']).Value=master_text(r['wo'])
                 ms.Cells(rr,mh['truck']).Value=master_text(r['truck'])
                 ms.Cells(rr,mh['operator']).Value=master_text(r['operator'])
+                notes_col=mh.get('notes')
+                if notes_col: append_note(ms.Cells(rr,notes_col),'NEW MANHOLE')
                 highlight_approved_master_row(ms,rr,last_col)
                 written+=1; log_rows.append(r)
 
@@ -5935,6 +5941,8 @@ class App(tk.Tk):
                 ms.Cells(rr,mh['w/o']).Value=master_text(r['wo'])
                 ms.Cells(rr,mh['truck']).Value=master_text(r['truck'])
                 ms.Cells(rr,mh['operator']).Value=master_text(r['operator'])
+                notes_col=mh.get('notes')
+                if notes_col: append_note(ms.Cells(rr,notes_col),'NEW MANHOLE')
                 highlight_approved_master_row(ms,rr,last_col)
                 written+=1; log_rows.append(r)
 

@@ -1,11 +1,11 @@
 {
-  "version": "94",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v94/XPS_Tracker_Updater_v94.zip",
-  "sha256": "e9bd5f096ac47fe808c68116150d705272c1355c0b2a3bb1a3d46b52ff5700a7",
+  "version": "95",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v95/XPS_Tracker_Updater_v95.zip",
+  "sha256": "eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41",
   "release_notes": [
-    "Recover endpoint rows that whole-column OCR skips by re-reading padded individual endpoint cells as a clean stacked column",
-    "Run the stacked endpoint OCR only after normal pair matching fails, so already-readable rows keep the existing fast path",
-    "Require both endpoint numbers to be observed from the PDF and to identify exactly one existing directional master pipe before recovery",
-    "Keep valid non-master pairs unresolved for Add/Ignore review and preserve all v93 and earlier safeguards"
+    "Recover faint/dashed compact B&C table row rules so affected pages are processed instead of skipped",
+    "Prefer exact endpoint numeric-body matches over tolerated leading-junk OCR matches, fixing DN-1911 to DN-1912",
+    "Preserve unresolved and genuinely ambiguous pipe pairs instead of guessing",
+    "Preserve all v94/v93 continuation, Work Order confidence, new-asset note, total-validation, review, and matching safeguards"
   ]
 }

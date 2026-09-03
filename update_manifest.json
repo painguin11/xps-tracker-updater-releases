@@ -1,12 +1,12 @@
 {
-  "version": "90",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v90/XPS_Tracker_Updater_v90.zip",
-  "sha256": "f1f2a71f3c767727971857b0c9b70b89fee1ae4cd1fa4e158a1de1f09eccaf87",
+  "version": "91",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v91/XPS_Tracker_Updater_v91.zip",
+  "sha256": "a2f19b459f65b5c8fd9329cba3cdd4bb37e9bcc1729a08407514b101c07b0687",
   "release_notes": [
-    "Show upstream and downstream PDF ID image previews in the Add to Master / Ignore popup for unresolved Pipe and Cleaning assets",
-    "Show the PDF manhole ID image preview in the Add to Master / Ignore popup for unresolved Manholes",
-    "Preserve the Live Summary scroll position after editing a row",
-    "Restore the selected and focused summary row after the edit refresh",
-    "Preserve v89 printed-pair identity, new-asset, continuation, total-validation, MSA, and OCR safeguards"
+    "Show PDF ID crops in the existing Yes / No approval popup for suffixed NEW PIPE and NEW MANHOLE assets",
+    "Recover damaged Pipe/Cleaning endpoints only when OCR-observed numeric bodies from both cells uniquely identify one directional master pipe",
+    "Keep legitimate fully printed non-master pairs unresolved for Add to Master / Ignore review",
+    "Read the five-digit Work Order number by isolating its machine-typed pink/magenta text before OCR instead of relying on grayscale",
+    "Keep the editable Work Order confirmation popup and the established grayscale OCR as a final fallback for unusually faded scans"
   ]
 }

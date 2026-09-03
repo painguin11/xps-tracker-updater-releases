@@ -100,7 +100,7 @@ jobs:
           grep -q "APP_VERSION = '95'" working_source/app/reno_scan_updater.py
           grep -q 'CURRENT_VERSION = "95"' working_source/app/xps_update.py
           grep -q 'if len(rule_ys)<=4:' working_source/app/reno_scan_updater.py
-          grep -q 'def _endpoint_digit_match_score' working_source/app/reno_scan_updater.py
+          grep -q 'def _digit_token_asset_body_quality' working_source/app/reno_scan_updater.py
           git status --short
           unexpected=$(git status --short | awk '{print $2}' | grep -vE '^(working_source/app/reno_scan_updater.py|working_source/app/xps_update.py|working_source/app/README_XPS_Tracker_Updater.txt|working_source/app/__pycache__/.*\.pyc)$' || true)
           if [ -n "$unexpected" ]; then echo "Unexpected changed files:"; echo "$unexpected"; exit 1; fi

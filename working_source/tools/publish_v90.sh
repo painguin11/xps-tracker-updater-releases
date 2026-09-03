@@ -46,6 +46,10 @@ assert "APP_TITLE = f'{APP_NAME} v{APP_VERSION}'" in app
 print('Version checks passed: app/display/updater = 90')
 PY
 
+# The clean GitHub runner does not have the production OCR stack installed.
+# Install only the cross-platform packages needed by the regression scripts.
+python -m pip install --disable-pip-version-check --quiet numpy pillow opencv-python-headless pymupdf pytesseract packaging openpyxl
+
 python - <<'PY'
 from pathlib import Path
 import subprocess, sys

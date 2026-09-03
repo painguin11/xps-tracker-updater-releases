@@ -46,7 +46,7 @@ assert FakeTesseract.calls==2
 
 # Extra PDF-observed stacked digits may recover an existing pair even if the
 # isolated-cell OCR returns nothing. The master still cannot invent either side.
-for name in ('_asset_body_digits','_digit_token_matches_asset_body','_resolve_pipe_pair_from_endpoint_digits'):
+for name in ('_asset_body_digits','_digit_token_asset_body_quality','_digit_token_matches_asset_body','_resolve_pipe_pair_from_endpoint_digits'):
     node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[node],type_ignores=[]),str(SOURCE),'exec'),ns)
 ns['_endpoint_digit_tokens']=lambda _cell: []

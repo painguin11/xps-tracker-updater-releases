@@ -33,14 +33,10 @@ jobs:
           from pathlib import Path
           path=Path('working_source/app/reno_scan_updater.py')
           src=path.read_text(encoding='utf-8')
-          old="""    complete_header=all(k in role_indices for k in ('up','down','value','date'))
-    if can_inherit and not complete_header:
-"""
-          new="""    if can_inherit:
-"""
+          old="    complete_header=all(k in role_indices for k in ('up','down','value','date'))\n    if can_inherit and not complete_header:\n"
+          new="    if can_inherit:\n"
           assert src.count(old)==1, src.count(old)
-          src=src.replace(old,new,1)
-          path.write_text(src,encoding='utf-8')
+          path.write_text(src.replace(old,new,1),encoding='utf-8')
           PY
 
       - name: Compile and run regressions

@@ -72,10 +72,6 @@ jobs:
 
       - name: Validate release source and scope
         run: |
-          # py_compile and imported regressions create bytecode. Remove only these
-          # generated files before enforcing the exact release-source diff.
-          find working_source -type d -name '__pycache__' -prune -exec rm -rf {} +
-          find working_source -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
           python - <<'PY'
           from pathlib import Path
           import re, subprocess
@@ -95,7 +91,8 @@ jobs:
           assert 'batch_dn_digit_endpoints=None' in app
           assert 'up_extra=batch_up_digit_endpoints.get(band_index,[])' in app
           assert 'dn_extra=batch_dn_digit_endpoints.get(band_index,[])' in app
-          changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          changed={p for p in subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+                   if '__pycache__' not in p and not p.lower().endswith(('.pyc','.pyo'))}
           expected={
               'working_source/app/reno_scan_updater.py',
               'working_source/app/xps_update.py',

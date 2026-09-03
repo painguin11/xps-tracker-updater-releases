@@ -34,16 +34,10 @@ jobs:
           from pathlib import Path
           path=Path('working_source/app/reno_scan_updater.py')
           src=path.read_text(encoding='utf-8')
-          old="""                        detected_roles=layout.get('role_indices',{})
-                        if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):
-"""
-          new="""                        detected_roles=layout.get('role_indices',{})
-                        # A complete native detection above 80% confidence is reliable enough
-                        # to skip a confirmation popup, but all four required roles remain mandatory.
-                        if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):
-"""
-          assert src.count(old)==1
-          path.write_text(src.replace(old,new,1),encoding='utf-8')
+          needle="                        if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):"
+          comment="                        # A complete native detection above 80% confidence is reliable enough\n                        # to skip a confirmation popup, but all four required roles remain mandatory.\n"
+          assert src.count(needle)==1
+          path.write_text(src.replace(needle,comment+needle,1),encoding='utf-8')
           PY
 
       - name: Compile and run regressions

@@ -1,12 +1,11 @@
 {
-  "version": "91",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v91/XPS_Tracker_Updater_v91.zip",
-  "sha256": "a2f19b459f65b5c8fd9329cba3cdd4bb37e9bcc1729a08407514b101c07b0687",
+  "version": "92",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v92/XPS_Tracker_Updater_v92.zip",
+  "sha256": "68e5e3f61025bf1583404cdbce6c2046426d14ae710f40156935d4f950b1db8b",
   "release_notes": [
-    "Show PDF ID crops in the existing Yes / No approval popup for suffixed NEW PIPE and NEW MANHOLE assets",
-    "Recover damaged Pipe/Cleaning endpoints only when OCR-observed numeric bodies from both cells uniquely identify one directional master pipe",
-    "Keep legitimate fully printed non-master pairs unresolved for Add to Master / Ignore review",
-    "Read the five-digit Work Order number by isolating its machine-typed pink/magenta text before OCR instead of relying on grayscale",
-    "Keep the editable Work Order confirmation popup and the established grayscale OCR as a final fallback for unusually faded scans"
+    "Correct the pink/magenta Work Order OCR path to accept both 4-digit and 5-digit machine-typed Work Order numbers",
+    "Keep color isolation as the primary Work Order read so green rules and black form labels do not interfere",
+    "Keep the editable Work Order confirmation popup and grayscale OCR fallback",
+    "Preserve all v91 new-asset preview, endpoint recovery, continuation, total-validation, and matching safeguards"
   ]
 }

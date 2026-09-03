@@ -78,7 +78,7 @@ def _workorder_confident_magenta_candidate(cell_img):
         return '',True
     return winner,True
 '''
-src,n=re.subn(helper,replacement,src,count=1,flags=re.S)
+src,n=re.subn(helper,lambda _m: replacement,src,count=1,flags=re.S)
 assert n==1, 'magenta candidate helper block not found exactly once'
 
 start=src.index('    # Work order number: isolate the machine-typed pink/magenta ink first.')

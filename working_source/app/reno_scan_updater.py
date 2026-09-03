@@ -18,7 +18,7 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '89'
+APP_VERSION = '90'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 DUPLICATE_PIPE_REVIEW = 'Duplicate pipe - check IDs'

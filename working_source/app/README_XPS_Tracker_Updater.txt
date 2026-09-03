@@ -597,3 +597,10 @@ Version 86 endpoint OCR and editable assets
 - Allows Manhole asset IDs to be edited directly in Edit Selected, with a PDF preview beside the field.
 - Re-matches manually corrected asset/node IDs against the selected master immediately and updates the row review state.
 - Preserves v85 physical-row retention, exact total reconciliation, split/MSA handling, and exact PDF-number safeguards.
+
+Version 90 review workflow improvements
+---------------------------------------
+- Shows PDF ID image previews directly in the Add to Master / Ignore decision popup for unresolved assets.
+- Pipe and Cleaning review shows upstream and downstream ID crops side-by-side; Manhole review shows the manhole ID crop.
+- Preserves the current Live Summary vertical position and selected/focused row when Edit Selected rebuilds the summary.
+- Preserves all v89 printed-pair identity, new-asset, continuation, total-validation, and OCR safeguards.

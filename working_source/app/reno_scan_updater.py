@@ -1548,6 +1548,75 @@ def _batch_pair_endpoint_candidates(img,bands,table,box,asset_format=None):
     return out
 
 
+def _batch_pair_endpoint_digit_candidates(img,bands,table,box):
+    """Read each endpoint cell in a padded stack and return OCR-observed digits.
+
+    Whole-column OCR can skip a cluster of otherwise clean rows, while isolated
+    grid cells can be harmed by their border rules.  This fallback gives every
+    physical endpoint cell its own white-padded tile, stacks those tiles into one
+    OCR image, and maps observed numeric bodies back to the original row bands.
+    It supplies PDF evidence only; pair resolution still requires both endpoint
+    bodies to identify exactly one existing directional master pipe.
+    """
+    if img is None or not bands or not table or not box:
+        return {}
+    left,right=table; tw=max(1,right-left); h,w=img.shape[:2]
+    x1=max(0,int(left+box[0]*tw)); x2=min(w,int(left+box[1]*tw))
+    if x2<=x1:
+        return {}
+    # A few rendered pixels retain glyphs that sit against a vertical grid rule.
+    x1=max(0,x1-3); x2=min(w,x2+3)
+    tiles=[]; tile_indices=[]
+    for band_index,(y1,y2) in enumerate(bands):
+        cell=img[max(0,int(y1)):min(h,int(y2)),x1:x2]
+        if not getattr(cell,'size',0):
+            continue
+        ch,cw=cell.shape[:2]
+        top=max(1,int(round(ch*.10))); bottom=max(1,int(round(ch*.10)))
+        sample=cell[top:max(top+2,ch-bottom),:]
+        if not getattr(sample,'size',0):
+            continue
+        gray=cv2.cvtColor(sample,cv2.COLOR_RGB2GRAY)
+        gray=cv2.resize(gray,None,fx=3.5,fy=3.5,interpolation=cv2.INTER_CUBIC)
+        gray=cv2.copyMakeBorder(gray,12,12,24,24,cv2.BORDER_CONSTANT,value=255)
+        tiles.append(gray); tile_indices.append(band_index)
+    if not tiles:
+        return {}
+    width=max(tile.shape[1] for tile in tiles)
+    padded=[]; spans=[]; cursor=0
+    for band_index,tile in zip(tile_indices,tiles):
+        if tile.shape[1]<width:
+            tile=cv2.copyMakeBorder(tile,0,0,0,width-tile.shape[1],cv2.BORDER_CONSTANT,value=255)
+        padded.append(tile)
+        spans.append((band_index,cursor,cursor+tile.shape[0]))
+        cursor+=tile.shape[0]
+    stack=np.vstack(padded)
+    found={}
+    for psm in (6,11):
+        try:
+            data=pytesseract.image_to_data(
+                stack,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789',
+                output_type=pytesseract.Output.DICT)
+        except Exception:
+            continue
+        for i,raw in enumerate(data.get('text',[])):
+            tokens=re.findall(r'(?<!\d)\d{1,8}(?!\d)',str(raw or '').strip())
+            if not tokens:
+                continue
+            try:
+                yc=float(data['top'][i])+float(data['height'][i])/2.0
+            except Exception:
+                continue
+            span=min(spans,key=lambda item:abs(yc-(item[1]+item[2])/2.0))
+            if not (span[1]-4<=yc<=span[2]+4):
+                continue
+            values=found.setdefault(span[0],[])
+            for token in tokens:
+                if token not in values:
+                    values.append(token)
+    return found
+
+
 def _ocr_known_r2_candidates(cell_img, known_items, asset_format=None):
     """Recover exact known R2 IDs when the prefix becomes an OCR lookalike.
 
@@ -1667,15 +1736,15 @@ def _digit_token_matches_asset_body(token,body):
     return token==body or (token.endswith(body) and 0 < len(token)-len(body) <= 2)
 
 
-def _resolve_pipe_pair_from_endpoint_digits(up_cell,dn_cell,master_index):
+def _resolve_pipe_pair_from_endpoint_digits(up_cell,dn_cell,master_index,up_extra=None,dn_extra=None):
     """Recover a damaged prefix only when both cells identify one existing pipe.
 
     The numeric body of each endpoint must be OCR-observed in its own PDF cell. The
     master can disambiguate EC/DN/R2 only when exactly one existing pipe satisfies
     both observations. This cannot create a new asset or supply an unobserved number.
     """
-    up_tokens=_endpoint_digit_tokens(up_cell)
-    dn_tokens=_endpoint_digit_tokens(dn_cell)
+    up_tokens=list(dict.fromkeys(_endpoint_digit_tokens(up_cell)+list(up_extra or [])))
+    dn_tokens=list(dict.fromkeys(_endpoint_digit_tokens(dn_cell)+list(dn_extra or [])))
     if not up_tokens or not dn_tokens:
         return None
     matches={}
@@ -3450,6 +3519,9 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         endpoint_items[asset_key(endpoint_key)]=manhole_item.get('asset') or str(endpoint_key)
     batch_up_endpoints=_batch_pair_endpoint_candidates(img,bands,table,up_box,asset_format)
     batch_dn_endpoints=_batch_pair_endpoint_candidates(img,bands,table,dn_box,asset_format)
+    # Build the more expensive padded-cell digit stack only if a row actually
+    # survives the normal full-ID and R2 recovery paths unresolved.
+    batch_up_digit_endpoints=None; batch_dn_digit_endpoints=None
     rows=[]; seen=set()
     typical_band=float(np.median([max(1,b-a) for a,b in bands]))
     def has_asset_digit_signal(observations):
@@ -3505,7 +3577,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # If grid/prefix damage erased EC/DN/R2 but both endpoint numbers are
             # still visible, accept a recovery only when those two OCR-observed
             # numeric bodies identify exactly one existing master pipe.
-            digit_match=_resolve_pipe_pair_from_endpoint_digits(cut(up_box),cut(dn_box),master_index)
+            if batch_up_digit_endpoints is None:
+                batch_up_digit_endpoints=_batch_pair_endpoint_digit_candidates(img,bands,table,up_box)
+                batch_dn_digit_endpoints=_batch_pair_endpoint_digit_candidates(img,bands,table,dn_box)
+            digit_match=_resolve_pipe_pair_from_endpoint_digits(
+                cut(up_box,horizontal_bleed=3),cut(dn_box,horizontal_bleed=3),master_index,
+                up_extra=batch_up_digit_endpoints.get(band_index,[]),
+                dn_extra=batch_dn_digit_endpoints.get(band_index,[]))
             if digit_match:
                 match=digit_match; match_status='Matched'
                 up_obs=[match['up']]+up_obs; dn_obs=[match['down']]+dn_obs

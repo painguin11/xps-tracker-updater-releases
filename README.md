@@ -13,3 +13,11 @@ No master spreadsheets, scanned PDFs, trouble tickets, OCR caches, logs, or comp
 - Improves failed-total OCR recovery, including subtle decimal/grid-line misreads, without rounding or manufacturing PDF values.
 - Keeps duplicate-looking Cleaning rows visible for total validation while preventing duplicate master writes.
 - Adds PDF image previews beside every editable extracted-row field, with a PDF page fallback when a crop is unavailable.
+
+## v86
+
+- Adds a whole-column endpoint OCR pass so grid strokes no longer erase valid EC-, DN-, or R2- prefixes from otherwise readable rows.
+- Allows Pipe/Cleaning upstream and downstream nodes to be edited directly in Edit Selected, with a PDF preview beside each field.
+- Allows Manhole asset IDs to be edited directly in Edit Selected, with a PDF preview beside the field.
+- Re-matches manually corrected asset/node IDs against the selected master immediately and updates the row review state.
+- Preserves v85 physical-row retention, exact total reconciliation, split/MSA handling, and exact PDF-number safeguards.

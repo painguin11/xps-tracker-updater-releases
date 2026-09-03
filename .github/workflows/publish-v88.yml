@@ -1,0 +1,214 @@
+name: Publish v88
+
+on:
+  push:
+    branches:
+      - v88-work
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.head_commit.message == 'PUBLISH_V88' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v88 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v88-work
+          fetch-depth: 0
+
+      - name: Install Tkinter runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
+
+      - name: Install regression dependencies
+        run: python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Bump release versions and README
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          app=Path('working_source/app/reno_scan_updater.py')
+          src=app.read_text(encoding='utf-8')
+          src,n=re.subn(r"^APP_VERSION\s*=\s*['\"]86['\"]", "APP_VERSION = '88'", src, count=1, flags=re.M)
+          assert n==1, 'APP_VERSION 86 marker not found exactly once'
+          app.write_text(src,encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py')
+          src=updater.read_text(encoding='utf-8')
+          src,n=re.subn(r'^CURRENT_VERSION\s*=\s*[\"\']86[\"\']', 'CURRENT_VERSION = "88"', src, count=1, flags=re.M)
+          assert n==1, 'CURRENT_VERSION 86 marker not found exactly once'
+          updater.write_text(src,encoding='utf-8')
+          readme=Path('README.md')
+          text=readme.read_text(encoding='utf-8')
+          if '## v88' not in text:
+              text += ('\n\n## v88\n\n'
+                       '- Fixes Brown & Caldwell table geometry when faint or interrupted grid lines caused multiple printed columns to be merged.\n'
+                       '- Supports headerless continuation pages for Pipe, Cleaning, and Manhole tables within the same work order.\n'
+                       '- Pipe/Cleaning continuations reuse the preceding confirmed column layout and orientation; Manhole continuations inherit the confirmed table type/orientation without borrowing pair-table geometry.\n'
+                       '- An unreadable page no longer aborts the whole PDF: readable rows are kept, later pages continue processing, and the live summary shows the affected work order and page numbers at the top.\n'
+                       '- Fixes continuation value-cell clipping, including the 8-24-2026 Cleaning continuation where pages 10-11 reconcile to the printed 4430-ft total.\n'
+                       '- Preserves v86 endpoint OCR, editable asset/node fields, split/MSA handling, and exact PDF-number safeguards.\n')
+              readme.write_text(text,encoding='utf-8')
+          PY
+
+      - name: Compile and run release regressions
+        run: |
+          set -e
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          run_test() { if [ -f "$1" ]; then python "$1"; fi; }
+          run_test working_source/tests/regression_v88_continuations.py
+          run_test working_source/tests/regression_v86_assets_and_edit.py
+          run_test working_source/tests/regression_v85_edit_row_previews.py
+          run_test working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          run_test working_source/tests/regression_v84_real_packet_length_logic.py
+          run_test working_source/tests/regression_v83_length_recovery.py
+          run_test working_source/tests/regression_v83_exact_pdf_numbers.py
+          run_test working_source/tests/regression_v83_total_preview_group_errors.py
+          run_test working_source/tests/regression_v82_pair_video_lengths.py
+          run_test working_source/tests/regression_v82_master_asset_format.py
+          run_test working_source/tests/regression_v82_suffix_guard.py
+          run_test working_source/tests/regression_v82_cleaning_header_noise.py
+          run_test working_source/tests/regression_v82_layout_threshold.py
+          run_test working_source/tests/regression_v81_header_outline.py
+          run_test working_source/tests/regression_v80_ocr_total_ui.py
+          run_test working_source/tests/regression_v79_layout_speed.py
+          run_test working_source/tests/regression_v78_rollback.py
+          run_test working_source/tests/regression_v75_811_ocr.py
+          run_test working_source/tests/regression_v74_row_filtering.py
+          run_test working_source/tests/regression_v73_total_dates.py
+          run_test working_source/tests/regression_compact_table_fallback.py
+          run_test working_source/tests/regression_length_totals.py
+          run_test working_source/tests/regression_split_pipes.py
+          run_test working_source/tests/regression_new_assets.py
+          run_test working_source/tests/regression_master_insert.py
+          run_test working_source/tests/regression_r2_endpoint_ocr.py
+          run_test working_source/tests/regression_trouble_tickets.py
+          run_test working_source/tests/regression_trouble_workbook.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert re.search(r"^APP_VERSION\s*=\s*['\"]88['\"]",app,re.M)
+          assert re.search(r'^CURRENT_VERSION\s*=\s*[\"\']88[\"\']',updater,re.M)
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in app, required
+          for required in (
+              'def _year15_recover_vertical_rules(',
+              'def add_unprocessed_page(',
+              "item['is_continuation']=True",
+              "'source':'inherited continuation / '+geometry_source",
+              'safe_total_sources={key:value for key,value in total_sources.items() if key not in incomplete_total_keys}',
+              'def _batch_pair_endpoint_candidates(',
+              'def apply_manual_asset_edit(',
+              "mandatory_data_bands=set(range(int(header_band_index)+1,int(total_band_index)))",
+              'MAX_ROW_LENGTH = 1700.0',
+              'MAX_ROW_LENGTH_DECIMALS = 2'):
+              assert required in app, required
+          print('v88 version, parser-preservation, continuation, partial-failure, endpoint OCR, edit-node, and length safeguards passed.')
+          PY
+
+      - name: Build and validate release ZIP
+        run: |
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find dist -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+          test -f dist/XPS_Tracker_Updater/reno_scan_updater.py
+          test -f dist/XPS_Tracker_Updater/xps_update.py
+          test -f dist/XPS_Tracker_Updater/run_xps_tracker.bat
+          cd dist
+          zip -qr XPS_Tracker_Updater_v88.zip XPS_Tracker_Updater
+          unzip -t XPS_Tracker_Updater_v88.zip
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          archive=Path('XPS_Tracker_Updater_v88.zip')
+          with zipfile.ZipFile(archive) as z:
+              names=z.namelist()
+              assert names and all(n.startswith('XPS_Tracker_Updater/') for n in names)
+              for required in ('XPS_Tracker_Updater/reno_scan_updater.py','XPS_Tracker_Updater/xps_update.py','XPS_Tracker_Updater/run_xps_tracker.bat'):
+                  assert required in names, required
+              forbidden=('.xlsx','.pdf','ocr_cache','8-24-2026','8-17-2026','8-11-2026')
+              assert not any(any(token.lower() in n.lower() for token in forbidden) for n in names), 'customer/test data leaked into ZIP'
+          print('v88 ZIP structure and privacy check passed.')
+          PY
+          echo "RELEASE_SHA=$(sha256sum XPS_Tracker_Updater_v88.zip | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "RELEASE_SIZE=$(stat -c%s XPS_Tracker_Updater_v88.zip)" >> "$GITHUB_ENV"
+
+      - name: Commit v88 version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py README.md
+          git commit -m 'Release v88 [skip ci]'
+          git push origin HEAD:v88-work
+
+      - name: Publish and verify GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v88 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v88 release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          RELEASE_COMMIT=$(git rev-parse HEAD)
+          gh release create v88 dist/XPS_Tracker_Updater_v88.zip --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title 'XPS Tracker Updater v88' --notes 'v88 fixes Brown & Caldwell table parsing on difficult scans and adds safe continuation-page handling. Pipe, Cleaning, and Manhole tables may continue onto headerless pages within the same work order; Pipe/Cleaning reuse the preceding confirmed column layout and Manholes inherit the table orientation/type. Faint or interrupted grid lines no longer merge real columns, and continuation value cells retain their full printed values. If an individual page still cannot be read safely, the tracker keeps all readable data, continues through the PDF, and places the affected work order/page warning at the top of the live summary instead of aborting analysis. The 8-24-2026 packet was used for exact fixture validation, including page 4 and the page 10-11 Cleaning continuation.'
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/releases/tags/v88'],text=True))
+          asset=next((a for a in data.get('assets',[]) if a.get('name')=='XPS_Tracker_Updater_v88.zip'),None)
+          assert asset, 'release ZIP missing'
+          assert str(asset.get('digest') or '')==f"sha256:{os.environ['RELEASE_SHA']}"
+          assert int(asset.get('size') or 0)==int(os.environ['RELEASE_SIZE'])
+          print('public v88 release asset verified')
+          PY
+
+      - name: Advance and re-verify public update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          rm -rf /tmp/xps-main
+          git worktree add --detach /tmp/xps-main origin/main
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          path=Path('/tmp/xps-main/update_manifest.json')
+          data={
+            'version':'88',
+            'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v88/XPS_Tracker_Updater_v88.zip',
+            'sha256':os.environ['RELEASE_SHA'],
+            'release_notes':[
+              'Fix faint/interrupted Brown & Caldwell table grid detection so printed columns are not merged',
+              'Support headerless continuation pages for Pipe, Cleaning, and Manhole tables within the same work order',
+              'Reuse the preceding confirmed Pipe/Cleaning layout and preserve Manhole continuation orientation',
+              'Continue processing readable pages when one page cannot be safely parsed and show the affected work order/page at the top of the live summary',
+              'Fix continuation value-cell clipping and preserve exact printed totals, including the 8-24-2026 page 10-11 Cleaning continuation',
+              'Preserve v86 endpoint OCR, editable asset/node fields, split/MSA handling, and exact PDF-number safeguards'
+            ]
+          }
+          path.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          cd /tmp/xps-main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update_manifest.json
+          git commit -m 'Publish v88 update manifest'
+          git push origin HEAD:main
+          git fetch origin main
+          git show origin/main:update_manifest.json > /tmp/public_manifest.json
+          python - <<'PY'
+          import json,os
+          data=json.load(open('/tmp/public_manifest.json',encoding='utf-8'))
+          assert data['version']=='88'
+          assert data['download_url']=='https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v88/XPS_Tracker_Updater_v88.zip'
+          assert data['sha256']==os.environ['RELEASE_SHA']
+          print('committed public v88 manifest verified')
+          PY

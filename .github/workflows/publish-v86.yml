@@ -1,0 +1,204 @@
+name: Publish v86
+
+on:
+  push:
+    branches:
+      - v86-work
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.head_commit.message == 'PUBLISH_V86' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v86 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v86-work
+          fetch-depth: 0
+
+      - name: Install regression dependencies
+        run: python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Bump release versions and README
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          app=Path('working_source/app/reno_scan_updater.py')
+          src=app.read_text(encoding='utf-8')
+          src,n=re.subn(r"^APP_VERSION\s*=\s*['\"]85['\"]", "APP_VERSION = '86'", src, count=1, flags=re.M)
+          assert n==1, 'APP_VERSION 85 marker not found exactly once'
+          app.write_text(src,encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py')
+          src=updater.read_text(encoding='utf-8')
+          src,n=re.subn(r'^CURRENT_VERSION\s*=\s*[\"\']85[\"\']', 'CURRENT_VERSION = "86"', src, count=1, flags=re.M)
+          assert n==1, 'CURRENT_VERSION 85 marker not found exactly once'
+          updater.write_text(src,encoding='utf-8')
+          readme=Path('README.md')
+          text=readme.read_text(encoding='utf-8')
+          if '## v86' not in text:
+              text += ('\n\n## v86\n\n'
+                       '- Adds whole-column endpoint OCR as supplemental evidence so grid strokes no longer erase EC-, DN-, or R2- prefixes from otherwise valid rows.\n'
+                       '- Edit Selected now allows Pipe/Cleaning upstream and downstream nodes and Manhole asset IDs to be corrected directly, with their PDF image previews beside the fields.\n'
+                       '- Manual asset/node corrections immediately re-match against the selected master and update the row review state.\n'
+                       '- Preserves v85 physical-row retention, total reconciliation, split/MSA handling, and exact PDF-number safeguards.\n')
+              readme.write_text(text,encoding='utf-8')
+          PY
+
+      - name: Compile and run release regressions
+        run: |
+          set -e
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          run_test() { if [ -f "$1" ]; then python "$1"; fi; }
+          run_test working_source/tests/regression_v86_assets_and_edit.py
+          run_test working_source/tests/regression_v85_edit_row_previews.py
+          run_test working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          run_test working_source/tests/regression_v84_real_packet_length_logic.py
+          run_test working_source/tests/regression_v83_length_recovery.py
+          run_test working_source/tests/regression_v83_exact_pdf_numbers.py
+          run_test working_source/tests/regression_v83_total_preview_group_errors.py
+          run_test working_source/tests/regression_v82_pair_video_lengths.py
+          run_test working_source/tests/regression_v82_master_asset_format.py
+          run_test working_source/tests/regression_v82_suffix_guard.py
+          run_test working_source/tests/regression_v82_cleaning_header_noise.py
+          run_test working_source/tests/regression_v82_layout_threshold.py
+          run_test working_source/tests/regression_v81_header_outline.py
+          run_test working_source/tests/regression_v80_ocr_total_ui.py
+          run_test working_source/tests/regression_v79_layout_speed.py
+          run_test working_source/tests/regression_v78_rollback.py
+          run_test working_source/tests/regression_v75_811_ocr.py
+          run_test working_source/tests/regression_v74_row_filtering.py
+          run_test working_source/tests/regression_v73_total_dates.py
+          run_test working_source/tests/regression_compact_table_fallback.py
+          run_test working_source/tests/regression_length_totals.py
+          run_test working_source/tests/regression_split_pipes.py
+          run_test working_source/tests/regression_new_assets.py
+          run_test working_source/tests/regression_master_insert.py
+          run_test working_source/tests/regression_r2_endpoint_ocr.py
+          run_test working_source/tests/regression_trouble_tickets.py
+          run_test working_source/tests/regression_trouble_workbook.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert re.search(r"^APP_VERSION\s*=\s*['\"]86['\"]",app,re.M)
+          assert re.search(r'^CURRENT_VERSION\s*=\s*[\"\']86[\"\']',updater,re.M)
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket'):
+              assert required in app, required
+          for required in (
+              'def _batch_pair_endpoint_candidates(',
+              'batch_up_endpoints=_batch_pair_endpoint_candidates(',
+              "fields=[('Upstream Node','upstream'),('Downstream Node','downstream')",
+              "fields=[('Asset','asset'),('Date','date')",
+              'def apply_manual_asset_edit(',
+              "mandatory_data_bands=set(range(int(header_band_index)+1,int(total_band_index)))",
+              'def _select_independent_length_candidate(',
+              'MAX_ROW_LENGTH = 1700.0',
+              'MAX_ROW_LENGTH_DECIMALS = 2'):
+              assert required in app, required
+          print('v86 version, parser-preservation, endpoint OCR, edit-node, and length safeguards passed.')
+          PY
+
+      - name: Build and validate release ZIP
+        run: |
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find dist -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+          test -f dist/XPS_Tracker_Updater/reno_scan_updater.py
+          test -f dist/XPS_Tracker_Updater/xps_update.py
+          test -f dist/XPS_Tracker_Updater/run_xps_tracker.bat
+          cd dist
+          zip -qr XPS_Tracker_Updater_v86.zip XPS_Tracker_Updater
+          unzip -t XPS_Tracker_Updater_v86.zip
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          archive=Path('XPS_Tracker_Updater_v86.zip')
+          with zipfile.ZipFile(archive) as z:
+              names=z.namelist()
+              assert names and all(n.startswith('XPS_Tracker_Updater/') for n in names)
+              for required in ('XPS_Tracker_Updater/reno_scan_updater.py','XPS_Tracker_Updater/xps_update.py','XPS_Tracker_Updater/run_xps_tracker.bat'):
+                  assert required in names, required
+              forbidden=('8-26-2026','MASTER_BACKUP','.xlsx','.pdf','ocr_cache')
+              assert not any(any(token.lower() in n.lower() for token in forbidden) for n in names), 'customer/test data leaked into ZIP'
+          print('v86 ZIP structure and privacy check passed.')
+          PY
+          echo "RELEASE_SHA=$(sha256sum XPS_Tracker_Updater_v86.zip | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "RELEASE_SIZE=$(stat -c%s XPS_Tracker_Updater_v86.zip)" >> "$GITHUB_ENV"
+
+      - name: Commit v86 version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py README.md
+          git commit -m 'Release v86 [skip ci]'
+          git push origin HEAD:v86-work
+
+      - name: Publish and verify GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v86 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v86 release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          RELEASE_COMMIT=$(git rev-parse HEAD)
+          gh release create v86 dist/XPS_Tracker_Updater_v86.zip --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title 'XPS Tracker Updater v86' --notes 'v86 improves endpoint/asset OCR without dropping rows. It adds an independent whole-column endpoint read that restores clean EC-, DN-, and R2- evidence when grid strokes damage individual-cell OCR. Edit Selected now allows Pipe/Cleaning upstream/downstream nodes and Manhole asset IDs to be corrected directly with PDF field previews; corrected IDs are immediately re-matched to the master. v85 row retention, exact total reconciliation, split/MSA safety, 1700-ft maximum, and two-decimal PDF safeguards remain unchanged.'
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/releases/tags/v86'],text=True))
+          asset=next((a for a in data.get('assets',[]) if a.get('name')=='XPS_Tracker_Updater_v86.zip'),None)
+          assert asset, 'release ZIP missing'
+          assert str(asset.get('digest') or '')==f"sha256:{os.environ['RELEASE_SHA']}"
+          assert int(asset.get('size') or 0)==int(os.environ['RELEASE_SIZE'])
+          print('public v86 release asset verified')
+          PY
+
+      - name: Advance and re-verify public update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          rm -rf /tmp/xps-main
+          git worktree add --detach /tmp/xps-main origin/main
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          path=Path('/tmp/xps-main/update_manifest.json')
+          data={
+            'version':'86',
+            'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v86/XPS_Tracker_Updater_v86.zip',
+            'sha256':os.environ['RELEASE_SHA'],
+            'release_notes':[
+              'Use an independent whole-column OCR pass to recover exact Pipe/Cleaning endpoint IDs when grid strokes damage individual-cell prefixes',
+              'Allow Upstream Node and Downstream Node to be edited directly in Edit Selected, with PDF previews',
+              'Allow Manhole Asset IDs to be edited directly in Edit Selected, with a PDF preview',
+              'Immediately re-match manually corrected asset/node IDs against the selected master',
+              'Preserve v85 row retention, total reconciliation, split/MSA behavior, and exact PDF length safeguards'
+            ]
+          }
+          path.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          cd /tmp/xps-main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update_manifest.json
+          git commit -m 'Publish v86 update manifest'
+          git push origin HEAD:main
+          git fetch origin main
+          git show origin/main:update_manifest.json > /tmp/public_manifest.json
+          python - <<'PY'
+          import json,os
+          data=json.load(open('/tmp/public_manifest.json',encoding='utf-8'))
+          assert data['version']=='86'
+          assert data['download_url']=='https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v86/XPS_Tracker_Updater_v86.zip'
+          assert data['sha256']==os.environ['RELEASE_SHA']
+          print('committed public v86 manifest verified')
+          PY

@@ -630,3 +630,14 @@ Version 93 low-confidence W/O and new-asset notes
 - Writes NEW PIPE in the master Notes column for every approved new pipe row, including Add to Master rows.
 - Writes NEW MANHOLE in the master Notes column for every approved new manhole row, including Add to Master rows.
 - Preserves the v92 4/5-digit Work Order support and all prior matching, continuation, new-asset, total-validation, and review safeguards.
+
+
+Version 94 padded endpoint-cell recovery
+----------------------------------------
+- Adds a fallback for Brown & Caldwell pair tables where whole-column OCR skips an otherwise clean endpoint row.
+- Builds a clean synthetic endpoint column by cropping each physical endpoint cell, adding white padding, and stacking the cells before digit-only OCR.
+- Runs the stacked-cell pass only after normal endpoint matching has already failed, avoiding extra OCR work on rows that are already readable.
+- Uses only numeric bodies actually observed from each PDF endpoint cell; the master is never allowed to supply a missing endpoint number.
+- Resolves a damaged row only when both observed endpoint numbers identify exactly one existing directional master pipe.
+- Keeps valid non-master pairs such as DN-777 -> DN-1762 and DN-1698 -> DN-1697 unresolved for Add/Ignore review instead of force-matching them.
+- Preserves all v93 and earlier Work Order, new-asset, continuation, total-validation, R2, split-pipe, and review safeguards.

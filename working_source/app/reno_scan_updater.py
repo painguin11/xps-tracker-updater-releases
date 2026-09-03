@@ -4274,7 +4274,7 @@ class MsaConfirmDialog(tk.Toplevel):
 
 class UnmatchedAssetDecisionDialog(tk.Toplevel):
     def __init__(self,parent,record):
-        super().__init__(parent); self.result=None
+        super().__init__(parent); self.result=None; self.crop_photos=[]
         apply_app_icon(self)
         is_manhole=record.get('kind')=='Manhole'
         label='Manhole' if is_manhole else 'Pipe'
@@ -4286,13 +4286,45 @@ class UnmatchedAssetDecisionDialog(tk.Toplevel):
             scanned=f"{record.get('up','')} → {record.get('down','')}"
         noun='manhole' if is_manhole else 'pipe'
         text=(f"{header}\n\nScanned {noun}:\n{scanned}\n\n"
-              "This item is still not found in the master. Choose what to do with it before continuing the update.")
-        ttk.Label(self,text=text,justify='left',wraplength=620).grid(row=0,column=0,columnspan=3,padx=16,pady=(16,12),sticky='w')
-        buttons=ttk.Frame(self); buttons.grid(row=1,column=0,columnspan=3,pady=(0,14))
+              "Verify the printed ID(s) below, then choose what to do before continuing the update.")
+        ttk.Label(self,text=text,justify='left',wraplength=720).grid(row=0,column=0,columnspan=3,padx=16,pady=(16,8),sticky='w')
+        previews=dict(record.get('_field_previews') or {})
+        preview_pages=dict(record.get('_field_preview_pages') or {})
+        preview_frame=ttk.LabelFrame(self,text='PDF ID verification',padding=10)
+        preview_frame.grid(row=1,column=0,columnspan=3,padx=16,pady=(0,12),sticky='ew')
+        preview_specs=([('Manhole ID',record.get('asset') or '', 'asset')] if is_manhole else
+                       [('Upstream ID',record.get('up') or '', 'upstream'),
+                        ('Downstream ID',record.get('down') or '', 'downstream')])
+        for column,(field_label,value,key) in enumerate(preview_specs):
+            block=ttk.Frame(preview_frame); block.grid(row=0,column=column,padx=8,sticky='nw')
+            ttk.Label(block,text=f'{field_label}: {value}',font=('Segoe UI',10,'bold')).pack(anchor='w',pady=(0,4))
+            crop=previews.get(key)
+            pages=list(preview_pages.get(key) or [])
+            if not pages:
+                pages=list(record.get('source_pages') or [])
+                if not pages and record.get('source_page') is not None: pages=[record.get('source_page')]
+            if crop is None or not getattr(crop,'size',0):
+                ttk.Label(block,text=_preview_unavailable_text(pages),foreground='#8A5200').pack(anchor='w')
+                continue
+            try:
+                image=Image.fromarray(crop)
+                if image.width<260:
+                    scale=min(3.0,260.0/max(1,image.width))
+                    image=image.resize((max(1,int(image.width*scale)),max(1,int(image.height*scale))),Image.Resampling.LANCZOS)
+                image.thumbnail((360,95),Image.Resampling.LANCZOS)
+                photo=ImageTk.PhotoImage(image,master=self); self.crop_photos.append(photo)
+                page=pages[0] if pages else record.get('source_page','?')
+                ttk.Label(block,text=f'PDF page {page}:').pack(anchor='w')
+                ttk.Label(block,image=photo).pack(anchor='w',pady=(2,0))
+            except Exception:
+                ttk.Label(block,text=_preview_unavailable_text(pages),foreground='#8A5200').pack(anchor='w')
+        for column in range(len(preview_specs)): preview_frame.columnconfigure(column,weight=1)
+        buttons=ttk.Frame(self); buttons.grid(row=2,column=0,columnspan=3,pady=(0,14))
         ttk.Button(buttons,text='Add to Master',command=lambda:self.finish('add'),style='Primary.TButton').pack(side='left',padx=6)
         ttk.Button(buttons,text='Ignore',command=lambda:self.finish('ignore')).pack(side='left',padx=6)
         ttk.Button(buttons,text='Back to Summary',command=self.cancel).pack(side='left',padx=6)
         self.protocol('WM_DELETE_WINDOW',self.cancel)
+        self.update_idletasks(); self.geometry(f'+{parent.winfo_rootx()+70}+{parent.winfo_rooty()+55}')
     def finish(self,value): self.result=value; self.destroy()
     def cancel(self): self.result=None; self.destroy()
 
@@ -4600,6 +4632,13 @@ class App(tk.Tk):
         if getattr(self,'_analysis_running',False): self.pump_analysis_ui()
         else: self.update_idletasks()
     def _refresh_record_rows_only(self):
+        # Preserve the reviewer's viewport and selection while summary rows rebuild.
+        try: vertical_position=self.tree.yview()[0]
+        except Exception: vertical_position=0.0
+        try: selected=list(self.tree.selection())
+        except Exception: selected=[]
+        try: focused=self.tree.focus()
+        except Exception: focused=''
         for iid in list(self.tree.get_children()):
             if str(iid).startswith(('record:','group-error:')):
                 self.tree.delete(iid)
@@ -4607,6 +4646,17 @@ class App(tk.Tk):
             self.show_summary_record(index)
         for check in self.total_validations:
             self.show_total_summary_error(check)
+        surviving=[iid for iid in selected if self.tree.exists(iid)]
+        if surviving:
+            try: self.tree.selection_set(surviving)
+            except Exception: pass
+        if focused and self.tree.exists(focused):
+            try: self.tree.focus(focused)
+            except Exception: pass
+        try:
+            self.tree.update_idletasks()
+            self.tree.yview_moveto(vertical_position)
+        except Exception: pass
         self._schedule_total_outlines()
 
     def _pipe_duplicate_groups(self):

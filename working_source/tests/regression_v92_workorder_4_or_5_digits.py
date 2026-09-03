@@ -5,7 +5,7 @@ import cv2
 
 SOURCE=Path(__file__).resolve().parents[1]/'app'/'reno_scan_updater.py'
 s=SOURCE.read_text(encoding='utf-8')
-assert "APP_VERSION = '92'" in s
+assert re.search(r"APP_VERSION = '(?:92|93)'",s)
 assert "\\d{4,5}" in s
 
 tree=ast.parse(s)

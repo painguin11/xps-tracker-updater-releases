@@ -5,7 +5,7 @@ import cv2
 
 SOURCE=Path(__file__).resolve().parents[1]/'app'/'reno_scan_updater.py'
 s=SOURCE.read_text(encoding='utf-8')
-assert re.search(r"APP_VERSION = '(?:91|92)'",s)
+assert re.search(r"APP_VERSION = '(?:91|92|93)'",s)
 assert 'machine-typed pink/magenta' in s
 assert '_workorder_confident_magenta_candidate(candidate_crop)' in s
 

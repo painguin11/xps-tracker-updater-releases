@@ -620,3 +620,13 @@ Version 92 four- or five-digit Work Order correction
 - Extends the v91 pink/magenta Work Order color-isolation path to accept both 4-digit and 5-digit machine-typed Work Order numbers.
 - Keeps the same color-first OCR design, editable confirmation popup, and grayscale fallback for faded/desaturated scans.
 - Preserves all v91 new-asset preview, conservative endpoint recovery, continuation, total-validation, and matching safeguards.
+
+
+Version 93 low-confidence W/O and new-asset notes
+--------------------------------------------------
+- Leaves the Work Order confirmation field blank when pink/magenta W/O ink is present but too faded, incomplete, or inconsistent for a trustworthy 4- or 5-digit read.
+- Requires strong agreement across the isolated-color OCR passes plus the expected visible digit structure before auto-filling a Work Order number.
+- Does not let the grayscale fallback override a low-confidence pink/magenta read; grayscale is reserved for scans where the color signal is genuinely absent/desaturated.
+- Writes NEW PIPE in the master Notes column for every approved new pipe row, including Add to Master rows.
+- Writes NEW MANHOLE in the master Notes column for every approved new manhole row, including Add to Master rows.
+- Preserves the v92 4/5-digit Work Order support and all prior matching, continuation, new-asset, total-validation, and review safeguards.

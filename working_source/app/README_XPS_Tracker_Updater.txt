@@ -563,3 +563,37 @@ Version 82 OCR reliability and master-derived asset formats
 - Scrutinizes one-letter new-asset suffixes with independent endpoint crops so OCR artifacts such as EC-1817A do not incorrectly create a new pipe.
 - Filters unresolved cleaning/header noise before date inheritance so header text cannot become a fake data row or corrupt printed-total validation.
 - Infers asset syntax automatically from the selected master for Pipe, Manhole, and Cleaning instead of project-name configuration. A single trailing letter remains a valid possible new-asset suffix even when the master has no suffixed examples.
+
+
+Version 83 exact PDF numbers and length recovery
+------------------------------------------------
+- Preserves every PDF-derived numeric value without display, vote, or total rounding.
+- Rejects individual Pipe/Cleaning lengths above 1700 feet or with more than two decimal places instead of truncating or rounding them.
+- On a printed-total mismatch, rechecks rows far from the master first and then independently cross-checks every activity length if needed.
+- Keeps the selected master as a reread priority only; it never supplies or manufactures a PDF value.
+
+
+Version 84 production total-recovery fixes
+-------------------------------------------
+- Passes the printed table total into the same validation object used by the real application flow.
+- Reads printed totals from higher-resolution independent views when the original total crop is unreliable.
+- Preserves each physical PDF cell in split/MSA pipe records so rereading cannot replace a combined survey with only one part.
+- Reconsiders every row during the second mismatch-recovery stage while retaining fail-closed manual review when OCR evidence remains unresolved.
+
+
+Version 85 mandatory rows and field previews
+---------------------------------------------
+- Keeps every confirmed physical grid row between the detected header and total in the Live Summary, even when endpoint or date OCR needs review.
+- Keeps duplicate-looking Cleaning rows in total arithmetic while protecting the master from duplicate writes.
+- Improves independent OCR recovery for decimal points and subtle grid-line digit errors without manufacturing values from the printed total.
+- Shows PDF image previews beside editable Activity Value, Date, W/O, Truck, and Operator fields.
+- Shows "Preview unavailable — check PDF page X." when a field crop cannot be produced.
+
+
+Version 86 endpoint OCR and editable assets
+-------------------------------------------
+- Adds a whole-column endpoint OCR pass so grid strokes no longer erase valid EC-, DN-, or R2- prefixes from otherwise readable rows.
+- Allows Pipe/Cleaning upstream and downstream nodes to be edited directly in Edit Selected, with a PDF preview beside each field.
+- Allows Manhole asset IDs to be edited directly in Edit Selected, with a PDF preview beside the field.
+- Re-matches manually corrected asset/node IDs against the selected master immediately and updates the row review state.
+- Preserves v85 physical-row retention, exact total reconciliation, split/MSA handling, and exact PDF-number safeguards.

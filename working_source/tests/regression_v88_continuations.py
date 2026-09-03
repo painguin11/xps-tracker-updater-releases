@@ -18,9 +18,15 @@ for required in (
     "self.tree.insert('',0,iid=iid",
     "PAGES {pages} COULD NOT BE PROCESSED",
     'safe_total_sources={key:value for key,value in total_sources.items() if key not in incomplete_total_keys}',
+    '    if can_inherit:\n',
 ):
     assert required in src, required
 
+# Once a page has been identified as a continuation, its preceding confirmed
+# template must win even if OCR hallucinates a complete-looking header on that
+# headerless page.
+assert 'if can_inherit and not complete_header:' not in src
+assert "complete_header=all(k in role_indices for k in ('up','down','value','date'))" not in src
 assert "Table layout could not be detected" not in src
 
 tree=ast.parse(src)
@@ -53,4 +59,4 @@ assert len(bounds)==8, bounds
 for expected in xs:
     assert min(abs(actual-expected) for actual in bounds)<=5, (expected,bounds)
 
-print('v88 continuation, partial-failure, and seven-column recovery regression passed.')
+print('v88 continuation, partial-failure, template precedence, and seven-column recovery regression passed.')

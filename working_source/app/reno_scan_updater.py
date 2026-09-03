@@ -2516,11 +2516,25 @@ def parse_manhole_list(page, master_index, quick_text, on_row=None, on_progress=
     return rows
 
 
-def _year15_oriented(page, kind):
+def _year15_oriented(page, kind, preferred_deg=None, return_deg=False):
+    """Orient a B&C table page, optionally inheriting the prior table rotation.
+
+    Headerless continuation pages cannot be scored from header words, so callers
+    may provide the rotation already confirmed by the preceding page in the same
+    work order/table run. Explicitly headed pages keep the existing OCR scoring.
+    """
     base=render_page(page,2.5)
+
+    def rotated(deg):
+        return base if deg==0 else np.array(Image.fromarray(base).rotate(deg,expand=True))
+
+    if preferred_deg in (0,90,180,270):
+        img=rotated(int(preferred_deg))
+        return (img,int(preferred_deg)) if return_deg else img
+
     best=None
     for deg in (0,270,90):
-        img=base if deg==0 else np.array(Image.fromarray(base).rotate(deg,expand=True))
+        img=rotated(deg)
         txt=ocr_text(img[:max(1,int(img.shape[0]*.30)),:],11).lower()
         if kind=='cleaning':
             norm=re.sub(r'[^a-z0-9]+',' ',txt)
@@ -2529,8 +2543,9 @@ def _year15_oriented(page, kind):
                    2*('up mh' in norm))
         elif kind=='pipes': score=8*('length surveyed' in txt or 'surveyed length' in txt)+3*('upstream' in txt)+3*('downstream' in txt)
         else: score=8*('manhole number' in txt)+4*('drainage area' in txt)
-        if best is None or score>best[0]: best=(score,img)
-    return best[1]
+        if best is None or score>best[0]: best=(score,img,deg)
+    return (best[1],best[2]) if return_deg else best[1]
+
 
 
 def _year15_all_row_bands(img,min_y_ratio=.04,max_y_ratio=.90):
@@ -2772,6 +2787,64 @@ def _year15_grid_bands(img):
     return bands,(left,right),xs
 
 
+
+def _year15_recover_vertical_rules(img,bands,table,column_bounds=None):
+    """Supplement missing B&C column boundaries using repeated row-band evidence.
+
+    A true vertical grid rule remains dark through most of many row interiors even
+    when horizontal intersections break it into segments. Text strokes may repeat
+    at similar x positions, but they do not occupy most of the row height across a
+    large fraction of rows. Existing strong rules are retained and this recovery is
+    rejected if it would create an implausible (>20-column) layout.
+    """
+    existing=sorted(int(x) for x in (column_bounds or []))
+    if img is None or not bands or not table:
+        return existing
+    left,right=map(int,table); h,w=img.shape[:2]
+    left=max(0,min(w-1,left)); right=max(left+1,min(w,right))
+    if right-left<40 or len(bands)<3:
+        return existing
+    gray=cv2.cvtColor(img,cv2.COLOR_RGB2GRAY)
+    heights=[max(1,int(b)-int(a)) for a,b in bands]
+    typical=float(np.median(heights)) if heights else 1.0
+    usable=[(max(0,int(a)),min(h,int(b))) for a,b in bands
+            if typical*.55 <= max(1,int(b)-int(a)) <= typical*1.55]
+    if len(usable)<3:
+        usable=[(max(0,int(a)),min(h,int(b))) for a,b in bands]
+    width=right-left
+    hits=np.zeros(width,dtype=np.int16)
+    for y1,y2 in usable:
+        if y2-y1<4: continue
+        dark=(gray[y1:y2,left:right] < 205).astype(np.uint8)
+        dark=cv2.dilate(dark,np.ones((1,3),np.uint8),iterations=1)
+        vertical_fraction=np.mean(dark>0,axis=0)
+        hits += (vertical_fraction>=.72).astype(np.int16)
+    required=max(3,int(np.ceil(len(usable)*.42)))
+    candidate_positions=[left+int(x) for x in np.where(hits>=required)[0]]
+    groups=[]
+    max_gap=max(2,int(round(width*.0025)))
+    for x in candidate_positions:
+        if not groups or x-groups[-1][-1]>max_gap:
+            groups.append([x])
+        else:
+            groups[-1].append(x)
+    recovered=[int(round(float(np.median(group)))) for group in groups]
+
+    merged=sorted(set([left,right]+existing+recovered))
+    dedup=[]; minimum_gap=max(7,int(round(width*.010)))
+    for x in merged:
+        if not dedup:
+            dedup.append(x); continue
+        if x-dedup[-1]<minimum_gap:
+            prev=dedup[-1]
+            if x in existing and prev not in existing: dedup[-1]=x
+            elif prev not in existing and x not in existing: dedup[-1]=(prev+x)//2
+        else:
+            dedup.append(x)
+    if not (5<=len(dedup)<=21):
+        return existing or [left,right]
+    return dedup
+
 def _header_role(compact,kind):
     compact=str(compact or '').lower().replace(' ','')
     if (('up' in compact or compact.startswith('u')) and any(x in compact for x in ('mh','ma','mn'))) or compact.startswith(('upm','uma')): return 'up'
@@ -2908,9 +2981,14 @@ def _master_assisted_endpoint_columns(img,bands,table,column_boxes,master_index)
     return (best[3],best[4]),best[0],second
 
 
-def prepare_year15_pair_layout(page,master_index,kind):
-    """Render once, detect the grid, read headers, and prepare a confirmable layout."""
-    img=_year15_oriented(page,kind)
+def prepare_year15_pair_layout(page,master_index,kind,inherited_layout=None,preferred_deg=None):
+    """Render once, detect the grid, and prepare a confirmable/reusable pair layout.
+
+    A headerless continuation reuses only the preceding confirmed table's relative
+    column geometry, role indices, and orientation within the same work order. Row
+    bands and outer table bounds are still detected on the current physical page.
+    """
+    img,orientation_deg=_year15_oriented(page,kind,preferred_deg=preferred_deg,return_deg=True)
     bands,table,column_bounds=_year15_grid_bands(img)
     geometry_source='vertical grid'
     if not bands:
@@ -2918,14 +2996,25 @@ def prepare_year15_pair_layout(page,master_index,kind):
         if bands: geometry_source='compact table grid'
     if not bands:
         bands,table=_year15_all_row_bands(img,.04,.90); column_bounds=None; geometry_source='horizontal fallback'
+
+    if bands and not table and inherited_layout:
+        previous_img=inherited_layout.get('img'); previous_table=inherited_layout.get('table')
+        if previous_img is not None and previous_table and getattr(previous_img,'shape',None):
+            prev_w=max(1,int(previous_img.shape[1])); cur_w=max(1,int(img.shape[1]))
+            table=(int(previous_table[0]/prev_w*cur_w),int(previous_table[1]/prev_w*cur_w))
+            geometry_source+=' / inherited outer bounds'
+
     if not bands or not table:
         return {'kind':kind,'img':img,'bands':[],'table':None,'mapping':{},'headers':[],
-                'column_boxes':[],'role_indices':{},'confidence':0,'source':'table not found','warnings':['TABLE STRUCTURE NOT RESOLVED']}
+                'column_boxes':[],'role_indices':{},'confidence':0,'source':'table not found',
+                'warnings':['TABLE STRUCTURE NOT RESOLVED'],'orientation_deg':orientation_deg,
+                'inherited_layout':False}
+
+    column_bounds=_year15_recover_vertical_rules(img,bands,table,column_bounds)
     left,right=table; tw=max(1,right-left)
     if column_bounds and len(column_bounds)>=2:
         column_boxes=[((a-left)/tw,(b-left)/tw) for a,b in zip(column_bounds,column_bounds[1:])]
     else:
-        # Header-cell detection will provide boxes when long vertical rules are unavailable.
         column_boxes=[]
     mapping,cells,source,header_band_index=_table_header_columns(img,bands,table,kind,column_bounds,return_details=True)
     if cells and not column_boxes: column_boxes=[c[1] for c in sorted(cells,key=lambda x:x[0])]
@@ -2936,6 +3025,27 @@ def prepare_year15_pair_layout(page,master_index,kind):
     for role,box in mapping.items():
         idx=_column_index_for_box(box,column_boxes)
         if idx is not None: role_indices[role]=idx
+
+    previous_boxes=list((inherited_layout or {}).get('column_boxes') or [])
+    previous_roles=dict((inherited_layout or {}).get('role_indices') or {})
+    can_inherit=(previous_boxes and all(k in previous_roles for k in ('up','down','value','date')))
+    complete_header=all(k in role_indices for k in ('up','down','value','date'))
+    if can_inherit and not complete_header:
+        if len(column_boxes)!=len(previous_boxes):
+            column_boxes=list(previous_boxes)
+        if len(column_boxes)==len(previous_boxes) and all(0<=int(v)<len(column_boxes) for v in previous_roles.values()):
+            role_indices={k:int(v) for k,v in previous_roles.items()}
+            mapping={role:column_boxes[idx] for role,idx in role_indices.items()}
+            previous_headers=list((inherited_layout or {}).get('headers') or [])
+            if len(previous_headers)==len(column_boxes): headers=previous_headers
+            else: headers=[f'Column {i+1}' for i in range(len(column_boxes))]
+            return {'kind':kind,'img':img,'bands':bands,'table':table,'mapping':mapping,
+                    'headers':headers,'column_boxes':column_boxes,'role_indices':role_indices,
+                    'confidence':95,'source':'inherited continuation / '+geometry_source,
+                    'warnings':[],'fingerprint':(inherited_layout or {}).get('fingerprint') or '',
+                    'header_band_index':None,'master_pair_score':0,'master_pair_second':0,
+                    'orientation_deg':orientation_deg,'inherited_layout':True}
+
     warnings=[]; assisted_score=0; assisted_second=0
     if ('up' not in role_indices or 'down' not in role_indices) and column_boxes:
         pair,assisted_score,assisted_second=_master_assisted_endpoint_columns(img,bands,table,column_boxes,master_index)
@@ -2952,7 +3062,9 @@ def prepare_year15_pair_layout(page,master_index,kind):
             'column_boxes':column_boxes,'role_indices':role_indices,'confidence':confidence,
             'source':source+' / '+geometry_source,'warnings':warnings,'fingerprint':fingerprint,
             'header_band_index':header_band_index,
-            'master_pair_score':assisted_score,'master_pair_second':assisted_second}
+            'master_pair_score':assisted_score,'master_pair_second':assisted_second,
+            'orientation_deg':orientation_deg,'inherited_layout':False}
+
 
 
 def apply_confirmed_layout(layout,role_indices):
@@ -3276,9 +3388,9 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
     return rows
 
 
-def parse_year15_manholes(page, master_index, on_row=None, on_progress=None):
+def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, orientation_deg=None):
     asset_format=master_index.get('asset_format')
-    img=_year15_oriented(page,'manholes'); h,w=img.shape[:2]
+    img=_year15_oriented(page,'manholes',preferred_deg=orientation_deg); h,w=img.shape[:2]
     known=master_index['manholes']
     # This portrait report OCRs reliably as positioned words even when scan skew
     # prevents horizontal-line detection. Read every ID-like token in the left
@@ -3954,7 +4066,7 @@ class App(tk.Tk):
         self.geometry(f'{default_w}x{default_h}')
         self.minsize(min(self.spx(960),max(760,int(screen_w*.90))),
                      min(self.spx(620),max(560,int(screen_h*.85))))
-        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.pdf_hash=''
+        self.pdf_path=tk.StringVar(master=self); self.master_path=tk.StringVar(master=self); self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.unprocessed_pages=[]; self.pdf_hash=''
         self._analysis_running=False; self.cancel_requested=False
         self._total_outline_widgets=[]; self._total_outline_job=None; self._tree_yscroll=None
         self.configure(background='#f3f6fa')
@@ -4033,6 +4145,7 @@ class App(tk.Tk):
         self.tree.tag_configure('total_warning', background='#8b0000', foreground='white')
         self.tree.tag_configure('length_warning', background='#c62828', foreground='white')
         self.tree.tag_configure('check_warning', background='#ffcccc', foreground='#7a0000')
+        self.tree.tag_configure('page_error', background='#8b0000', foreground='white')
         ttk.Label(self,text='Colored rows need review—see Status for the reason. Nothing is written until Update Master is clicked. Close the master workbook before updating.',style='Hint.TLabel',wraplength=self.spx(1100),justify='left',padding=(self.spx(14),0,self.spx(14),self.spx(12))).pack(fill='x')
     def browse(self,var,typ):
         ft=[('PDF files','*.pdf')] if typ=='pdf' else [('Excel files','*.xlsx')]
@@ -4044,7 +4157,7 @@ class App(tk.Tk):
             if typ=='pdf' and changed:
                 self.clear_extracted_rows('New PDF selected. Click Analyze PDF to extract its rows.')
     def clear_extracted_rows(self,status_text=None):
-        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.pdf_hash=''
+        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.unprocessed_pages=[]; self.pdf_hash=''
         if hasattr(self,'tree'): self.tree.delete(*self.tree.get_children())
         self._clear_total_outlines()
         if status_text and hasattr(self,'status'): self.status.set(status_text)
@@ -4130,6 +4243,42 @@ class App(tk.Tk):
                 frame=tk.Frame(self.tree,background=color,borderwidth=0,highlightthickness=0,takefocus=0)
                 frame.place(x=x,y=y,width=max(1,width),height=max(1,line_height))
                 frame.lift(); self._total_outline_widgets.append(frame)
+    def add_unprocessed_page(self,wo,page_number,kind,reason):
+        """Record one nonfatal page failure and keep a grouped warning at the top."""
+        entry={'wo':str(wo or 'UNKNOWN').strip() or 'UNKNOWN','page':int(page_number),
+               'kind':str(kind or 'unknown').strip(),'reason':re.sub(r'\s+',' ',str(reason or '')).strip()}
+        key=(entry['wo'],entry['page'])
+        for existing in self.unprocessed_pages:
+            if (existing.get('wo'),existing.get('page'))==key:
+                if entry['kind'] and existing.get('kind') in ('','unknown','other'): existing['kind']=entry['kind']
+                if entry['reason']: existing['reason']=entry['reason']
+                self.refresh_unprocessed_summary(); return
+        self.unprocessed_pages.append(entry)
+        self.refresh_unprocessed_summary()
+
+    def refresh_unprocessed_summary(self):
+        """Render one top summary row per affected W/O, listing every failed page."""
+        if not hasattr(self,'tree'): return
+        for iid in list(self.tree.get_children()):
+            if str(iid).startswith('page-error:'):
+                self.tree.delete(iid)
+        grouped={}; order=[]
+        for entry in self.unprocessed_pages:
+            wo=entry.get('wo') or 'UNKNOWN'
+            if wo not in grouped:
+                grouped[wo]=[]; order.append(wo)
+            grouped[wo].append(entry)
+        for wo in reversed(order):
+            entries=sorted(grouped[wo],key=lambda item:int(item.get('page') or 0))
+            pages=', '.join(str(item.get('page')) for item in entries)
+            kinds=', '.join(dict.fromkeys(str(item.get('kind') or '').title() for item in entries if item.get('kind')))
+            status=f"PAGES {pages} COULD NOT BE PROCESSED"
+            if kinds: status+=f" — {kinds}"
+            iid='page-error:'+hashlib.sha1(str(wo).encode()).hexdigest()[:16]
+            self.tree.insert('',0,iid=iid,values=('UNPROCESSED','','','',wo,'','',status),tags=('page_error',))
+        try: self.update_idletasks()
+        except Exception: pass
+
     def _total_error_iid(self,check):
         key=f"{check.get('wo','')}|{check.get('kind','')}|total-length"
         return 'group-error:'+hashlib.sha1(key.encode()).hexdigest()[:16]
@@ -4274,7 +4423,7 @@ class App(tk.Tk):
             self.stop_analysis_animation(); self.status.set('Analysis cancelled.'); return
         except Exception as e:
             self.stop_analysis_animation(); messagebox.showerror('Master spreadsheet error',str(e)); return
-        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.tree.delete(*self.tree.get_children())
+        self.records=[]; self.trouble_tickets=[]; self.groups=[]; self.total_validations=[]; self.unprocessed_pages=[]; self.tree.delete(*self.tree.get_children())
         try: self.pdf_hash=hashlib.sha256(open(self.pdf_path.get(),'rb').read()).hexdigest()
         except Exception: self.pdf_hash=''
         init_ocr_cache(self.pdf_hash)
@@ -4328,27 +4477,38 @@ class App(tk.Tk):
                 # Persistent confirmation history needs values, not large image arrays.
                 self.groups.append({key:value for key,value in dlg.result.items() if not key.startswith('_')})
 
-            # Prepare and confirm every unique pair-table layout before any asset
-            # rows are processed. Continuation pages inherit the preceding list kind.
-            inherited_kind=None; after_workorder=False
+            # Assign list type/orientation to headerless continuation pages. Every
+            # continuation is scoped to the preceding confirmed table inside the
+            # SAME work order; Pipe, Cleaning, and Manhole all use this rule.
+            active_wo=None; inherited_kind=None; inherited_deg=None
             for item in page_info:
-                if item['kind']=='workorder': inherited_kind=None; after_workorder=True; item['effective_kind']='workorder'
-                elif item['kind']=='trouble': inherited_kind=None; item['effective_kind']='trouble'
-                elif item['kind'] in ('pipes','manholes','cleaning'):
-                    inherited_kind=item['kind']; item['effective_kind']=item['kind']
-                elif item['kind']=='other' and inherited_kind: item['effective_kind']=inherited_kind
-                else: item['effective_kind']=item['kind']
-                item['after_workorder']=after_workorder
+                raw_kind=item['kind']
+                if raw_kind=='workorder':
+                    active_wo=confirmed_by_page.get(item['index'])
+                    inherited_kind=None; inherited_deg=None
+                    item['effective_kind']='workorder'; item['is_continuation']=False
+                elif raw_kind=='trouble':
+                    inherited_kind=None; inherited_deg=None
+                    item['effective_kind']='trouble'; item['is_continuation']=False
+                elif raw_kind in ('pipes','manholes','cleaning'):
+                    inherited_kind=raw_kind; inherited_deg=item.get('deg')
+                    item['effective_kind']=raw_kind; item['effective_deg']=inherited_deg
+                    item['is_continuation']=False
+                elif raw_kind=='other' and inherited_kind:
+                    item['effective_kind']=inherited_kind; item['effective_deg']=inherited_deg
+                    item['is_continuation']=True
+                else:
+                    item['effective_kind']=raw_kind; item['is_continuation']=False
+                item['work_order']=active_wo
+
             confirmed_layouts={}; saved_layouts=load_layout_profiles()
             if idx.get('profile') in ('year15','phase2_year1'):
-                pair_items=[]
+                last_pair_layout={}; pair_items=[]
                 for item in page_info:
                     kind=item.get('effective_kind')
                     if kind in ('pipes','cleaning'):
                         pair_items.append(item); continue
-                    if kind=='other' and item.get('after_workorder'):
-                        # If header classification failed, let grid/header/master
-                        # evidence test both pair-table activities before ignoring it.
+                    if kind=='other' and item.get('work_order'):
                         options=[]
                         for candidate_kind in ('cleaning','pipes'):
                             candidate=prepare_year15_pair_layout(item['page'],idx,candidate_kind)
@@ -4357,23 +4517,38 @@ class App(tk.Tk):
                                 options.append((len(roles),candidate.get('master_pair_score',0),candidate.get('confidence',0),candidate_kind,candidate))
                         if options:
                             _,_,_,chosen_kind,chosen=max(options,key=lambda x:x[:3])
-                            item['effective_kind']=chosen_kind; item['preprepared_layout']=chosen; pair_items.append(item)
+                            item['effective_kind']=chosen_kind; item['preprepared_layout']=chosen
+                            item['effective_deg']=chosen.get('orientation_deg'); pair_items.append(item)
+
                 for n,item in enumerate(pair_items,1):
                     kind=item['effective_kind']; pi=item['index']
+                    wo_info=item.get('work_order') or {}; wo=str(wo_info.get('wo') or 'UNKNOWN')
+                    template_key=(wo,kind)
+                    inherited=last_pair_layout.get(template_key) if item.get('is_continuation') else None
                     self.status.set(f'Preparing table layout {n} of {len(pair_items)}...'); self.pump_analysis_ui()
-                    layout=item.pop('preprepared_layout',None) or prepare_year15_pair_layout(item['page'],idx,kind)
-                    if not layout.get('headers'):
-                        messagebox.showerror('Table layout could not be detected',
-                            f"PDF page {pi+1} does not contain enough grid information to map its columns safely.\n\n"
-                            'No asset rows from this page were processed.'); return
+                    layout=item.pop('preprepared_layout',None) or prepare_year15_pair_layout(
+                        item['page'],idx,kind,inherited_layout=inherited,
+                        preferred_deg=item.get('effective_deg') if item.get('is_continuation') else None)
+                    roles=layout.get('role_indices',{})
+                    if (not layout.get('column_boxes') or
+                            not all(role in roles for role in ('up','down','value','date'))):
+                        self.add_unprocessed_page(wo,pi+1,kind,'table layout could not be resolved safely')
+                        item['skip_processing']=True
+                        continue
+
+                    if layout.get('inherited_layout'):
+                        item['pair_layout']=layout
+                        last_pair_layout[template_key]=layout
+                        continue
+
                     fingerprint=layout.get('fingerprint') or f'{kind}-page-{pi+1}'
                     if fingerprint in confirmed_layouts:
                         apply_confirmed_layout(layout,confirmed_layouts[fingerprint])
                     else:
                         detected_roles=layout.get('role_indices',{})
+                        # A complete native detection above 80% confidence is reliable enough
+                        # to skip a confirmation popup, but all four required roles remain mandatory.
                         if layout.get('confidence',0)>80 and all(k in detected_roles for k in ('up','down','value','date')):
-                            # A complete native detection above 80% confidence is reliable enough;
-                            # do not interrupt analysis with a confirmation dialog.
                             confirmed_layouts[fingerprint]=dict(detected_roles)
                         else:
                             saved=saved_layouts.get(fingerprint,{}).get('role_indices')
@@ -4388,6 +4563,7 @@ class App(tk.Tk):
                                 apply_confirmed_layout(layout,dlg.result)
                                 save_layout_profile(fingerprint,layout,dlg.result)
                     item['pair_layout']=layout
+                    last_pair_layout[template_key]=layout
 
             # Stage 2: every work order is now confirmed. Process spreadsheet pages
             # sequentially and attach them to the most recent confirmed work order.
@@ -4405,7 +4581,14 @@ class App(tk.Tk):
                 self.status.set(f'Processing spreadsheet pages: page {pi+1} of {len(doc)}...'); self.pump_analysis_ui()
 
                 if kind=='trouble':
-                    ticket=parse_trouble_ticket(page,pi+1,current_wo,self.pdf_path.get())
+                    try:
+                        ticket=parse_trouble_ticket(page,pi+1,current_wo,self.pdf_path.get())
+                    except AnalysisCancelled:
+                        raise
+                    except Exception as exc:
+                        self.add_unprocessed_page((current_wo or {}).get('wo'),pi+1,'trouble',f'trouble-ticket parser error: {exc}')
+                        current_list_kind=None
+                        continue
                     if ticket['ticket_key'] not in {t['ticket_key'] for t in self.trouble_tickets}:
                         self.trouble_tickets.append(ticket)
                         self.status.set(f'Processing page {pi+1} — {len(self.trouble_tickets)} trouble ticket(s) found...')
@@ -4414,18 +4597,18 @@ class App(tk.Tk):
                     continue
 
                 if current_wo is None:
-                    # Never attach spreadsheet rows to an unknown work order.
                     ignored_pages.append((pi+1,'no preceding confirmed work order'))
                     continue
 
                 if kind in ('pipes','manholes','cleaning'):
                     current_list_kind=kind
                 elif kind=='other' and current_list_kind:
-                    # A list can span multiple pages. If a continuation page does not repeat
-                    # enough header text for OCR classification, keep it with the current list.
                     kind=current_list_kind
                 else:
                     ignored_pages.append((pi+1,'unrecognized or irrelevant document'))
+                    continue
+
+                if item.get('skip_processing'):
                     continue
 
                 page_date=parse_date_text(txt)
@@ -4437,26 +4620,44 @@ class App(tk.Tk):
                     use_date=current_report_date or current_wo.get('date') or parse_date_text(txt)
 
                 emit=lambda rec: self.commit_extracted_record(rec,current_wo,use_date,idx,pi+1,processed)
-                if idx.get('profile') in ('year15', 'phase2_year1'):
-                    if kind=='pipes': data=parse_year15_pair_list(page,idx,'pipes',item.get('pair_layout'),emit,self.pump_analysis_ui,use_date)
-                    elif kind=='cleaning': data=parse_year15_pair_list(page,idx,'cleaning',item.get('pair_layout'),emit,self.pump_analysis_ui,use_date)
-                    else: data=parse_year15_manholes(page,idx,emit,self.pump_analysis_ui)
-                else:
-                    # Reno lists can contain many OCR rows on one page. Publish each
-                    # completed row from inside the parser rather than waiting for the
-                    # entire page to return.
-                    data=parse_pipe_list(page,idx,txt,emit,self.pump_analysis_ui) if kind=='pipes' else parse_manhole_list(page,idx,txt,emit,self.pump_analysis_ui)
+                try:
+                    if idx.get('profile') in ('year15', 'phase2_year1'):
+                        if kind=='pipes':
+                            data=parse_year15_pair_list(page,idx,'pipes',item.get('pair_layout'),emit,self.pump_analysis_ui,use_date)
+                        elif kind=='cleaning':
+                            data=parse_year15_pair_list(page,idx,'cleaning',item.get('pair_layout'),emit,self.pump_analysis_ui,use_date)
+                        else:
+                            data=parse_year15_manholes(page,idx,emit,self.pump_analysis_ui,item.get('effective_deg'))
+                    else:
+                        data=parse_pipe_list(page,idx,txt,emit,self.pump_analysis_ui) if kind=='pipes' else parse_manhole_list(page,idx,txt,emit,self.pump_analysis_ui)
+                except AnalysisCancelled:
+                    raise
+                except Exception as exc:
+                    self.add_unprocessed_page(current_wo.get('wo'),pi+1,kind,f'{kind} parser error: {exc}')
+                    continue
+
+                if not data:
+                    self.add_unprocessed_page(current_wo.get('wo'),pi+1,kind,'zero readable asset rows')
+                    continue
+
                 if idx.get('profile') in ('year15','phase2_year1') and kind in ('pipes','cleaning'):
                     layout=item.get('pair_layout') or {}
                     check_kind='Cleaning' if kind=='cleaning' else 'Pipe'
                     total_sources.setdefault((str(current_wo.get('wo','')),check_kind),[]).append(
-                        {'page':pi+1,'info':dict(layout.get('printed_total_info') or {})})
-                if not data:
-                    messagebox.showwarning('Spreadsheet page could not be read',
-                        f'PDF page {pi+1} was detected as a {kind} spreadsheet page, but it produced zero asset rows.\n\nThe page was not silently ignored.')
+                        {'page':pi+1,'info':dict(layout.get('printed_total_info') or {}),
+                         'continuation':bool(item.get('is_continuation'))})
                 report=validate_page_rows(data,kind,txt,pi+1,item.get('pair_layout'),idx.get('profile'))
                 validation_reports.append(report)
-            self.verify_length_totals(total_sources)
+
+            incomplete_total_keys=set()
+            for failure in self.unprocessed_pages:
+                failure_kind=str(failure.get('kind') or '').lower()
+                if failure_kind in ('pipes','pipe'):
+                    incomplete_total_keys.add((str(failure.get('wo') or ''),'Pipe'))
+                elif failure_kind=='cleaning':
+                    incomplete_total_keys.add((str(failure.get('wo') or ''),'Cleaning'))
+            safe_total_sources={key:value for key,value in total_sources.items() if key not in incomplete_total_keys}
+            self.verify_length_totals(safe_total_sources)
             if ignored_pages:
                 ignored_text='\n'.join(f'Page {page_no}: {reason}' for page_no,reason in ignored_pages)
                 messagebox.showinfo('Ignored PDF Pages',
@@ -4494,8 +4695,10 @@ class App(tk.Tk):
         other_warnings=sum(1 for r in self.records if record_needs_review(r) and not str(r.get('status','')).startswith('LENGTH DIFF') and not any(str(w).startswith('TOTAL LENGTH') for w in r.get('warnings',[])))
         validation_warning_count=sum(len(r['issues']) for r in validation_reports)
         ticket_reviews=sum(1 for t in self.trouble_tickets if trouble_ticket_status(t).startswith('Review'))
-        if length_warnings or total_failures or other_warnings or validation_warning_count or ticket_reviews:
+        unprocessed_count=len({(str(item.get('wo')),int(item.get('page') or 0)) for item in self.unprocessed_pages})
+        if length_warnings or total_failures or other_warnings or validation_warning_count or ticket_reviews or unprocessed_count:
             bits=[]
+            if unprocessed_count: bits.append(f'{unprocessed_count} PDF PAGE(S) COULD NOT BE PROCESSED — SEE TOP SUMMARY')
             if total_failures: bits.append(f'{total_failures} TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED')
             if length_warnings: bits.append(f'{length_warnings} length difference warning(s) > {LENGTH_DIFF_THRESHOLD:.1f}')
             if other_warnings: bits.append(f'{other_warnings} other row(s) need review')
@@ -4666,6 +4869,9 @@ class App(tk.Tk):
         iid=sel[0]
         if iid.startswith('ticket:'):
             self.edit_trouble_ticket(int(iid.split(':',1)[1]))
+            return
+        if iid.startswith('page-error:'):
+            messagebox.showinfo('Unprocessed PDF Page','This is an analysis warning row. The listed PDF page(s) could not be processed, while readable pages were kept.',parent=self)
             return
         if iid.startswith('group-error:'):
             messagebox.showinfo('Work Order Validation','This row is the work-order total-length status separator, not an individual asset row.',parent=self)

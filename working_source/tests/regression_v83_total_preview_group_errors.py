@@ -4,7 +4,8 @@ src=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
 
 # The total reader must retain the exact PDF value-cell pixels used as evidence.
 assert "'preview':None" in src
-assert "preview=cut(value_box,y1,y2)" in src
+assert ("preview=cut(value_box,y1,y2)" in src or
+        "preview=cut(value_box,y1,y2,right_bleed=True)" in src)
 assert "'preview':preview.copy()" in src
 
 # The verification UI is no longer a text-only simpledialog; it displays each

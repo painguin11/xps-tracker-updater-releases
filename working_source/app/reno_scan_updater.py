@@ -2236,13 +2236,15 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
     if img is None or not bands or not table or not value_box: return result
     left,right=table; h,w=img.shape[:2]; tw=max(1,right-left)
 
-    def cut(box,y1,y2):
+    def cut(box,y1,y2,right_bleed=False):
         if not box: return None
-        return img[max(0,int(y1)):min(h,int(y2)),
-                   max(0,int(left+box[0]*tw)):min(w,int(left+box[1]*tw))]
+        x1=max(0,int(left+box[0]*tw)); x2=min(w,int(left+box[1]*tw))
+        if right_bleed and x2>x1:
+            x2=min(w,x2+max(2,int(round((x2-x1)*.02))))
+        return img[max(0,int(y1)):min(h,int(y2)),x1:x2]
 
     def read_value(y1,y2):
-        cell=cut(value_box,y1,y2)
+        cell=cut(value_box,y1,y2,right_bleed=True)
         if cell is None or cell.size==0: return []
         # Start with the untouched full cell. Grid removal is intentionally only
         # the second source because it can occasionally erase interior digits.
@@ -2280,7 +2282,7 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
         value,confident=_choose_printed_total(candidates)
         if not _printed_total_value_is_plausible(value,len(bands)):
             value=None; confident=False
-        preview=cut(value_box,y1,y2)
+        preview=cut(value_box,y1,y2,right_bleed=True)
         return {'found':True,'value':value,'confident':confident,
                 'candidates':candidates,'method':method,'band_index':band_index,
                 'preview':preview.copy() if preview is not None and getattr(preview,'size',0) else None}
@@ -2297,7 +2299,7 @@ def _read_pair_table_printed_total(img,bands,table,value_box,up_box=None,dn_box=
         value,confident=_choose_printed_total(candidates)
         if not _printed_total_value_is_plausible(value,len(bands)):
             value=None; confident=False
-        preview=cut(value_box,y1,y2)
+        preview=cut(value_box,y1,y2,right_bleed=True)
         return {'found':True,'value':value,'confident':confident,
                 'candidates':candidates,'method':'labelled total row','band_index':band_index,
                 'preview':preview.copy() if preview is not None and getattr(preview,'size',0) else None}
@@ -2674,7 +2676,8 @@ def _year15_compact_grid_bands(img):
     # table may have a title band before the actual column header, so keep the
     # first meaningful tall band and let header-role OCR choose among the first
     # four bands as it already does on normal layouts.
-    roi=inv[by:by+bh,max(0,left):min(w,right)]
+    horizontal_inv=cv2.threshold(gray,240,255,cv2.THRESH_BINARY_INV)[1]
+    roi=horizontal_inv[by:by+bh,max(0,left):min(w,right)]
     hk=cv2.getStructuringElement(cv2.MORPH_RECT,(max(35,int((right-left)*.20)),1))
     horizontal=cv2.morphologyEx(roi,cv2.MORPH_OPEN,hk)
     contours,_=cv2.findContours(horizontal,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
@@ -2791,11 +2794,11 @@ def _year15_grid_bands(img):
 def _year15_recover_vertical_rules(img,bands,table,column_bounds=None):
     """Supplement missing B&C column boundaries using repeated row-band evidence.
 
-    A true vertical grid rule remains dark through most of many row interiors even
-    when horizontal intersections break it into segments. Text strokes may repeat
-    at similar x positions, but they do not occupy most of the row height across a
-    large fraction of rows. Existing strong rules are retained and this recovery is
-    rejected if it would create an implausible (>20-column) layout.
+    Faint scan rules can be nearly white, so the recovery pass uses a lighter
+    threshold than the strict grid detector. Candidate rules must persist through
+    most of several row interiors. Within each already-detected column gap, new
+    rules are accepted only when they divide that gap into reasonably even pieces;
+    this rejects repeated text strokes clustered near one edge of a valid column.
     """
     existing=sorted(int(x) for x in (column_bounds or []))
     if img is None or not bands or not table:
@@ -2815,7 +2818,7 @@ def _year15_recover_vertical_rules(img,bands,table,column_bounds=None):
     hits=np.zeros(width,dtype=np.int16)
     for y1,y2 in usable:
         if y2-y1<4: continue
-        dark=(gray[y1:y2,left:right] < 205).astype(np.uint8)
+        dark=(gray[y1:y2,left:right] < 235).astype(np.uint8)
         dark=cv2.dilate(dark,np.ones((1,3),np.uint8),iterations=1)
         vertical_fraction=np.mean(dark>0,axis=0)
         hits += (vertical_fraction>=.72).astype(np.int16)
@@ -2830,8 +2833,37 @@ def _year15_recover_vertical_rules(img,bands,table,column_bounds=None):
             groups[-1].append(x)
     recovered=[int(round(float(np.median(group)))) for group in groups]
 
-    merged=sorted(set([left,right]+existing+recovered))
-    dedup=[]; minimum_gap=max(7,int(round(width*.010)))
+    anchors=sorted(set([left,right]+existing))
+    near=max(7,int(round(width*.010)))
+    anchor_gaps=[b-a for a,b in zip(anchors,anchors[1:]) if b>a]
+    lower_count=max(2,int(np.ceil(len(anchor_gaps)*.60))) if anchor_gaps else 0
+    typical_gap=float(np.median(sorted(anchor_gaps)[:lower_count])) if lower_count else 0.0
+    accepted=[]
+    for a,b in zip(anchors,anchors[1:]):
+        # Recovery is only needed inside a gap that is materially wider than the
+        # table's normal detected columns. This prevents aligned text strokes from
+        # splitting an already-complete grid such as the clean page-6 table.
+        if typical_gap and (b-a) <= typical_gap*1.45:
+            continue
+        inside=[x for x in recovered if a+near<x<b-near]
+        if not inside:
+            continue
+        points=[a]+inside+[b]
+        segments=[y-x for x,y in zip(points,points[1:])]
+        median=float(np.median(segments)) if segments else 0.0
+        if median<=0:
+            continue
+        # True missing rules form a regular subdivision (for example a two-column
+        # gap split into two nearly equal widths). OCR text strokes tend to leave
+        # one or more tiny edge slivers and fail this regularity check.
+        if min(segments) < max(10,median*.62):
+            continue
+        if max(segments) > median*1.45:
+            continue
+        accepted.extend(inside)
+
+    merged=sorted(set(anchors+accepted))
+    dedup=[]; minimum_gap=near
     for x in merged:
         if not dedup:
             dedup.append(x); continue
@@ -2997,7 +3029,7 @@ def prepare_year15_pair_layout(page,master_index,kind,inherited_layout=None,pref
     if not bands:
         bands,table=_year15_all_row_bands(img,.04,.90); column_bounds=None; geometry_source='horizontal fallback'
 
-    if bands and not table and inherited_layout:
+    if bands and inherited_layout:
         previous_img=inherited_layout.get('img'); previous_table=inherited_layout.get('table')
         if previous_img is not None and previous_table and getattr(previous_img,'shape',None):
             prev_w=max(1,int(previous_img.shape[1])); cur_w=max(1,int(img.shape[1]))
@@ -3262,7 +3294,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 if guarded_match:
                     up_obs,dn_obs=guarded_up,guarded_dn
                     match,match_status=guarded_match,guarded_status
-        value_cell=cut(val_box,right_bleed=(kind=='cleaning'))
+        value_cell=cut(val_box,right_bleed=True)
         expected=match.get('expected') if match else None
         if kind=='cleaning':
             value_candidates=list(batch_cleaning_values.get(band_index,[]))
@@ -3297,9 +3329,23 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             if (not needs_vertical_retry and expected not in (None,0) and direct_value is not None):
                 needs_vertical_retry=(abs(float(direct_value)-float(expected))/max(float(expected),1.0) >= .35)
             if needs_vertical_retry:
-                expanded_candidates=_direct_pair_length_candidates(cut(val_box,vertical_bleed=2))
+                expanded_cell=cut(val_box,right_bleed=True,vertical_bleed=2)
+                expanded_candidates=_direct_pair_length_candidates(expanded_cell)
                 for candidate in expanded_candidates:
                     if candidate not in value_candidates: value_candidates.append(candidate)
+                # If conservative reads are still nowhere near the known master
+                # length, OCR the same observed expanded cell with the broader
+                # length ensemble before accepting a wildly implausible digit.
+                tentative=_choose_length(value_candidates,expected) if value_candidates else None
+                still_implausible=(tentative is None)
+                if (not still_implausible and expected not in (None,0)):
+                    still_implausible=(abs(float(tentative)-float(expected))/max(float(expected),1.0) >= .35)
+                if still_implausible:
+                    expanded_ocr=_ocr_length_candidates(expanded_cell,fast_plain=True)
+                    if not expanded_ocr:
+                        expanded_ocr=_ocr_length_candidates(expanded_cell,fast_plain=False)
+                    for candidate in expanded_ocr:
+                        if candidate not in value_candidates: value_candidates.append(candidate)
             if not value_candidates:
                 value_candidates=_ocr_length_candidates(value_cell,fast_plain=True)
                 if not value_candidates: value_candidates=_ocr_length_candidates(value_cell,fast_plain=False)
@@ -3308,7 +3354,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 abs(float(value)-float(expected))>max(100,float(expected)*1.5)):
             # Keep the established pipe-video fallback unchanged. Cleaning values
             # remain exactly what OCR observed, even when they differ from master.
-            expanded=_ocr_length_candidates(cut(val_box),fast_plain=False)
+            expanded=_ocr_length_candidates(cut(val_box,right_bleed=True),fast_plain=False)
             if expanded:
                 value=_choose_length(list(value_candidates)+list(expanded),expected)
         date_evidence=date_reads.get(band_index,{'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{}})
@@ -3356,7 +3402,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             'date':date_cell.copy() if getattr(date_cell,'size',0) else None,
         }
         rec['_length_value_cell']=value_cell.copy() if getattr(value_cell,'size',0) else None
-        expanded_value_cell=cut(val_box,vertical_bleed=3)
+        expanded_value_cell=cut(val_box,right_bleed=True,vertical_bleed=3)
         rec['_length_expanded_cell']=expanded_value_cell.copy() if getattr(expanded_value_cell,'size',0) else None
         rec['_length_first_candidates']=list(value_candidates or [])
         if kind=='cleaning':

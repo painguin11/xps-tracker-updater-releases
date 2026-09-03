@@ -7,7 +7,8 @@ assert "prepared['printed_total_info']=printed_total_info" in src
 assert 'def _high_res_printed_total_candidates(cell_img):' in src
 assert "fx=4.0,fy=4.0" in src
 assert "direct=_high_res_printed_total_candidates(cell)" in src
-assert "expanded_value_cell=cut(val_box,vertical_bleed=3)" in src
+assert ("expanded_value_cell=cut(val_box,vertical_bleed=3)" in src or
+        "expanded_value_cell=cut(val_box,right_bleed=True,vertical_bleed=3)" in src)
 assert 'def _select_independent_length_candidate(' in src
 assert 'def _independent_split_pipe_read(record):' in src
 assert "existing['_length_part_reads']=part_reads" in src

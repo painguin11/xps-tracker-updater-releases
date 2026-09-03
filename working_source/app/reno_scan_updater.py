@@ -3029,8 +3029,7 @@ def prepare_year15_pair_layout(page,master_index,kind,inherited_layout=None,pref
     previous_boxes=list((inherited_layout or {}).get('column_boxes') or [])
     previous_roles=dict((inherited_layout or {}).get('role_indices') or {})
     can_inherit=(previous_boxes and all(k in previous_roles for k in ('up','down','value','date')))
-    complete_header=all(k in role_indices for k in ('up','down','value','date'))
-    if can_inherit and not complete_header:
+    if can_inherit:
         if len(column_boxes)!=len(previous_boxes):
             column_boxes=list(previous_boxes)
         if len(column_boxes)==len(previous_boxes) and all(0<=int(v)<len(column_boxes) for v in previous_roles.values()):

@@ -641,3 +641,8 @@ Version 94 padded endpoint-cell recovery
 - Resolves a damaged row only when both observed endpoint numbers identify exactly one existing directional master pipe.
 - Keeps valid non-master pairs such as DN-777 -> DN-1762 and DN-1698 -> DN-1697 unresolved for Add/Ignore review instead of force-matching them.
 - Preserves all v93 and earlier Work Order, new-asset, continuation, total-validation, R2, split-pipe, and review safeguards.
+XPS Tracker Updater v95
+- Recover faint/dashed compact-table row rules so the 8-28 page-2 style B&C table can be processed instead of skipped.
+- Prefer exact endpoint numeric-body matches over tolerated leading-junk matches, fixing DN-1911 -> DN-1912 while preserving ambiguity safeguards.
+- Preserve v94 stacked endpoint recovery, v93 Work Order confidence behavior and NEW PIPE/NEW MANHOLE notes, plus all existing continuation, matching, total, review, and safety behavior.
+

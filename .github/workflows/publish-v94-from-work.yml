@@ -72,6 +72,10 @@ jobs:
 
       - name: Validate release source and scope
         run: |
+          # py_compile and imported regressions create bytecode. Remove only these
+          # generated files before enforcing the exact release-source diff.
+          find working_source -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find working_source -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
           python - <<'PY'
           from pathlib import Path
           import re, subprocess

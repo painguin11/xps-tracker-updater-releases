@@ -7,7 +7,7 @@ SOURCE=Path(__file__).resolve().parents[1]/'app'/'reno_scan_updater.py'
 s=SOURCE.read_text(encoding='utf-8')
 assert re.search(r"APP_VERSION = '(?:91|92)'",s)
 assert 'machine-typed pink/magenta' in s
-assert '_workorder_magenta_candidates(candidate_crop)' in s
+assert '_workorder_confident_magenta_candidate(candidate_crop)' in s
 
 # Execute the color isolation helpers without importing the Windows-only app.
 tree=ast.parse(s)
@@ -32,10 +32,11 @@ cv2.rectangle(plain,(4,4),(275,84),(70,145,105),2)
 cv2.putText(plain,'WORK ORDER 11871',(8,52),cv2.FONT_HERSHEY_SIMPLEX,.65,(25,25,25),2,cv2.LINE_AA)
 assert ns['_workorder_magenta_variants'](plain)==[]
 
-# The actual W/O selection path must try color OCR before entering grayscale fallback.
+# The actual W/O selection path must try the confidence-gated color OCR before
+# entering the conservative grayscale fallback.
 start=s.index('def ocr_workorder_guesses')
 end=s.index('\ndef _row_length_token_value',start)
 block=s[start:end]
-assert block.index('_workorder_magenta_candidates(candidate_crop)') < block.index('gray=cv2.cvtColor(candidate_crop')
-assert "re.findall(r'\\d{4,5}',t)" in block  # established fallback remains
+assert block.index('_workorder_confident_magenta_candidate(candidate_crop)') < block.index('gray=cv2.cvtColor(candidate_crop')
+assert "re.findall(r'(?<!\\d)\\d{4,5}(?!\\d)',t)" in block  # established fallback remains, now boundary-safe
 print('v91 machine-typed pink work-order OCR regression passed')

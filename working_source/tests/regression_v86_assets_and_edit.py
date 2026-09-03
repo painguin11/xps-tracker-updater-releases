@@ -20,6 +20,8 @@ for required in (
     "fields=[('Asset','asset'),('Date','date')",
     "apply_manual_asset_edit(r,self.master_index,vars['Upstream Node'].get(),vars['Downstream Node'].get())",
     "apply_manual_asset_edit(r,self.master_index,asset=vars['Asset'].get())",
+    'def _resolve_pipe_pair_from_endpoint_digits(',
+    'digit_match=_resolve_pipe_pair_from_endpoint_digits(cut(up_box),cut(dn_box),master_index)',
 ):
     assert required in src, required
 
@@ -70,5 +72,25 @@ assert record['master_length']==284.6
 mh={'kind':'Manhole','asset':'?','status':'NOT MATCHED','skip_update':True}
 assert xps.apply_manual_asset_edit(mh,master,asset='EC-1817')
 assert mh['asset']=='EC-1817' and mh['status']=='Matched' and mh['skip_update'] is False
+
+
+# Prefix-loss recovery must use both endpoint cells and fail closed on ambiguity.
+original_digit_tokens=xps._endpoint_digit_tokens
+try:
+    xps._endpoint_digit_tokens=lambda cell:list(cell)
+    pair_a={'row':1,'expected':188.8,'pipe_id':'EC1826EC1817','up':'EC-1826','down':'EC-1817',
+            'up_key':'EC1826','down_key':'EC1817'}
+    pair_b={'row':2,'expected':390.5,'pipe_id':'R2335R2336','up':'R2-335','down':'R2-336',
+            'up_key':'R2335','down_key':'R2336'}
+    pair_c={'row':3,'expected':250.0,'pipe_id':'DN1826DN1900','up':'DN-1826','down':'DN-1900',
+            'up_key':'DN1826','down_key':'DN1900'}
+    digit_master={'pipe_items':[pair_a,pair_b,pair_c]}
+    assert xps._resolve_pipe_pair_from_endpoint_digits(['1826','11826'],['1817'],digit_master)['row']==1
+    assert xps._resolve_pipe_pair_from_endpoint_digits(['12335'],['12336'],digit_master)['row']==2
+    assert xps._resolve_pipe_pair_from_endpoint_digits([],['1817'],digit_master) is None
+    ambiguous={'pipe_items':[pair_a,dict(pair_a,row=4,up='DN-1826',down='DN-1817',up_key='DN1826',down_key='DN1817')]}
+    assert xps._resolve_pipe_pair_from_endpoint_digits(['1826'],['1817'],ambiguous) is None
+finally:
+    xps._endpoint_digit_tokens=original_digit_tokens
 
 print('v86 asset OCR evidence + editable asset/node regression passed.')

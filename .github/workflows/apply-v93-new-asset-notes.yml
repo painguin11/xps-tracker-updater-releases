@@ -1,0 +1,95 @@
+name: Apply v93 new asset notes
+
+on:
+  push:
+    branches:
+      - v93-work
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.event.head_commit.message == 'APPLY_V93_NEW_ASSET_NOTES' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out v93 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: v93-work
+          fetch-depth: 0
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Apply targeted new-asset note patch
+        run: python working_source/tools/apply_v93_new_asset_notes.py
+
+      - name: Compile and run active regressions
+        run: |
+          set -e
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          run_test() { if [ -f "$1" ]; then echo "===== $1 ====="; python "$1"; fi; }
+          run_test working_source/tests/regression_v93_new_asset_notes.py
+          run_test working_source/tests/regression_v93_workorder_low_confidence_blank.py
+          run_test working_source/tests/regression_v92_workorder_4_or_5_digits.py
+          run_test working_source/tests/regression_v91_workorder_color_ocr.py
+          run_test working_source/tests/regression_v91_new_asset_preview_and_endpoint_recovery.py
+          run_test working_source/tests/regression_v90_review_ui.py
+          run_test working_source/tests/regression_v89_review_workflow.py
+          run_test working_source/tests/regression_v89_printed_pair_identity.py
+          run_test working_source/tests/regression_v89_manhole_count_and_final_total.py
+          run_test working_source/tests/regression_v88_continuations.py
+          run_test working_source/tests/regression_v87_total_summary_separator.py
+          run_test working_source/tests/regression_v86_assets_and_edit.py
+          run_test working_source/tests/regression_v85_edit_row_previews.py
+          run_test working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          run_test working_source/tests/regression_v84_real_packet_length_logic.py
+          run_test working_source/tests/regression_v83_length_recovery.py
+          run_test working_source/tests/regression_v83_exact_pdf_numbers.py
+          run_test working_source/tests/regression_v83_total_preview_group_errors.py
+          run_test working_source/tests/regression_v82_pair_video_lengths.py
+          run_test working_source/tests/regression_v82_master_asset_format.py
+          run_test working_source/tests/regression_v82_suffix_guard.py
+          run_test working_source/tests/regression_v82_cleaning_header_noise.py
+          run_test working_source/tests/regression_v82_layout_threshold.py
+          run_test working_source/tests/regression_v81_header_outline.py
+          run_test working_source/tests/regression_v80_ocr_total_ui.py
+          run_test working_source/tests/regression_v79_layout_speed.py
+          run_test working_source/tests/regression_v78_rollback.py
+          run_test working_source/tests/regression_v75_811_ocr.py
+          run_test working_source/tests/regression_v74_row_filtering.py
+          run_test working_source/tests/regression_v73_total_dates.py
+          run_test working_source/tests/regression_compact_table_fallback.py
+          run_test working_source/tests/regression_length_totals.py
+          run_test working_source/tests/regression_split_pipes.py
+          run_test working_source/tests/regression_new_assets.py
+          run_test working_source/tests/regression_master_insert.py
+          run_test working_source/tests/regression_r2_endpoint_ocr.py
+
+      - name: Verify targeted scope
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '92'" in s
+          assert s.count("append_note(ps.Cells(rr,notes_col),'NEW PIPE')")==2
+          assert s.count("append_note(ms.Cells(rr,notes_col),'NEW MANHOLE')")==2
+          assert 'def _workorder_confident_magenta_candidate' in s
+          assert "elif magenta_seen:\n        wo=''" in s
+          for required in ('def parse_pipe_list','def parse_manhole_list','def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket','class NewAssetApprovalDialog','def _endpoint_digit_tokens'):
+              assert required in s, required
+          print('v93 note + W/O confidence scope checks passed.')
+          PY
+
+      - name: Commit v93 development changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_v93_new_asset_notes.py
+          git rm working_source/tools/apply_v93_new_asset_notes.py .github/workflows/apply-v93-new-asset-notes.yml .trigger_v93_new_asset_notes
+          git commit -m 'Add master notes for approved new assets [skip ci]'
+          git push origin HEAD:v93-work

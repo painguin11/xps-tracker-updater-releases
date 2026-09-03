@@ -23,4 +23,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash working_source/tools/publish_v90.sh
 
-# retry with cross-platform release-test dependencies installed
+# rerun using current v88-v90 release regression set

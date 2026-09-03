@@ -1,12 +1,12 @@
 {
-  "version": "85",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v85/XPS_Tracker_Updater_v85.zip",
-  "sha256": "0e070cad7bdc587401cc57ff68eb060c3b3a97e4eb312a56867b371dbf3c59f1",
+  "version": "86",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v86/XPS_Tracker_Updater_v86.zip",
+  "sha256": "f4c65b7b9ad1dfc1e5ba989c32eaa8042a425858327a18a1b82da0735631f406",
   "release_notes": [
-    "Keep every confirmed physical table row in Live Summary and total-length arithmetic even when endpoint/date OCR needs review",
-    "Retain duplicate-looking Cleaning rows for validation while preventing duplicate master writes",
-    "Improve independent failed-total OCR selection for decimal and grid-line misreads without manufacturing PDF values",
-    "Show PDF image previews beside Activity Value, Date, W/O, Truck, and Operator in Edit Selected",
-    "When an edit-field crop is unavailable, direct the user to the exact PDF page for manual verification"
+    "Use an independent whole-column OCR pass to recover exact Pipe/Cleaning endpoint IDs when grid strokes damage individual-cell prefixes",
+    "Allow Upstream Node and Downstream Node to be edited directly in Edit Selected, with PDF previews",
+    "Allow Manhole Asset IDs to be edited directly in Edit Selected, with a PDF preview",
+    "Immediately re-match manually corrected asset/node IDs against the selected master",
+    "Preserve v85 row retention, total reconciliation, split/MSA behavior, and exact PDF length safeguards"
   ]
 }

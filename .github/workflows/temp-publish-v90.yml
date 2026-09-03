@@ -1,0 +1,240 @@
+name: Temporary publish v90
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-publish-v90.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v90-work
+          fetch-depth: 0
+
+      - name: Prepare v90 source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          app = Path('working_source/app/reno_scan_updater.py')
+          text = app.read_text(encoding='utf-8')
+          new, count = re.subn(r"^APP_VERSION\s*=\s*['\"]89['\"]", "APP_VERSION = '90'", text, count=1, flags=re.M)
+          if count != 1:
+              raise SystemExit('Expected exactly one APP_VERSION 89 assignment')
+          app.write_text(new, encoding='utf-8')
+
+          updater = Path('working_source/app/xps_update.py')
+          text = updater.read_text(encoding='utf-8')
+          new, count = re.subn(r'^CURRENT_VERSION\s*=\s*[\"\']89[\"\']', 'CURRENT_VERSION = "90"', text, count=1, flags=re.M)
+          if count != 1:
+              raise SystemExit('Expected exactly one CURRENT_VERSION 89 assignment')
+          updater.write_text(new, encoding='utf-8')
+
+          readme = Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          text = readme.read_text(encoding='utf-8').rstrip() + '\n\n'
+          section = '''Version 90 review workflow improvements
+---------------------------------------
+- Shows PDF ID image previews directly in the Add to Master / Ignore decision popup for unresolved assets.
+- Pipe and Cleaning review shows upstream and downstream ID crops side-by-side; Manhole review shows the manhole ID crop.
+- Preserves the current Live Summary vertical position and selected/focused row when Edit Selected rebuilds the summary.
+- Preserves all v89 printed-pair identity, new-asset, continuation, total-validation, and OCR safeguards.
+'''
+          if 'Version 90 review workflow improvements' not in text:
+              text += section
+          readme.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+
+      - name: Verify versions and compile
+        run: |
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          app = Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater = Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert re.search(r"^APP_VERSION\s*=\s*['\"]90['\"]", app, re.M)
+          assert re.search(r'^CURRENT_VERSION\s*=\s*[\"\']90[\"\']', updater, re.M)
+          assert "APP_TITLE = f'{APP_NAME} v{APP_VERSION}'" in app
+          print('Version checks passed: app/display/updater = 90')
+          PY
+
+      - name: Run regression suite
+        run: |
+          set -euo pipefail
+          total=0
+          for test in working_source/tests/regression_*.py; do
+            echo "===== $test ====="
+            python "$test"
+            total=$((total+1))
+          done
+          echo "Completed $total regression scripts."
+
+      - name: Verify v90 UI safeguards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          required = [
+              "PDF ID verification",
+              "('Upstream ID',record.get('up') or '', 'upstream')",
+              "('Downstream ID',record.get('down') or '', 'downstream')",
+              "[('Manhole ID',record.get('asset') or '', 'asset')]",
+              "vertical_position=self.tree.yview()[0]",
+              "self.tree.yview_moveto(vertical_position)",
+              "self.tree.selection_set(surviving)",
+              "self.tree.focus(focused)",
+          ]
+          for item in required:
+              assert item in source, item
+          for legacy in ('parse_reno', 'parse_year15', 'parse_year15_manholes', 'Phase 2 Year 1 Manholes'):
+              assert legacy in source, legacy
+          print('v90 UI and unrelated-parser structural safeguards passed.')
+          PY
+
+      - name: Commit release source to v90-work
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          git commit -m "Prepare XPS Tracker Updater v90 release"
+          git push origin HEAD:v90-work
+          echo "RELEASE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Package and verify ZIP
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, zipfile
+
+          app = Path('working_source/app')
+          zip_path = Path('XPS_Tracker_Updater_v90.zip')
+          top = 'XPS_Tracker_Updater'
+          with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+              for path in sorted(app.rglob('*')):
+                  if not path.is_file():
+                      continue
+                  rel = path.relative_to(app)
+                  if '__pycache__' in rel.parts or path.suffix == '.pyc':
+                      continue
+                  z.write(path, f'{top}/{rel.as_posix()}')
+          with zipfile.ZipFile(zip_path) as z:
+              bad = z.testzip()
+              assert bad is None, bad
+              names = z.namelist()
+              assert names and all(name.startswith(top + '/') for name in names)
+              required = {
+                  f'{top}/reno_scan_updater.py',
+                  f'{top}/xps_update.py',
+                  f'{top}/run_xps_tracker.bat',
+                  f'{top}/setup_and_run.bat',
+                  f'{top}/README_XPS_Tracker_Updater.txt',
+                  f'{top}/update_config.json',
+                  f'{top}/xps_tracker_updater.ico',
+              }
+              missing = required.difference(names)
+              assert not missing, missing
+              app_text = z.read(f'{top}/reno_scan_updater.py').decode('utf-8')
+              updater_text = z.read(f'{top}/xps_update.py').decode('utf-8')
+              assert "APP_VERSION = '90'" in app_text
+              assert 'CURRENT_VERSION = "90"' in updater_text
+          digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+          Path('v90.sha256').write_text(digest + '\n', encoding='ascii')
+          print('ZIP size:', zip_path.stat().st_size)
+          print('SHA256:', digest)
+          PY
+          unzip -t XPS_Tracker_Updater_v90.zip
+          echo "ZIP_SHA256=$(cat v90.sha256)" >> "$GITHUB_ENV"
+          echo "ZIP_SIZE=$(stat -c%s XPS_Tracker_Updater_v90.zip)" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release
+        run: |
+          gh release create v90 XPS_Tracker_Updater_v90.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_COMMIT" \
+            --title "XPS Tracker Updater v90" \
+            --notes "v90 improves manual review speed and verification. Unresolved Pipe/Cleaning assets now show upstream and downstream PDF ID crops directly in the Add to Master / Ignore popup, while unresolved Manholes show the manhole ID crop. Editing a summary row now preserves the Live Summary scroll position and selected/focused row instead of jumping back to the top. Existing v89 printed-pair identity, Add/Ignore behavior, continuation-page handling, total validation, MSA safeguards, and OCR protections are preserved."
+
+      - name: Verify public release asset
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, time
+          expected_sha = os.environ['ZIP_SHA256'].strip().lower()
+          expected_size = int(os.environ['ZIP_SIZE'])
+          for attempt in range(12):
+              raw = subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases/tags/v90'], text=True)
+              release = json.loads(raw)
+              assets = [a for a in release.get('assets',[]) if a.get('name') == 'XPS_Tracker_Updater_v90.zip']
+              if assets:
+                  asset = assets[0]
+                  digest = str(asset.get('digest') or '').lower()
+                  if digest.startswith('sha256:'):
+                      digest = digest.split(':',1)[1]
+                  assert asset.get('state') == 'uploaded', asset
+                  assert int(asset.get('size') or 0) == expected_size, (asset.get('size'), expected_size)
+                  assert digest == expected_sha, (digest, expected_sha)
+                  expected_url = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v90/XPS_Tracker_Updater_v90.zip'
+                  assert asset.get('browser_download_url') == expected_url, asset.get('browser_download_url')
+                  print('Public release asset verified:', asset['name'], asset['size'], asset['digest'])
+                  break
+              time.sleep(2)
+          else:
+              raise SystemExit('v90 release asset did not become visible')
+          PY
+
+      - name: Update public manifest only after asset verification
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          python - <<'PY'
+          from pathlib import Path
+          import json, os
+          path = Path('update_manifest.json')
+          data = {
+              'version': '90',
+              'download_url': 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v90/XPS_Tracker_Updater_v90.zip',
+              'sha256': os.environ['ZIP_SHA256'].strip().lower(),
+              'release_notes': [
+                  'Show upstream and downstream PDF ID image previews in the Add to Master / Ignore popup for unresolved Pipe and Cleaning assets',
+                  'Show the PDF manhole ID image preview in the Add to Master / Ignore popup for unresolved Manholes',
+                  'Preserve the Live Summary scroll position after editing a row',
+                  'Restore the selected and focused summary row after the edit refresh',
+                  'Preserve v89 printed-pair identity, new-asset, continuation, total-validation, MSA, and OCR safeguards'
+              ]
+          }
+          path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add update_manifest.json
+          git commit -m "Publish v90 update manifest"
+          git push origin HEAD:main
+
+      - name: Verify published manifest
+        run: |
+          python - <<'PY'
+          import json, os, time, urllib.request
+          url = 'https://raw.githubusercontent.com/painguin11/xps-tracker-updater-releases/main/update_manifest.json'
+          expected = os.environ['ZIP_SHA256'].strip().lower()
+          for attempt in range(12):
+              with urllib.request.urlopen(url + f'?t={time.time()}', timeout=10) as r:
+                  data = json.loads(r.read().decode('utf-8'))
+              if data.get('version') == '90':
+                  assert data.get('sha256') == expected, (data.get('sha256'), expected)
+                  assert data.get('download_url') == 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v90/XPS_Tracker_Updater_v90.zip'
+                  print('Manifest verified:', data['version'], data['sha256'])
+                  break
+              time.sleep(2)
+          else:
+              raise SystemExit('Published manifest did not update to v90')
+          PY

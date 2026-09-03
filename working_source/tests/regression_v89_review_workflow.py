@@ -45,3 +45,19 @@ c={'video_length':10.0,'master_length':301.0,'part_count':1}
 assert ns['pipe_group_physical_count']([a,b,c])==3
 
 print('v89 reviewed wording, unmatched decisions, duplicate/MSA safeguards, and Trouble Ticket previews passed.')
+
+# Post-review audit guards: decisions are identity-scoped, popup uses real IDs, and
+# generic appends use the physical sheet end after any base-row insertions.
+for required in (
+    "clear_asset_decision_if_changed((asset_key(up),asset_key(down)))",
+    "clear_asset_decision_if_changed(asset_key(asset))",
+    "scanned=f\"{record.get('up','')} → {record.get('down','')}\"",
+    "undecided_new=(status.startswith(('NEW PIPE','NEW MANHOLE'))",
+    "base_info=new_asset_base_info(record,self.master_index)",
+    "ps.Cells(ps.Rows.Count,ph['pipe_id']).End(-4162).Row",
+    "ms.Cells(ms.Rows.Count,mh['st_id']).End(-4162).Row",
+    "pipe_name.upper().startswith('UNMATCHED ROW')",
+):
+    assert required in src, required
+
+print('v89 post-review identity and append-row audit guards passed.')

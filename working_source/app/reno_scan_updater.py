@@ -3684,12 +3684,21 @@ def highlight_approved_master_row(ws,row,last_col):
 def apply_manual_asset_edit(record,master_index,up=None,down=None,asset=None):
     """Apply an Edit Selected asset/node correction and immediately re-match it."""
     kind=record.get('kind')
+    old_identity=((asset_key(record.get('up','')),asset_key(record.get('down','')))
+                  if kind in ('Pipe','Cleaning') else asset_key(record.get('asset','')))
     record.pop('_unmatched_ignored',None)
     record.pop('_msa_rejected',None)
+    def clear_asset_decision_if_changed(new_identity):
+        if new_identity==old_identity:
+            return
+        for key in ('new_asset_approved','new_asset_append','new_asset_base_row','new_asset_base_asset'):
+            record.pop(key,None)
+        record['warnings']=[w for w in record.get('warnings',[]) if w!='BASE MASTER ROW NOT FOUND']
     if kind in ('Pipe','Cleaning'):
         up=canonical_asset_id(up); down=canonical_asset_id(down)
         if not up or not down:
             raise ValueError('Upstream Node and Downstream Node are required.')
+        clear_asset_decision_if_changed((asset_key(up),asset_key(down)))
         match,status=_resolve_pipe_pair([up],[down],master_index)
         record['up']=up; record['down']=down
         if match:
@@ -3705,6 +3714,7 @@ def apply_manual_asset_edit(record,master_index,up=None,down=None,asset=None):
     if kind=='Manhole':
         asset=canonical_asset_id(asset)
         if not asset: raise ValueError('Asset is required.')
+        clear_asset_decision_if_changed(asset_key(asset))
         item,status=_resolve_full_asset([asset],master_index.get('manholes',{}))
         record['asset']=item.get('asset') if item else asset
         record['asset_key']=item.get('asset_key') if item else asset_key(asset)
@@ -4255,7 +4265,10 @@ class UnmatchedAssetDecisionDialog(tk.Toplevel):
         label='Manhole' if is_manhole else 'Pipe'
         self.title(f'{label} Not Found in Master'); self.transient(parent); self.grab_set(); self.resizable(False,False)
         header='MH NOT FOUND IN MASTER — CHECK MH ID' if is_manhole else 'PIPE NOT FOUND IN MASTER — CHECK MH IDS'
-        scanned=record.get('display_asset') or record.get('asset') or ''
+        if is_manhole:
+            scanned=record.get('asset') or record.get('display_asset') or ''
+        else:
+            scanned=f"{record.get('up','')} → {record.get('down','')}"
         noun='manhole' if is_manhole else 'pipe'
         text=(f"{header}\n\nScanned {noun}:\n{scanned}\n\n"
               "This item is still not found in the master. Choose what to do with it before continuing the update.")
@@ -4674,15 +4687,27 @@ class App(tk.Tk):
             if not record.get('skip_update') or record.get('new_asset_approved') or record.get('_unmatched_ignored'):
                 continue
             status=str(record.get('status') or '')
-            if not (status=='NOT MATCHED' or status.startswith('AMBIGUOUS')):
+            unresolved=(status=='NOT MATCHED' or status.startswith('AMBIGUOUS'))
+            undecided_new=(status.startswith(('NEW PIPE','NEW MANHOLE')) and
+                           (('new_asset_approved' not in record) or
+                            'BASE MASTER ROW NOT FOUND' in record.get('warnings',[])))
+            if not (unresolved or undecided_new):
                 continue
             dlg=UnmatchedAssetDecisionDialog(self,record); self.wait_window(dlg)
             if dlg.result is None:
                 return False
             if dlg.result=='add':
-                record['new_asset_approved']=True
-                record['new_asset_append']=True
                 record['status']='NEW MANHOLE' if record.get('kind')=='Manhole' else 'NEW PIPE'
+                base_info=new_asset_base_info(record,self.master_index)
+                record['new_asset_approved']=True
+                record['warnings']=[w for w in record.get('warnings',[]) if w!='BASE MASTER ROW NOT FOUND']
+                if base_info:
+                    record['new_asset_base_row']=base_info['row']
+                    record['new_asset_base_asset']=base_info['base_asset']
+                    record.pop('new_asset_append',None)
+                else:
+                    record['new_asset_append']=True
+                    record.pop('new_asset_base_row',None); record.pop('new_asset_base_asset',None)
                 record.pop('_unmatched_ignored',None)
             else:
                 record['_unmatched_ignored']=True
@@ -5574,7 +5599,7 @@ class App(tk.Tk):
                 written+=1; log_rows.append(r)
 
             append_pipe_rows=[r for r in self.records if r.get('new_asset_approved') and r.get('new_asset_append') and r.get('kind') in ('Pipe','Cleaning')]
-            pipe_last=max([int(item.get('row') or 0) for item in cached.get('pipe_items',[])] or [pr])
+            pipe_last=max(int(pr),int(ps.Cells(ps.Rows.Count,ph['pipe_id']).End(-4162).Row))
             for r in append_pipe_rows:
                 rr,last_col=insert_blank_formatted_row_below(ps,pipe_last); pipe_last=rr
                 if profile in ('year15','phase2_year1'):
@@ -5596,7 +5621,9 @@ class App(tk.Tk):
                 else:
                     if ph.get('upstream'): ps.Cells(rr,ph['upstream']).Value=master_text(r.get('up'))
                     if ph.get('downstream'): ps.Cells(rr,ph['downstream']).Value=master_text(r.get('down'))
-                    pipe_name=r.get('asset') or f"{master_text(r.get('up'))}-{master_text(r.get('down'))}"
+                    pipe_name=str(r.get('asset') or '').strip()
+                    if not pipe_name or pipe_name.upper().startswith('UNMATCHED ROW'):
+                        pipe_name=f"{master_text(r.get('up'))}-{master_text(r.get('down'))}"
                     ps.Cells(rr,ph['pipe_id']).Value=master_text(pipe_name)
                     ps.Cells(rr,ph['video length']).Value=r['video_length']
                     write_excel_date(ps.Cells(rr,ph['date']),r['date'])
@@ -5623,7 +5650,7 @@ class App(tk.Tk):
                 written+=1; log_rows.append(r)
 
             append_manhole_rows=[r for r in self.records if r.get('new_asset_approved') and r.get('new_asset_append') and r.get('kind')=='Manhole']
-            manhole_last=max([int(item.get('row') or 0) for item in cached.get('manholes',{}).values()] or [mr])
+            manhole_last=max(int(mr),int(ms.Cells(ms.Rows.Count,mh['st_id']).End(-4162).Row))
             for r in append_manhole_rows:
                 rr,last_col=insert_blank_formatted_row_below(ms,manhole_last); manhole_last=rr
                 ms.Cells(rr,mh['st_id']).Value=master_text(r.get('asset'))

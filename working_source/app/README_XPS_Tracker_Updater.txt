@@ -604,3 +604,12 @@ Version 90 review workflow improvements
 - Pipe and Cleaning review shows upstream and downstream ID crops side-by-side; Manhole review shows the manhole ID crop.
 - Preserves the current Live Summary vertical position and selected/focused row when Edit Selected rebuilds the summary.
 - Preserves all v89 printed-pair identity, new-asset, continuation, total-validation, and OCR safeguards.
+
+
+Version 91 review, endpoint, and work-order OCR improvements
+-------------------------------------------------------------
+- Shows PDF ID image previews in the existing Yes / No approval popup for suffixed NEW PIPE and NEW MANHOLE assets.
+- Recovers a damaged Pipe/Cleaning endpoint only when numeric bodies were OCR-observed from both PDF cells and identify exactly one directional pipe in the master.
+- Keeps legitimate non-master printed pairs unresolved for Add to Master / Ignore review instead of force-matching them.
+- Reads the five-digit Work Order number as machine-typed pink/magenta text by isolating its color before OCR, removing green form rules and black labels from the primary OCR input.
+- Keeps the established editable W/O confirmation popup and grayscale OCR only as a fallback for unusually faded/desaturated scans.

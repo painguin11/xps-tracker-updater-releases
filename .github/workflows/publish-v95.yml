@@ -4,7 +4,7 @@ on:
   push:
     branches: [v95-work]
     paths:
-      - '.trigger_v95_publish'
+      - '.trigger_v95_publish*'
 
 permissions:
   contents: write

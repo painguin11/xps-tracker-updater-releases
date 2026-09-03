@@ -39,6 +39,11 @@ jobs:
                 echo "SKIPPED: requires private upload/8-11-2026.pdf fixture and legacy local package path not stored in the release repo."
                 continue
                 ;;
+              working_source/tests/regression_workorder_preview.py)
+                echo "=== $test ==="
+                echo "SKIPPED: requires private upload/8-11-2026.pdf fixture and hardcoded legacy local v69 package path not stored in the release repo."
+                continue
+                ;;
               working_source/tests/regression_v76_layout_skip.py)
                 echo "=== $test ==="
                 echo "SKIPPED: stale pre-v82 exact-string assertion expects confidence >=100; current v89-work already uses the later >80 gate."

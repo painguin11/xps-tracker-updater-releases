@@ -1,12 +1,13 @@
 {
-  "version": "86",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v86/XPS_Tracker_Updater_v86.zip",
-  "sha256": "f4c65b7b9ad1dfc1e5ba989c32eaa8042a425858327a18a1b82da0735631f406",
+  "version": "88",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v88/XPS_Tracker_Updater_v88.zip",
+  "sha256": "431d717b271d42f520fdc58082cacd14eaf995abea93ce4b6e98bf8f8e728601",
   "release_notes": [
-    "Use an independent whole-column OCR pass to recover exact Pipe/Cleaning endpoint IDs when grid strokes damage individual-cell prefixes",
-    "Allow Upstream Node and Downstream Node to be edited directly in Edit Selected, with PDF previews",
-    "Allow Manhole Asset IDs to be edited directly in Edit Selected, with a PDF preview",
-    "Immediately re-match manually corrected asset/node IDs against the selected master",
-    "Preserve v85 row retention, total reconciliation, split/MSA behavior, and exact PDF length safeguards"
+    "Fix faint/interrupted Brown & Caldwell table grid detection so printed columns are not merged",
+    "Support headerless continuation pages for Pipe, Cleaning, and Manhole tables within the same work order",
+    "Reuse the preceding confirmed Pipe/Cleaning layout and preserve Manhole continuation orientation",
+    "Continue processing readable pages when one page cannot be safely parsed and show the affected work order/page at the top of the live summary",
+    "Fix continuation value-cell clipping and preserve exact printed totals, including the 8-24-2026 page 10-11 Cleaning continuation",
+    "Preserve v86 endpoint OCR, editable asset/node fields, split/MSA handling, and exact PDF-number safeguards"
   ]
 }

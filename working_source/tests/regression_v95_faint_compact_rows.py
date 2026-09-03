@@ -8,7 +8,7 @@ s=SOURCE.read_text(encoding='utf-8')
 tree=ast.parse(s)
 
 assert 'def compact_horizontal_rule_ys(source):' in s
-assert 'if len(rule_ys)<4:' in s
+assert 'if len(rule_ys)<=4:' in s
 assert 'join_width=max(3,int(round((right-left)*.003)))' in s
 
 ns={'cv2':cv2,'np':np}
@@ -16,10 +16,11 @@ for name in ('_year15_compact_grid_bands','_year15_recover_vertical_rules'):
     node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[node],type_ignores=[]),str(SOURCE),'exec'),ns)
 
-# Reproduce the 8/28 compact-table geometry without any customer data.  Most
+# Reproduce the 8/28 compact-table geometry without any customer data. Most
 # vertical rules are dark, two real column rules are faint, and the data-row
-# separators are faint/dashed. The old compact detector saw only the title/header
-# bands and rejected the page; the retry must recover the physical row grid first.
+# separators are faint/dashed. The normal compact pass sees exactly four long
+# horizontal rules, which is still too sparse to represent the physical rows;
+# the retry must recover the real row grid before any OCR/master matching occurs.
 h,w=1530,1980
 img=np.full((h,w,3),255,dtype=np.uint8)
 left,right=45,1930
@@ -48,7 +49,7 @@ assert seed==[45,585,855,1125,1395,1930],seed
 recovered=ns['_year15_recover_vertical_rules'](img,bands,table,seed)
 assert recovered==x_rules,recovered
 
-# A normal solid compact grid must continue to work through the unchanged first pass.
+# A normal solid compact grid must continue to use the unchanged first pass.
 solid=img.copy()
 for y in y_rules:
     cv2.line(solid,(left,y),(right,y),(30,30,30),2)

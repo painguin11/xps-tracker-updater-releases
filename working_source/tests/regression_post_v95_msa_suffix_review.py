@@ -52,15 +52,29 @@ for comment in (
     '# Escalate only uncertain endpoint cells to the slower OCR ensemble.',
 ):
     pos=pair.index(comment)
-    condition=pair.rfind("if not match and match_status!='NEW PIPE':",0,pos)
+    condition=pair.rfind("if not match and match_status!='NEW PIPE' and not authoritative_pair:",0,pos)
     assert condition>=0, comment
     # Make sure it is the immediately preceding fallback guard, not a distant one.
     assert pos-condition<500, comment
 
 suffix_guard=pair.index("if kind=='pipes' and not match and match_status=='NEW PIPE':")
+assert '_batch_pair_endpoint_full_candidates' in pair
+assert 'if padded_up: up_obs=padded_up' in pair
+assert 'if padded_dn: dn_obs=padded_dn' in pair
+assert 'authoritative_pair=(' in pair
 assert suffix_guard>pair.index('# Escalate only uncertain endpoint cells to the slower OCR ensemble.')
 assert '_confirmed_suffix_asset_candidates' in pair[suffix_guard:suffix_guard+1800]
 assert '_guard_unconfirmed_suffix_observations' in pair[suffix_guard:suffix_guard+1800]
+
+# Padded full-ID recovery itself must require independent agreement and may only
+# filter against project prefixes; it must not manufacture IDs from the master.
+helper_start=s.index('def _batch_pair_endpoint_full_candidates')
+helper_end=s.index('\ndef _batch_pair_endpoint_digit_candidates',helper_start)
+helper=s[helper_start:helper_end]
+assert "if len(pass_ids)>=2" in helper
+assert "text[0] in 'IJL1'" in helper
+assert "prefixes and (not parts or parts[0] not in prefixes)" in helper
+assert "known_items" in helper
 
 # Existing conservative behavior remains in place.
 assert '_resolve_pipe_pair_from_endpoint_digits' in pair

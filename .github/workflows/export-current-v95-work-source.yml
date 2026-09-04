@@ -1,0 +1,24 @@
+name: Export current v95-work source
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_export_current_v95_work_source'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+      - uses: actions/upload-artifact@v4
+        with:
+          name: current-v95-work-source
+          path: working_source
+          if-no-files-found: error
+          retention-days: 1

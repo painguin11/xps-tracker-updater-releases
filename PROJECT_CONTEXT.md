@@ -9,8 +9,9 @@ Current production version: **v95**.
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the v95 baseline.
-Do **not** publish another version until the user explicitly says `PUBLISH`.
+`v95-work`. Start future work from that branch and preserve the v95 baseline plus
+all documented unreleased `v95-work` safeguards. Do **not** publish another
+version until the user explicitly says `PUBLISH`.
 
 Public v95 release:
 
@@ -24,15 +25,56 @@ Public v95 release:
 - `working_source/app/xps_update.py`: `CURRENT_VERSION = "95"`
 - Public `update_manifest.json` points to that exact v95 asset/checksum.
 
-Documentation-only commits after release may advance the `v95-work` branch head;
-they do not change the published v95 release commit above.
+### Current unreleased `v95-work` changes
+
+The following development changes are present **after** the public v95 release and
+must be preserved until they are intentionally released:
+
+1. **MSA review previews and reversible decisions**
+   - The MSA confirmation dialog shows both physical Pipe rows side by side.
+   - Each part shows PDF previews for Upstream ID, Downstream ID, and Length,
+     together with its PDF page.
+   - The dialog also shows combined PDF length, master length, and difference.
+   - Choosing `Not MSA` is a durable review decision instead of being silently
+     cleared by a no-op Edit/Save.
+   - A rejected/pending two-row MSA can be reopened from Edit Selected using
+     `Review / Change MSA Decision`; confirming it later merges the two rows and
+     revalidates totals without requiring the PDF to be analyzed again.
+   - Live Summary explicitly marks rejected pairs with
+     `NOT MSA — EDIT ROW TO CHANGE DECISION`.
+2. **NEW PIPE suffix evidence outranks lossy endpoint fallbacks**
+   - Once complete printed endpoint evidence resolves as `NEW PIPE`, the R2,
+     numeric-body, and slow OCR fallbacks are not allowed to erase the suffix
+     before the existing independent suffix-confirmation crop runs.
+   - If the suffix does not survive that existing independent confirmation, the
+     normal conservative fallback behavior may still resolve the unsuffixed
+     existing master pair.
+   - This is targeted at the 8-24 page-4 style where real one-letter suffixes such
+     as `DN-2243S` must not be collapsed to the base asset merely because the
+     numeric bodies match.
+
+Functional source commit for these changes:
+`4b11eb19824e6fc1d74840b8b75f6c27682ee21d`.
+
+Regression added:
+`working_source/tests/regression_post_v95_msa_suffix_review.py`.
+
+The full active Linux regression suite passed with this source change. The private
+8-24 PDF was not available in the current connected file store, so the page-4
+suffix fix has structural/regression validation but must still be rechecked on the
+real private PDF when it is available. The private R2 fixture was also unavailable
+on Linux CI, so its structural safeguards passed while exact fixture OCR was
+skipped.
+
+Documentation-only and cleanup commits after a source change may advance the
+`v95-work` branch head; they do not change the published v95 release commit above.
 
 In a new conversation, begin with:
 
 > Continue the XPS Tracker Updater project from the connected GitHub repository.
 > Read AGENTS.md, PROJECT_CONTEXT.md, and RELEASE_CHECKLIST.md before changing
-> anything. Start from v95-work, preserve the current v95 behavior, and do not
-> publish until I explicitly say PUBLISH.
+> anything. Start from v95-work, preserve the current v95 behavior and unreleased
+> v95-work safeguards, and do not publish until I explicitly say PUBLISH.
 
 Ask for a private PDF/workbook only when a new real-fixture regression actually
 requires it. Customer fixtures must never be committed to this public repository.
@@ -62,7 +104,7 @@ information.
 
 The title bar contains the version. The interface retains the green header style,
 DPI-aware/native-size icons, field preview crops, and review/edit behavior added
-through v90 and earlier.
+through v90 and later review improvements.
 
 ## Supported master profiles
 
@@ -121,6 +163,9 @@ Important rules:
   Add/Ignore review rather than being fuzzy-corrected to nearby master assets.
 - Master data must never invent an endpoint that OCR did not actually observe.
 - Prefix ambiguity must fail closed.
+- Complete printed `NEW PIPE` suffix evidence must be evaluated by the existing
+  independent suffix-confirmation path **before** lossy numeric/R2/slow fallbacks
+  may replace it with an unsuffixed master asset.
 
 ### Conservative endpoint recovery (v91-v95)
 
@@ -140,7 +185,9 @@ made ambiguous by smaller IDs that only match after tolerated OCR junk is
 removed.
 
 The tolerated leading-junk fallback still works when an exact body was not read.
-True ambiguities and fully printed non-master pairs remain unresolved.
+True ambiguities and fully printed non-master pairs remain unresolved. Numeric
+body recovery must not override independently corroborated one-letter NEW PIPE
+suffix evidence.
 
 ## NEW PIPE / NEW MANHOLE
 
@@ -214,6 +261,18 @@ Exactly two duplicate Pipe rows may be auto-combined. **Three or more duplicates
 must not automatically be assumed to be an MSA split.** This applies to Pipe
 video only, not Cleaning, Manholes, or rows from separate work orders.
 
+For MSA confirmation/review:
+
+- show the actual PDF Upstream ID, Downstream ID, and Length crop for **both**
+  physical rows;
+- show combined PDF length, master length, and difference;
+- `Not MSA` remains visible/durable and must not disappear merely because the row
+  editor was opened and saved without changing identity;
+- if the user changes their mind, Edit Selected must provide
+  `Review / Change MSA Decision` for a reviewable two-row pair;
+- confirming through that path combines the two records and revalidates total
+  checks without requiring a fresh analysis.
+
 ## Physical-row and total safeguards
 
 Preserve the row-retention and exact-number logic developed in v83-v89:
@@ -228,7 +287,7 @@ Preserve the row-retention and exact-number logic developed in v83-v89:
 - compact-table fallback, length-total, zero-row, structural, duplicate,
   match-rate, and grid validations remain active.
 
-## Review UI baseline (v90)
+## Review UI baseline
 
 Unresolved Pipe/Cleaning rows show upstream/downstream PDF ID crops in the
 Add-to-Master / Ignore flow; unresolved Manholes show the Manhole ID crop.
@@ -236,7 +295,8 @@ Editing a Live Summary row preserves the summary scroll position and selected /
 focused row rather than jumping back to the top.
 
 Manual edits to asset/node IDs are re-matched against the selected master and
-update the row review state.
+update the row review state. Rejected/pending two-row MSA decisions are also
+reviewable from Edit Selected as documented above.
 
 ## Trouble Tickets.xlsx
 
@@ -272,6 +332,10 @@ Current v95 regression scripts include:
 - `regression_v95_faint_compact_rows.py`
 - `regression_v95_exact_endpoint_priority.py`
 
+Current unreleased regression added on `v95-work`:
+
+- `regression_post_v95_msa_suffix_review.py`
+
 They sit on top of the v94 stacked endpoint-digit recovery, v93 low-confidence
 W/O and new-asset-note behavior, v92 4/5-digit W/O behavior, v91 color-aware W/O /
 new-asset preview / conservative endpoint recovery, v90 review UI, v89 review /
@@ -288,7 +352,9 @@ High-level expectations to preserve:
 
 - 8-19 Cleaning: 11/11 rows, printed total 2296.
 - 8-24 Manholes: 24/24.
-- 8-24 Pipe page 4: 7 rows, total 2034.58.
+- 8-24 Pipe page 4: 7 rows, total 2034.58. This page includes legitimate
+  letter-suffixed asset IDs and is a key real-PDF target for the unreleased
+  suffix-priority fix; `DN-2243S -> DN-2243 = 52` must remain a valid NEW PIPE.
 - 8-24 Pipe page 6: 9 rows, total 2402.95.
 - 8-24 Cleaning page 8: 10 rows, total 1207.
 - 8-24 Cleaning pages 10-11: 33 combined rows, total 4430; page 11 is a
@@ -305,17 +371,18 @@ are documented.
 
 ## Active regression expectations
 
-Before publishing, the full active suite should pass, including the current
+Before publishing, the full active suite should pass, including
+`regression_post_v95_msa_suffix_review.py`, the current
 v95/v94/v93/v92/v91/v90/v89/v88/v87/v86/v85/v84/v83/v82 and older active
 regressions, plus compact-table fallback, length totals, split pipes, new assets,
 master insertion, R2 structural safeguards, and other still-active tests in
 `working_source/tests/`.
 
-A known CI limitation is that the private R2 fixture PDF may be unavailable on
-the Linux runner. In that case exact fixture OCR is skipped, but structural R2
-safeguards must still pass. Windows Excel COM and real Tkinter behavior also
-cannot be fully exercised on the Linux runner. State those limitations instead
-of claiming full platform validation.
+A known CI limitation is that private fixture PDFs may be unavailable on the
+Linux runner. In that case exact fixture OCR is skipped, but structural safeguards
+must still pass. Windows Excel COM and real Tkinter behavior also cannot be fully
+exercised on the Linux runner. State those limitations instead of claiming full
+platform validation.
 
 ## Automatic updates
 

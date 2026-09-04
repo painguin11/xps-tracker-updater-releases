@@ -1,7 +1,8 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v95 baseline** and all future releases.
-Do not publish unless the user explicitly says `PUBLISH`.
+This checklist applies to the current **v95 production baseline**, the current
+unreleased `v95-work` safeguards, and all future releases. Do not publish unless
+the user explicitly says `PUBLISH`.
 
 Never overwrite an existing release/tag. If a published version needs a fix,
 create the next version.
@@ -12,7 +13,7 @@ create the next version.
 2. Read `AGENTS.md` and `PROJECT_CONTEXT.md`.
 3. Confirm the requested code changes are complete and narrowly scoped.
 4. Confirm no private customer PDF/workbook fixture has been added to Git.
-5. Do not change `update_manifest.json` yet.
+5. Do not change the public `update_manifest.json` yet.
 
 ## Required build/version checks
 
@@ -33,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v95 MSA preview/reversal and NEW PIPE suffix-priority regression;
 - v95 faint compact-table row recovery;
 - v95 exact endpoint numeric-body priority;
 - v94 stacked endpoint digit recovery;
@@ -57,6 +59,9 @@ The active baseline includes, at minimum:
 - master insertion;
 - R2 structural/canonicalization safeguards;
 - Trouble Ticket tests when release scope could affect that path.
+
+The current unreleased regression is:
+`working_source/tests/regression_post_v95_msa_suffix_review.py`.
 
 Do not delete or disable a regression simply because a new change conflicts with
 it. Resolve the behavior intentionally.
@@ -83,6 +88,11 @@ it. Resolve the behavior intentionally.
 - True prefix ambiguity remains unresolved.
 - Fully printed valid non-master pairs remain unresolved for Add/Ignore review.
 - The master never supplies an endpoint that was not observed in the PDF.
+- When complete printed endpoint evidence already resolves as `NEW PIPE`, R2,
+  numeric-body, and slow OCR fallbacks must not erase the suffix before the
+  existing independent suffix-confirmation path runs.
+- A suffix that fails independent confirmation may still fall back conservatively;
+  independently corroborated real suffix evidence must remain a NEW PIPE.
 
 ### New assets
 
@@ -92,6 +102,8 @@ it. Resolve the behavior intentionally.
 - The entire inserted row is highlighted green.
 - Notes contain `NEW PIPE` or `NEW MANHOLE`.
 - Generic unmatched printed IDs are not silently fuzzy-corrected.
+- 8-24 page 4 is a key private real-fixture check for suffix handling; in
+  particular `DN-2243S -> DN-2243 = 52` must remain a valid NEW PIPE.
 
 ### Continuation pages / totals
 
@@ -118,6 +130,14 @@ it. Resolve the behavior intentionally.
 - Their lengths are summed and compared once to the master.
 - Feedback includes `MSA DETECTED`.
 - Three or more duplicates are not automatically treated as an MSA split.
+- The MSA decision popup shows PDF crops for the Upstream ID, Downstream ID, and
+  Length for both physical Pipe rows, plus combined/master/difference values.
+- Choosing `Not MSA` remains a durable visible decision.
+- A no-op Edit/Save must not silently clear `Not MSA`.
+- Edit Selected must offer `Review / Change MSA Decision` for a rejected/pending
+  reviewable two-row pair.
+- If the user later confirms MSA, the rows combine and total validations are
+  refreshed without requiring a new PDF analysis.
 
 ### Length / row integrity
 
@@ -135,7 +155,8 @@ Known current fixture targets are documented in `PROJECT_CONTEXT.md` for the
 8-19, 8-24, 8-26, and 8-28 packets.
 
 The 8-28 page-2 compact B&C table is a key v95 real-PDF regression target.
-The 8-24 packet is a key continuation/final-total/Manhole-count target.
+The 8-24 packet is a key continuation/final-total/Manhole-count target, and page 4
+is now also a key suffix-ID target.
 
 Private fixtures must remain local and must never be committed or packaged.
 
@@ -173,7 +194,8 @@ clearly disclosed:
 3. Download the **public release asset again**.
 4. Verify the downloaded public asset size and SHA-256 against the expected local
    package.
-5. Only after that verification succeeds, update `update_manifest.json` with:
+5. Only after that verification succeeds, update the public `update_manifest.json`
+   with:
    - the new version;
    - exact public release download URL;
    - exact verified SHA-256;
@@ -196,4 +218,6 @@ v95 is the current production release:
 - Size: `298928` bytes
 - SHA-256: `eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41`
 
-The public updater manifest points to that verified v95 asset.
+The public updater manifest points to that verified v95 asset. The current
+`v95-work` MSA/suffix changes are unreleased until the user explicitly says
+`PUBLISH`.

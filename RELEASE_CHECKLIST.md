@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v95 padded complete endpoint-ID recovery regression;
 - post-v95 MSA preview/reversal and NEW PIPE suffix-priority regression;
 - v95 faint compact-table row recovery;
 - v95 exact endpoint numeric-body priority;
@@ -60,8 +61,10 @@ The active baseline includes, at minimum:
 - R2 structural/canonicalization safeguards;
 - Trouble Ticket tests when release scope could affect that path.
 
-The current unreleased regression is:
-`working_source/tests/regression_post_v95_msa_suffix_review.py`.
+The current unreleased regressions are:
+
+- `working_source/tests/regression_post_v95_msa_suffix_review.py`
+- `working_source/tests/regression_post_v95_padded_endpoint_ids.py`
 
 Do not delete or disable a regression simply because a new change conflicts with
 it. Resolve the behavior intentionally.
@@ -93,6 +96,10 @@ it. Resolve the behavior intentionally.
   existing independent suffix-confirmation path runs.
 - A suffix that fails independent confirmation may still fall back conservatively;
   independently corroborated real suffix evidence must remain a NEW PIPE.
+- Unresolved endpoint cells may use padded complete-ID recovery before lossy
+  fallbacks, but a complete ID requires agreement from at least two independent
+  OCR passes. The master may filter impossible prefixes only; it must never fill
+  in a missing endpoint letter or digit.
 
 ### New assets
 
@@ -104,6 +111,8 @@ it. Resolve the behavior intentionally.
 - Generic unmatched printed IDs are not silently fuzzy-corrected.
 - 8-24 page 4 is a key private real-fixture check for suffix handling; in
   particular `DN-2243S -> DN-2243 = 52` must remain a valid NEW PIPE.
+- 8-28 page 4 is a key padded-complete-ID target: 21 physical Pipe rows must total
+  3095.53 and printed suffixes such as `DN-2241A` / `DN-2242A` must survive.
 
 ### Continuation pages / totals
 
@@ -156,7 +165,12 @@ Known current fixture targets are documented in `PROJECT_CONTEXT.md` for the
 
 The 8-28 page-2 compact B&C table is a key v95 real-PDF regression target.
 The 8-24 packet is a key continuation/final-total/Manhole-count target, and page 4
-is now also a key suffix-ID target.
+is a key suffix-ID target. The 8-26 packet is a key two-part MSA plus total-reread
+target. The 8-28 page-4 table is a key complete-suffix-ID target.
+
+The supplied 8-24, 8-26, and 8-28 private fixtures have passed the current
+post-v95 source locally against the supplied Phase 2 Year 1 master, with Trouble
+Tickets intentionally excluded from this test pass.
 
 Private fixtures must remain local and must never be committed or packaged.
 
@@ -219,5 +233,5 @@ v95 is the current production release:
 - SHA-256: `eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41`
 
 The public updater manifest points to that verified v95 asset. The current
-`v95-work` MSA/suffix changes are unreleased until the user explicitly says
-`PUBLISH`.
+`v95-work` MSA/suffix/padded-endpoint changes are unreleased until the user
+explicitly says `PUBLISH`.

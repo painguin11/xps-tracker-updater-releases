@@ -49,22 +49,37 @@ must be preserved until they are intentionally released:
    - If the suffix does not survive that existing independent confirmation, the
      normal conservative fallback behavior may still resolve the unsuffixed
      existing master pair.
-   - This is targeted at the 8-24 page-4 style where real one-letter suffixes such
-     as `DN-2243S` must not be collapsed to the base asset merely because the
-     numeric bodies match.
+   - This protects real one-letter suffixes such as `DN-2243S` from being
+     collapsed to a base asset merely because the numeric bodies match.
+3. **Padded complete endpoint-ID recovery for damaged grid cells**
+   - If the normal endpoint reads remain unresolved, each physical endpoint cell
+     may be re-read with white padding before any lossy R2/numeric-body fallback.
+   - A complete ID is accepted only when at least two independent OCR passes agree.
+   - The selected master may filter impossible project prefixes, but it never
+     supplies missing letters or digits.
+   - Independently agreed complete IDs become authoritative evidence, so a real
+     suffix such as `DN-2241A` / `DN-2242A` is not erased by numeric recovery.
+   - The existing suffix/new-asset and ambiguity review rules still decide whether
+     an observed ID is matched, NEW PIPE, or unresolved.
 
-Functional source commit for these changes:
-`4b11eb19824e6fc1d74840b8b75f6c27682ee21d`.
+Functional source commits for these changes:
 
-Regression added:
-`working_source/tests/regression_post_v95_msa_suffix_review.py`.
+- `4b11eb19824e6fc1d74840b8b75f6c27682ee21d` — reversible MSA review and suffix priority.
+- `493ac60e249f7541014f8d61781b9bfa5ca64bc4` — padded complete endpoint-ID recovery.
 
-The full active Linux regression suite passed with this source change. The private
-8-24 PDF was not available in the current connected file store, so the page-4
-suffix fix has structural/regression validation but must still be rechecked on the
-real private PDF when it is available. The private R2 fixture was also unavailable
-on Linux CI, so its structural safeguards passed while exact fixture OCR was
-skipped.
+Permanent regressions:
+
+- `working_source/tests/regression_post_v95_msa_suffix_review.py`
+- `working_source/tests/regression_post_v95_padded_endpoint_ids.py`
+
+The full active Linux regression suite passed after the padded-ID source commit.
+The supplied private 8-24, 8-26, and 8-28 packets were also exercised locally
+against the supplied Phase 2 Year 1 master with Trouble Tickets intentionally out
+of scope. The key Pipe/Cleaning/Manhole counts, totals, MSA reconciliation,
+continuation behavior, suffix IDs, and intentionally unresolved non-master pairs
+matched the documented expectations below. The private R2 fixture remains
+unavailable on Linux CI, so its structural safeguards passed while exact fixture
+OCR was skipped.
 
 Documentation-only and cleanup commits after a source change may advance the
 `v95-work` branch head; they do not change the published v95 release commit above.
@@ -332,9 +347,10 @@ Current v95 regression scripts include:
 - `regression_v95_faint_compact_rows.py`
 - `regression_v95_exact_endpoint_priority.py`
 
-Current unreleased regression added on `v95-work`:
+Current unreleased regressions added on `v95-work`:
 
 - `regression_post_v95_msa_suffix_review.py`
+- `regression_post_v95_padded_endpoint_ids.py`
 
 They sit on top of the v94 stacked endpoint-digit recovery, v93 low-confidence
 W/O and new-asset-note behavior, v92 4/5-digit W/O behavior, v91 color-aware W/O /
@@ -360,11 +376,15 @@ High-level expectations to preserve:
 - 8-24 Cleaning pages 10-11: 33 combined rows, total 4430; page 11 is a
   3-row headerless continuation and only the final-page total is used.
 - 8-24 page 13: 16 physical rows, total 2868.
-- 8-26: Manholes 10/10; Pipe page 2 = 27 rows / 6720.58; Pipe page 4 =
-  15 rows / 4198.37; Manholes page 6 = 10; Cleaning page 10 = 16 rows /
-  4614; Pipe page 12 = 8 rows / 1700.
-- 8-28 page 2 is the compact B&C faint/dashed-row failure specifically addressed
-  by v95.
+- 8-26: Manholes 10/10; Pipe page 2 = 27 physical rows / 6720.58 after
+  two-part MSA reconciliation; Pipe page 4 = 15 rows / 4198.37 after targeted
+  total reconciliation; Manholes page 6 = 10; Cleaning page 10 = 16 rows / 4614;
+  Cleaning page 12 = 8 rows / 1700.
+- 8-28 page 2: 18 Pipe rows, total 5006.09; this is the compact B&C faint/dashed
+  row-grid failure specifically addressed by v95.
+- 8-28 page 4: 21 physical Pipe rows, total 3095.53. Preserve complete printed
+  suffix IDs including `DN-2241A` and `DN-2242A`; valid printed non-master pairs
+  remain explicit review rows rather than being fuzzy-corrected.
 
 Exact customer documents remain private even when these expected counts/totals
 are documented.
@@ -372,7 +392,8 @@ are documented.
 ## Active regression expectations
 
 Before publishing, the full active suite should pass, including
-`regression_post_v95_msa_suffix_review.py`, the current
+`regression_post_v95_msa_suffix_review.py`,
+`regression_post_v95_padded_endpoint_ids.py`, and the current
 v95/v94/v93/v92/v91/v90/v89/v88/v87/v86/v85/v84/v83/v82 and older active
 regressions, plus compact-table fallback, length totals, split pipes, new assets,
 master insertion, R2 structural safeguards, and other still-active tests in

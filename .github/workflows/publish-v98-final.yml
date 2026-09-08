@@ -1,0 +1,205 @@
+name: Finalize v98 Cleaning clipped-digit release
+
+on:
+  push:
+    branches: [v98-publish]
+    paths:
+      - '.trigger_v98_publish_final'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v98-publish
+          fetch-depth: 0
+
+      - name: Refuse overwrite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if gh release view v98 >/dev/null 2>&1; then
+            echo 'v98 release already exists; refusing overwrite.'
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin refs/tags/v98 >/dev/null 2>&1; then
+            echo 'v98 tag already exists; refusing overwrite.'
+            exit 1
+          fi
+
+      - name: Prepare and compile v98 source
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py')
+          s=app.read_text(encoding='utf-8')
+          assert "APP_VERSION = '97'" in s
+          app.write_text(s.replace("APP_VERSION = '97'","APP_VERSION = '98'",1),encoding='utf-8')
+          upd=Path('working_source/app/xps_update.py')
+          u=upd.read_text(encoding='utf-8')
+          assert 'CURRENT_VERSION = "97"' in u
+          upd.write_text(u.replace('CURRENT_VERSION = "97"','CURRENT_VERSION = "98"',1),encoding='utf-8')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          r=readme.read_text(encoding='utf-8')
+          if 'XPS Tracker Updater v98' not in r:
+              r=r.rstrip()+'''\n\nXPS Tracker Updater v98\n- Fix Cleaning Wheel Walk cells whose leading digit is clipped by one OCR view, including the 8-26 rows that printed 34 ft and 54 ft but could fall to 7 ft during total reconciliation.\n- Require the complete replacement value to be independently observed by both the stacked-column and row-cell OCR paths; the master may only break ties between actual PDF observations.\n- Preserve v97 editable MSA fields and all prior OCR, matching, row, total, and review safeguards.\n'''
+              readme.write_text(r,encoding='utf-8')
+          PY
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          git checkout -- working_source/app/__pycache__
+          grep -q "APP_VERSION = '98'" working_source/app/reno_scan_updater.py
+          grep -q 'CURRENT_VERSION = "98"' working_source/app/xps_update.py
+          grep -q '_cleaning_clipped_digit_recovery' working_source/app/reno_scan_updater.py
+
+      - name: Validate scope and package
+        run: |
+          set -e
+          unexpected=$(git status --short | awk '{print $2}' | grep -vE '^(working_source/app/reno_scan_updater.py|working_source/app/xps_update.py|working_source/app/README_XPS_Tracker_Updater.txt)$' || true)
+          if [ -n "$unexpected" ]; then
+            echo 'Unexpected changed files:'
+            echo "$unexpected"
+            exit 1
+          fi
+          if git ls-files | grep -Ei '\.(pdf|xlsx|xls|xlsm)$'; then
+            echo 'Private/customer document is tracked in repository.'
+            exit 1
+          fi
+          rm -rf dist_v98 verify_v98 XPS_Tracker_Updater_v98.zip
+          mkdir -p dist_v98/XPS_Tracker_Updater
+          cp -a working_source/app/. dist_v98/XPS_Tracker_Updater/
+          find dist_v98 -type d -name __pycache__ -prune -exec rm -rf {} +
+          if find dist_v98 -type f \( -iname '*.pdf' -o -iname '*.xlsx' -o -iname '*.xls' -o -iname '*.xlsm' \) -print -quit | grep -q .; then
+            echo 'Private/customer document found in package.'
+            exit 1
+          fi
+          cd dist_v98 && zip -qr ../XPS_Tracker_Updater_v98.zip XPS_Tracker_Updater && cd ..
+          unzip -t XPS_Tracker_Updater_v98.zip
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          with zipfile.ZipFile('XPS_Tracker_Updater_v98.zip') as z:
+              names=[n for n in z.namelist() if n]
+              assert names and all(n.startswith('XPS_Tracker_Updater/') for n in names)
+              assert not [n for n in names if n.lower().endswith(('.pdf','.xlsx','.xls','.xlsm'))]
+              app=z.read('XPS_Tracker_Updater/reno_scan_updater.py').decode('utf-8')
+              upd=z.read('XPS_Tracker_Updater/xps_update.py').decode('utf-8')
+              assert "APP_VERSION = '98'" in app
+              assert 'CURRENT_VERSION = "98"' in upd
+              assert '_cleaning_clipped_digit_recovery' in app
+          print('Validated v98 package')
+          PY
+          sha256sum XPS_Tracker_Updater_v98.zip | tee v98.sha256
+          stat -c '%s' XPS_Tracker_Updater_v98.zip | tee v98.size
+
+      - name: Commit clean release source
+        run: |
+          set -e
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/publish-v98.yml .trigger_v98_publish .github/workflows/publish-v98-final.yml .trigger_v98_publish_final
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          git commit -m 'Release v98 Cleaning clipped-digit fix [skip ci]'
+          git push origin HEAD:v98-publish
+          echo "RELEASE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Publish and verify public v98 asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          git tag v98 "$RELEASE_COMMIT"
+          git push origin v98
+          gh release create v98 XPS_Tracker_Updater_v98.zip --target "$RELEASE_COMMIT" --title 'XPS Tracker Updater v98' --notes 'v98 fixes the 8-26 Cleaning Wheel Walk rows that printed 34 ft and 54 ft but could be reduced to 7 ft during total reconciliation. Complete corrections must be independently observed by both OCR paths; master data may only break ties between actual PDF observations. The full active regression suite passed twice against this source before packaging, and the real 8-26 page-12 fixture was verified at 8 rows / 1700 ft.'
+          expected_sha=$(cut -d' ' -f1 v98.sha256)
+          expected_size=$(cat v98.size)
+          mkdir -p verify_v98
+          gh release download v98 -p XPS_Tracker_Updater_v98.zip -D verify_v98
+          actual_sha=$(sha256sum verify_v98/XPS_Tracker_Updater_v98.zip | cut -d' ' -f1)
+          actual_size=$(stat -c%s verify_v98/XPS_Tracker_Updater_v98.zip)
+          test "$expected_sha" = "$actual_sha"
+          test "$expected_size" = "$actual_size"
+          echo "V98_SHA=$actual_sha" >> "$GITHUB_ENV"
+          echo "V98_SIZE=$actual_size" >> "$GITHUB_ENV"
+          echo "Verified public v98 asset SHA=$actual_sha size=$actual_size"
+
+      - name: Advance manifest after verified asset
+        run: |
+          set -e
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path('update_manifest.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert str(d.get('version'))=='97',d
+          d={
+            'version':'98',
+            'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v98/XPS_Tracker_Updater_v98.zip',
+            'sha256':os.environ['V98_SHA'],
+            'release_notes':[
+              'Fix 8-26 Cleaning rows where printed 34 ft and 54 ft could become 7 ft during total reconciliation',
+              'Require complete clipped-digit corrections to be independently observed by both OCR paths',
+              'Keep master data limited to tie-breaking between values actually observed in the PDF',
+              'Preserve v97 editable MSA fields and all prior safeguards'
+            ]
+          }
+          p.write_text(json.dumps(d,indent=2)+'\n',encoding='utf-8')
+          PY
+          git add update_manifest.json
+          git commit -m 'Advance updater manifest to v98'
+          git push origin main
+          git pull --ff-only origin main
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.loads(Path('update_manifest.json').read_text(encoding='utf-8'))
+          assert d['version']=='98'
+          assert d['sha256']==os.environ['V98_SHA']
+          assert d['download_url'].endswith('/v98/XPS_Tracker_Updater_v98.zip')
+          print('Verified public manifest v98')
+          PY
+
+      - name: Document release and advance v95-work
+        run: |
+          set -e
+          git checkout v98-publish
+          git pull --ff-only origin v98-publish
+          python - <<'PY'
+          import os,re
+          from pathlib import Path
+          sha=os.environ['V98_SHA']; size=os.environ['V98_SIZE']; commit=os.environ['RELEASE_COMMIT']
+          p=Path('README.md'); r=p.read_text(encoding='utf-8')
+          r=re.sub(r'## Current production release: v97\n\n- Tag: `v97`\n- Release: `XPS Tracker Updater v97`\n- Release commit: `[^`]+`\n- Asset: `XPS_Tracker_Updater_v97\.zip`\n- Size: `\d+` bytes\n- SHA-256: `[0-9a-f]{64}`\n\nThe public updater manifest points to this verified v97 asset\.',f'## Current production release: v98\n\n- Tag: `v98`\n- Release: `XPS Tracker Updater v98`\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v98.zip`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n\nThe public updater manifest points to this verified v98 asset.',r,count=1)
+          if '## v98\n' not in r:
+              r += '\n## v98\n\n- Fixes the 8-26 Cleaning rows whose printed Wheel Walk values 34 ft and 54 ft could be reduced to 7 ft during total reconciliation.\n- Restores a clipped leading digit only when the complete value was independently observed by both stacked-column and row-cell OCR.\n- Preserves v97 editable MSA review and all earlier safeguards.\n'
+          p.write_text(r,encoding='utf-8')
+          p=Path('PROJECT_CONTEXT.md'); c=p.read_text(encoding='utf-8')
+          c=c.replace('Current production version: **v97**.','Current production version: **v98**.',1)
+          if 'Public v98 release:' not in c:
+              block=f'''\nPublic v98 release:\n\n- Tag: `v98`\n- Release title: `XPS Tracker Updater v98`\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v98.zip`\n- Asset size: `{size}` bytes\n- SHA-256: `{sha}`\n- 8-26 Cleaning page 12 preserves 34 ft and 54 ft and totals 1700 ft.\n- Permanent regression: `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`.\n\n'''
+              c=c.replace('Public v97 release:\n',block+'Public v97 release:\n',1)
+          p.write_text(c,encoding='utf-8')
+          p=Path('RELEASE_CHECKLIST.md'); k=p.read_text(encoding='utf-8')
+          k=k.replace('current **v97 production baseline**','current **v98 production baseline**',1)
+          if '- post-v97 Cleaning clipped-digit recovery regression;' not in k:
+              k=k.replace('The active baseline includes, at minimum:\n\n','The active baseline includes, at minimum:\n\n- post-v97 Cleaning clipped-digit recovery regression;\n',1)
+          if '`working_source/tests/regression_post_v97_cleaning_clipped_digits.py`' not in k:
+              k=k.replace('The current unreleased regressions are:\n\n','The current unreleased regressions are:\n\n- `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`\n',1)
+          k=re.sub(r'## Current verified production reference\n\nv97 is the current production release:\n\n- Release commit: `[^`]+`\n- Asset: `XPS_Tracker_Updater_v97\.zip`\n- Size: `\d+` bytes\n- SHA-256: `[0-9a-f]{64}`\n\nThe public updater manifest points to that verified v97 asset\.',f'## Current verified production reference\n\nv98 is the current production release:\n\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v98.zip`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n\nThe public updater manifest points to that verified v98 asset.',k,count=1)
+          p.write_text(k,encoding='utf-8')
+          PY
+          git add README.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md
+          git commit -m 'Document v98 release [skip ci]'
+          git push origin HEAD:v98-publish
+          git push origin HEAD:v95-work
+
+      - name: Remove temporary branch
+        run: git push origin --delete v98-publish

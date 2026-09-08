@@ -2579,17 +2579,66 @@ def _choose_pair_length_observation(value_candidates,direct_value,expected,cell_
     return value
 
 
-def _conservative_cleaning_reread(cell_img):
-    """Reread one suspect cleaning cell without master/total arithmetic."""
+def _cleaning_clipped_digit_recovery(prior_candidates,reread_candidates,current,expected):
+    """Recover a clipped trailing digit only from independent PDF observations.
+
+    Some right-aligned Wheel Walk values sit directly against the cell rule. One
+    OCR view can repeatedly keep only the first digit (34 -> 3, 54 -> 5) while the
+    stacked-column read and a gridless cell read both still observe the complete
+    value. The master may break a tie only between those independently observed
+    candidates; it never supplies or manufactures the replacement value.
+    """
+    if current is None or expected in (None,0): return None
+    try: current_value=float(current); expected_value=float(expected)
+    except Exception: return None
+    if abs(current_value-expected_value)<=LENGTH_DIFF_THRESHOLD: return None
+
+    def valid_unique(values):
+        out=[]
+        for raw in values or []:
+            if not _valid_row_length_value(raw): continue
+            value=round(float(raw),2)
+            if value not in out: out.append(value)
+        return out
+    prior=valid_unique(prior_candidates); reread=valid_unique(reread_candidates)
+    if not prior or not reread: return None
+    current_rounded=round(current_value,2)
+    # Deliberately limited to integer-like values where the bad observation is a
+    # strict leading substring of a longer independently observed value. This does
+    # not guess missing decimals or arbitrary nearby measurements.
+    if abs(current_rounded-round(current_rounded))>.001: return None
+    current_digits=str(abs(int(round(current_rounded))))
+    if not current_digits: return None
+    candidates=[]
+    for value in prior:
+        if value not in reread or value==current_rounded: continue
+        if abs(value-round(value))>.001: continue
+        digits=str(abs(int(round(value))))
+        if len(digits)<=len(current_digits) or not digits.startswith(current_digits): continue
+        if abs(value-expected_value)/max(abs(expected_value),1.0)>=.35: continue
+        if abs(value-expected_value)>=abs(current_value-expected_value): continue
+        candidates.append(value)
+    if not candidates: return None
+    return min(candidates,key=lambda value:(abs(value-expected_value),value))
+
+
+def _conservative_cleaning_reread(cell_img,expected=None,prior_candidates=None):
+    """Reread one suspect cleaning cell without total arithmetic."""
     if cell_img is None or getattr(cell_img,'size',0)==0:
         return {'value':None,'confident':False,'source':'no cell','candidates':[]}
     direct=_ocr_length_candidates(cell_img,fast_plain=True)
     value,confident=_stable_numeric_vote(direct,2)
     if confident:
+        recovered=_cleaning_clipped_digit_recovery(prior_candidates,direct,value,expected)
+        if recovered is not None:
+            return {'value':recovered,'confident':True,'source':'cross-observed clipped digit','candidates':direct}
         return {'value':value,'confident':True,'source':'direct cell','candidates':direct}
     gridless=_ocr_gridless_number_candidates(cell_img,True,row_length=True)
     value,confident=_stable_numeric_vote(gridless,3)
     if confident:
+        recovered=_cleaning_clipped_digit_recovery(prior_candidates,gridless,value,expected)
+        if recovered is not None:
+            return {'value':recovered,'confident':True,'source':'cross-observed clipped digit','candidates':gridless}
         return {'value':value,'confident':True,'source':'gridless cell','candidates':gridless}
     return {'value':None,'confident':False,'source':'unresolved','candidates':list(direct)+list(gridless)}
 
@@ -5996,7 +6045,10 @@ class App(tk.Tk):
                 cell=record.get('_length_value_cell')
                 if cell is None:
                     cell=record.get('_cleaning_value_cell')
-                reread=_conservative_cleaning_reread(cell)
+                first_candidates=(record.get('_cleaning_first_candidates') or
+                                  record.get('_length_first_candidates') or [])
+                reread=_conservative_cleaning_reread(
+                    cell,record.get('master_length'),first_candidates)
             else:
                 reread=_independent_row_length_read(
                     record.get('_length_value_cell'),record.get('_length_expanded_cell'),

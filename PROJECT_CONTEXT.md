@@ -34,6 +34,21 @@ Public v97 release:
 - OCR cache generation is v7 so stale v96 observations are not reused.
 - Permanent regression: `working_source/tests/regression_post_v96_msa_editable_fields.py`.
 
+### Unreleased post-v97 Cleaning clipped-digit safeguard
+
+- 8-26 page 12 exposed two right-aligned Wheel Walk cells where the first pass
+  retained clipped single digits and the whole-table audit could degrade both to 7.
+- Printed `DN-1789 -> DN-2305` is **34 ft** and printed
+  `DN-2306 -> DN-887` is **54 ft**; the page must finish at **8 rows / 1700**.
+- Recovery is allowed only when the complete integer value was observed both in
+  the earlier stacked-column OCR and an independent row-cell OCR pass, and the bad
+  value is a strict leading substring of that longer observation.
+- Master length may break a tie only among those independently PDF-observed
+  candidates. It never supplies or manufactures a Cleaning measurement.
+- Local real-PDF checks passed for 8-26 Cleaning page 10 = 16 / 4614 and page 12
+  = 8 / 1700, plus the affected Cleaning regression matrix pages.
+- Permanent regression: `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`.
+
 Public v96 release:
 
 - Tag: `v96`
@@ -426,7 +441,8 @@ High-level expectations to preserve:
 - 8-26: Manholes 10/10; Pipe page 2 = 27 physical rows / 6720.58 after
   two-part MSA reconciliation; Pipe page 4 = 15 rows / 4198.37 after targeted
   total reconciliation; Manholes page 6 = 10; Cleaning page 10 = 16 rows / 4614;
-  Cleaning page 12 = 8 rows / 1700.
+  Cleaning page 12 = 8 rows / 1700, including `DN-1789 -> DN-2305 = 34` and
+  `DN-2306 -> DN-887 = 54`.
 - 8-28 page 2: 18 Pipe rows, total 5006.09; this is the compact B&C faint/dashed
   row-grid failure specifically addressed by v95.
 - 8-28 page 4: 21 physical Pipe rows, total 3095.53. Preserve complete printed

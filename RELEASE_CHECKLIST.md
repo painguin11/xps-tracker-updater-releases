@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v97 Cleaning clipped-digit recovery regression;
 - post-v96 editable MSA field / 8-26 OCR regression;
 - post-v95 new-packet OCR/direction/total/layout regression;
 - post-v95 padded complete endpoint-ID recovery regression;
@@ -65,6 +66,7 @@ The active baseline includes, at minimum:
 
 The current unreleased regressions are:
 
+- `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`
 - `working_source/tests/regression_post_v96_msa_editable_fields.py`
 - `working_source/tests/regression_post_v95_new_packet_ocr.py`
 - `working_source/tests/regression_post_v95_msa_suffix_review.py`
@@ -172,6 +174,10 @@ it. Resolve the behavior intentionally.
   data.
 - Cleaning disagreement handling retains competing batch/independent OCR as
   actual PDF observations; the master may break ties only between observed values.
+- A clipped Cleaning digit may be restored only when the longer integer was
+  observed by both stacked-column and independent row-cell OCR, the clipped token
+  is a strict leading substring, and the master only breaks the tie between those
+  PDF-observed candidates.
 - A whole-table Pipe audit must not replace a currently valid measurement with a
   different OCR observation unless it improves printed-total mismatch and master
   plausibility, except when the new observation closes the printed total exactly.
@@ -185,7 +191,9 @@ Known current fixture targets are documented in `PROJECT_CONTEXT.md` for the
 The 8-28 page-2 compact B&C table is a key v95 real-PDF regression target.
 The 8-24 packet is a key continuation/final-total/Manhole-count target, and page 4
 is a key suffix-ID target. The 8-26 packet is a key two-part MSA plus total-reread
-target. The 8-28 page-4 table is a key complete-suffix-ID target.
+target. On 8-26 page 12, `DN-1789 -> DN-2305 = 34` and
+`DN-2306 -> DN-887 = 54`, and the 8 Cleaning rows total 1700. The 8-28 page-4
+table is a key complete-suffix-ID target.
 
 The supplied 8-24, 8-26, and 8-28 private fixtures have passed the current
 post-v95 source locally against the supplied Phase 2 Year 1 master, with Trouble

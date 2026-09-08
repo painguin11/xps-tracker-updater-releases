@@ -1,11 +1,12 @@
 {
-  "version": "95",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v95/XPS_Tracker_Updater_v95.zip",
-  "sha256": "eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41",
+  "version": "96",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v96/XPS_Tracker_Updater_v96.zip",
+  "sha256": "d8d65072fdcd902ccf736c112dcddc0bceffd9ab5d54451882cdc6b513ffa4dc",
   "release_notes": [
-    "Recover faint/dashed compact B&C table row rules so affected pages are processed instead of skipped",
-    "Prefer exact endpoint numeric-body matches over tolerated leading-junk OCR matches, fixing DN-1911 to DN-1912",
-    "Preserve unresolved and genuinely ambiguous pipe pairs instead of guessing",
-    "Preserve all v94/v93 continuation, Work Order confidence, new-asset note, total-validation, review, and matching safeguards"
+    "Harden Phase 2 Pipe/Cleaning OCR reconciliation while keeping corrections grounded in independently observed PDF values",
+    "Prevent whole-table Pipe rereads from replacing already-correct measurements with worse OCR alternatives",
+    "Preserve digit-bearing R2 IDs and printed upstream/downstream direction so reversed master pairs stay unresolved",
+    "Send compact tables with usable geometry but incomplete header-role mapping into Layout Review instead of skipping or crashing",
+    "Include the post-v95 MSA review, NEW PIPE suffix-priority, padded endpoint-ID, and faint-row safeguards"
   ]
 }

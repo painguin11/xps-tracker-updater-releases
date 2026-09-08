@@ -11,7 +11,7 @@ assert 'best_band_index=None' in src
 assert "return found,cells,'header',band_index" in src
 assert "'header_band_index':header_band_index" in src
 needle = "header_band_index=prepared.get('header_band_index')"
-skip = "if header_band_index is not None and band_index==header_band_index:"
+skip = "if header_band_index is not None and band_index<=header_band_index:"
 ocr = "up_obs=read_id(up_box,True); dn_obs=read_id(dn_box,True)"
 assert needle in src and skip in src and ocr in src
 assert src.index(needle) < src.index(ocr)

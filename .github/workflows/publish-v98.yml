@@ -121,6 +121,7 @@ jobs:
           grep -q 'CURRENT_VERSION = "98"' working_source/app/xps_update.py
           grep -q 'XPS Tracker Updater v98' working_source/app/README_XPS_Tracker_Updater.txt
           grep -q '_cleaning_clipped_digit_recovery' working_source/app/reno_scan_updater.py
+          git clean -fd working_source/app/__pycache__ working_source/tests/__pycache__
           git checkout -- working_source/app/__pycache__ working_source/tests/__pycache__ 2>/dev/null || true
           unexpected=$(git status --short | awk '{print $2}' | grep -vE '^(working_source/app/reno_scan_updater.py|working_source/app/xps_update.py|working_source/app/README_XPS_Tracker_Updater.txt)$' || true)
           if [ -n "$unexpected" ]; then

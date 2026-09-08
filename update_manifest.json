@@ -1,12 +1,11 @@
 {
-  "version": "97",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v97/XPS_Tracker_Updater_v97.zip",
-  "sha256": "0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494",
+  "version": "98",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v98/XPS_Tracker_Updater_v98.zip",
+  "sha256": "ce720bbaef5707b54da4ac99cd8170ba6da0c19aa9cbd64a3ea72aff7887675d",
   "release_notes": [
-    "Make Upstream ID, Downstream ID, and Length editable for both MSA rows",
-    "Save corrected rows and cancel MSA creation when edited IDs no longer match",
-    "Fix the 8-26 split-pipe OCR case where printed 82.87 could be reduced to 2.87",
-    "Refresh the OCR cache generation so stale v96 observations are not reused",
-    "Preserve all v96 parsing, matching, OCR, review, and safety safeguards"
+    "Fix 8-26 Cleaning rows where printed 34 ft and 54 ft could become 7 ft during total reconciliation",
+    "Require complete clipped-digit corrections to be independently observed by both OCR paths",
+    "Keep master data limited to tie-breaking between values actually observed in the PDF",
+    "Preserve v97 editable MSA fields and all prior safeguards"
   ]
 }

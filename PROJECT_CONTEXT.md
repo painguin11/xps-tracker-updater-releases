@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v96**.
+Current production version: **v97**.
 
 Current development branch: **`v95-work`**.
 
@@ -12,6 +12,27 @@ The editable source and active regression suite are under `working_source/` on
 `v95-work`. Start future work from that branch and preserve the v95 baseline plus
 all documented unreleased `v95-work` safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
+
+Public v97 release:
+
+- Tag: `v97`
+- Release title: `XPS Tracker Updater v97`
+- Release commit: `2e998a066abfe4b0026dd7e6046445ae9829abcf`
+- Asset: `XPS_Tracker_Updater_v97.zip`
+- Asset size: `305920` bytes
+- SHA-256: `0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494`
+- `working_source/app/reno_scan_updater.py`: `APP_VERSION = '97'`
+- `working_source/app/xps_update.py`: `CURRENT_VERSION = "97"`
+- Public `update_manifest.json` points to that exact v97 asset/checksum.
+
+### Current v97 release changes
+
+- MSA review exposes editable Upstream ID, Downstream ID, and Length for both physical rows.
+- Corrected IDs that diverge can be saved with `Save Changes & Cancel MSA`, preserving separate rows and normal re-matching.
+- Manual MSA length corrections are protected from later OCR retries.
+- The 8-26 page-2 fixture preserves 84.48 + 82.87 and totals 6720.58; page 4 remains 15 rows / 4198.37.
+- OCR cache generation is v7 so stale v96 observations are not reused.
+- Permanent regression: `working_source/tests/regression_post_v96_msa_editable_fields.py`.
 
 Public v96 release:
 

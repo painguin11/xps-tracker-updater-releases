@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v96 production baseline**, the current
+This checklist applies to the current **v97 production baseline**, the current
 unreleased `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v96 editable MSA field / 8-26 OCR regression;
 - post-v95 new-packet OCR/direction/total/layout regression;
 - post-v95 padded complete endpoint-ID recovery regression;
 - post-v95 MSA preview/reversal and NEW PIPE suffix-priority regression;
@@ -64,6 +65,7 @@ The active baseline includes, at minimum:
 
 The current unreleased regressions are:
 
+- `working_source/tests/regression_post_v96_msa_editable_fields.py`
 - `working_source/tests/regression_post_v95_new_packet_ocr.py`
 - `working_source/tests/regression_post_v95_msa_suffix_review.py`
 - `working_source/tests/regression_post_v95_padded_endpoint_ids.py`
@@ -143,6 +145,10 @@ it. Resolve the behavior intentionally.
 
 ### Split Pipes / MSA
 
+- Every Upstream ID, Downstream ID, and Length shown in MSA review must be editable.
+- If corrected IDs no longer identify the same directed pipe, save the corrections and cancel MSA creation without merging.
+- Manual MSA length corrections must not be overwritten by later OCR retries.
+- 8-26 page 2 must preserve 84.48 + 82.87 and total 6720.58; 82.87 must not degrade to 2.87.
 - Exactly two duplicate Pipe rows in one W/O may combine as an MSA split.
 - Their lengths are summed and compared once to the master.
 - Feedback includes `MSA DETECTED`.
@@ -259,11 +265,11 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v96 is the current production release:
+v97 is the current production release:
 
-- Release commit: `e2212501d57f46105c05bde13cd8bb1e0b258ac5`
-- Asset: `XPS_Tracker_Updater_v96.zip`
-- Size: `303588` bytes
-- SHA-256: `d8d65072fdcd902ccf736c112dcddc0bceffd9ab5d54451882cdc6b513ffa4dc`
+- Release commit: `2e998a066abfe4b0026dd7e6046445ae9829abcf`
+- Asset: `XPS_Tracker_Updater_v97.zip`
+- Size: `305920` bytes
+- SHA-256: `0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494`
 
-The public updater manifest points to that verified v96 asset. The v96 MSA/suffix/padded-endpoint, OCR reconciliation, R2 direction, and compact-layout safeguards are part of the published baseline.
+The public updater manifest points to that verified v97 asset. The v96 MSA/suffix/padded-endpoint, OCR reconciliation, R2 direction, and compact-layout safeguards are part of the published baseline.

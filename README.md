@@ -6,16 +6,16 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v96
+## Current production release: v97
 
-- Tag: `v96`
-- Release: `XPS Tracker Updater v96`
-- Release commit: `e2212501d57f46105c05bde13cd8bb1e0b258ac5`
-- Asset: `XPS_Tracker_Updater_v96.zip`
-- Size: `303588` bytes
-- SHA-256: `d8d65072fdcd902ccf736c112dcddc0bceffd9ab5d54451882cdc6b513ffa4dc`
+- Tag: `v97`
+- Release: `XPS Tracker Updater v97`
+- Release commit: `2e998a066abfe4b0026dd7e6046445ae9829abcf`
+- Asset: `XPS_Tracker_Updater_v97.zip`
+- Size: `305920` bytes
+- SHA-256: `0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494`
 
-The public updater manifest points to this verified v96 asset.
+The public updater manifest points to this verified v97 asset.
 
 ## v85
 
@@ -101,6 +101,13 @@ The public updater manifest points to this verified v96 asset.
 - Sends compact tables with usable geometry but incomplete automatic role mapping into Layout Review instead of skipping or crashing.
 - Includes the post-v95 MSA review/reversal, NEW PIPE suffix-priority, padded complete endpoint-ID, and faint-row safeguards.
 - Verified against the 8-20, 8-21, 8-25, and 8-27 private Phase 2 matrix plus the full active regression suite.
+
+## v97
+
+- Makes all six MSA row fields editable beside the PDF crops.
+- Saves corrected non-matching rows without merging them into an MSA.
+- Fixes the 8-26 82.87-to-2.87 split-pipe OCR failure and refreshes the OCR cache generation.
+- Preserves the full v96 safeguard baseline.
 
 ## Development baseline
 

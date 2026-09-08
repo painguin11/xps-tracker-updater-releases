@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v95**.
+Current production version: **v96**.
 
 Current development branch: **`v95-work`**.
 
@@ -13,22 +13,22 @@ The editable source and active regression suite are under `working_source/` on
 all documented unreleased `v95-work` safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
-Public v95 release:
+Public v96 release:
 
-- Tag: `v95`
-- Release title: `XPS Tracker Updater v95`
-- Release commit: `427bf94939484ed7aa19d05a6a9166893d190b75`
-- Asset: `XPS_Tracker_Updater_v95.zip`
-- Asset size: `298928` bytes
-- SHA-256: `eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41`
-- `working_source/app/reno_scan_updater.py`: `APP_VERSION = '95'`
-- `working_source/app/xps_update.py`: `CURRENT_VERSION = "95"`
-- Public `update_manifest.json` points to that exact v95 asset/checksum.
+- Tag: `v96`
+- Release title: `XPS Tracker Updater v96`
+- Release commit: `e2212501d57f46105c05bde13cd8bb1e0b258ac5`
+- Asset: `XPS_Tracker_Updater_v96.zip`
+- Asset size: `303588` bytes
+- SHA-256: `d8d65072fdcd902ccf736c112dcddc0bceffd9ab5d54451882cdc6b513ffa4dc`
+- `working_source/app/reno_scan_updater.py`: `APP_VERSION = '96'`
+- `working_source/app/xps_update.py`: `CURRENT_VERSION = "96"`
+- Public `update_manifest.json` points to that exact v96 asset/checksum.
 
-### Current unreleased `v95-work` changes
+### Current v96 release changes
 
-The following development changes are present **after** the public v95 release and
-must be preserved until they are intentionally released:
+The following changes are included in public v96 and remain part of the required
+baseline:
 
 1. **MSA review previews and reversible decisions**
    - The MSA confirmation dialog shows both physical Pipe rows side by side.
@@ -108,7 +108,7 @@ unavailable on Linux CI, so its structural safeguards passed while exact fixture
 OCR was skipped.
 
 Documentation-only and cleanup commits after a source change may advance the
-`v95-work` branch head; they do not change the published v95 release commit above.
+`v95-work` branch head; they do not change the published v96 release commit above.
 
 In a new conversation, begin with:
 

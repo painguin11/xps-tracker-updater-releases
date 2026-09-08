@@ -6,16 +6,16 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v95
+## Current production release: v96
 
-- Tag: `v95`
-- Release: `XPS Tracker Updater v95`
-- Release commit: `427bf94939484ed7aa19d05a6a9166893d190b75`
-- Asset: `XPS_Tracker_Updater_v95.zip`
-- Size: `298928` bytes
-- SHA-256: `eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41`
+- Tag: `v96`
+- Release: `XPS Tracker Updater v96`
+- Release commit: `e2212501d57f46105c05bde13cd8bb1e0b258ac5`
+- Asset: `XPS_Tracker_Updater_v96.zip`
+- Size: `303588` bytes
+- SHA-256: `d8d65072fdcd902ccf736c112dcddc0bceffd9ab5d54451882cdc6b513ffa4dc`
 
-The public updater manifest points to this verified v95 asset.
+The public updater manifest points to this verified v96 asset.
 
 ## v85
 
@@ -92,6 +92,15 @@ The public updater manifest points to this verified v95 asset.
 - Gives exact endpoint numeric-body matches priority over tolerated leading-junk OCR matches, preventing valid exact pairs from becoming falsely ambiguous.
 - Preserves true ambiguity as unresolved and does not manufacture IDs from master data.
 - Preserves v94 stacked endpoint recovery, v93 low-confidence Work Order behavior and NEW PIPE / NEW MANHOLE notes, plus all earlier continuation, matching, total, review, R2, and split-pipe safeguards.
+
+## v96
+
+- Hardens Phase 2 Pipe/Cleaning OCR reconciliation while keeping corrections grounded in PDF-observed values.
+- Prevents a whole-table Pipe reread from replacing an already-correct measurement with a worse OCR alternative.
+- Preserves digit-bearing R2 IDs and printed direction, leaving opposite-direction master pairs unresolved.
+- Sends compact tables with usable geometry but incomplete automatic role mapping into Layout Review instead of skipping or crashing.
+- Includes the post-v95 MSA review/reversal, NEW PIPE suffix-priority, padded complete endpoint-ID, and faint-row safeguards.
+- Verified against the 8-20, 8-21, 8-25, and 8-27 private Phase 2 matrix plus the full active regression suite.
 
 ## Development baseline
 

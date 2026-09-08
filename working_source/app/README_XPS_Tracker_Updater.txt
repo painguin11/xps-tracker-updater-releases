@@ -645,4 +645,10 @@ XPS Tracker Updater v95
 - Recover faint/dashed compact-table row rules so the 8-28 page-2 style B&C table can be processed instead of skipped.
 - Prefer exact endpoint numeric-body matches over tolerated leading-junk matches, fixing DN-1911 -> DN-1912 while preserving ambiguity safeguards.
 - Preserve v94 stacked endpoint recovery, v93 Work Order confidence behavior and NEW PIPE/NEW MANHOLE notes, plus all existing continuation, matching, total, review, and safety behavior.
+XPS Tracker Updater v96
+- Harden Phase 2 Pipe/Cleaning OCR reconciliation so alternate reads can correct real PDF values without manufacturing measurements or worsening already-correct lengths.
+- Preserve digit-bearing R2 IDs and printed upstream/downstream direction; opposite-direction master pairs remain unresolved instead of being force-matched.
+- Route compact tables with usable geometry but incomplete automatic role mapping into the existing Layout Review instead of skipping or crashing.
+- Preserve faint/interrupted compact-row recovery plus the post-v95 MSA review, NEW PIPE suffix-priority, and padded complete endpoint-ID safeguards.
+- Verified against the 8-20, 8-21, 8-25, and 8-27 Phase 2 packet matrix and the full active regression suite.
 

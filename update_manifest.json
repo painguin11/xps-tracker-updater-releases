@@ -1,12 +1,12 @@
 {
-  "version": "96",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v96/XPS_Tracker_Updater_v96.zip",
-  "sha256": "d8d65072fdcd902ccf736c112dcddc0bceffd9ab5d54451882cdc6b513ffa4dc",
+  "version": "97",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v97/XPS_Tracker_Updater_v97.zip",
+  "sha256": "0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494",
   "release_notes": [
-    "Harden Phase 2 Pipe/Cleaning OCR reconciliation while keeping corrections grounded in independently observed PDF values",
-    "Prevent whole-table Pipe rereads from replacing already-correct measurements with worse OCR alternatives",
-    "Preserve digit-bearing R2 IDs and printed upstream/downstream direction so reversed master pairs stay unresolved",
-    "Send compact tables with usable geometry but incomplete header-role mapping into Layout Review instead of skipping or crashing",
-    "Include the post-v95 MSA review, NEW PIPE suffix-priority, padded endpoint-ID, and faint-row safeguards"
+    "Make Upstream ID, Downstream ID, and Length editable for both MSA rows",
+    "Save corrected rows and cancel MSA creation when edited IDs no longer match",
+    "Fix the 8-26 split-pipe OCR case where printed 82.87 could be reduced to 2.87",
+    "Refresh the OCR cache generation so stale v96 observations are not reused",
+    "Preserve all v96 parsing, matching, OCR, review, and safety safeguards"
   ]
 }

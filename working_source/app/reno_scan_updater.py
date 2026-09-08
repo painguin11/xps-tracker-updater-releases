@@ -1565,8 +1565,9 @@ def _batch_pair_endpoint_full_candidates(img,bands,table,box,asset_format=None,k
     if x2<=x1:
         return {}
     prefixes=set()
-    for key in (known_items or {}):
-        parts=_asset_id_parts(key)
+    known_values=(known_items or {}).values() if isinstance(known_items,dict) else (known_items or [])
+    for known_value in known_values:
+        parts=_asset_id_parts(known_value)
         if parts: prefixes.add(parts[0])
     tiles=[]; spans=[]; cursor=0
     for band_index,(y1,y2) in enumerate(bands):
@@ -1904,7 +1905,17 @@ def _rank_asset_candidates(observations, known_items, max_full_dist=3, max_numbe
 
 
 def _asset_id_parts(value):
-    """Split a complete prefixed asset ID into prefix, number, and optional suffix."""
+    """Split a complete prefixed asset ID into prefix, number, and optional suffix.
+
+    Preserve a digit-bearing prefix when the PDF/master explicitly prints the
+    dash boundary (R2-491). Removing punctuation first turns that into R2491 and
+    incorrectly reinterprets it as prefix R plus number 2491.
+    """
+    raw=str(value or '').strip().upper()
+    punctuated=re.sub(r'[^A-Z0-9]+','-',raw).strip('-')
+    match=re.fullmatch(r'([A-Z]+\d*)-+(\d{1,8})([A-Z]?)',punctuated)
+    if match:
+        return match.groups()
     key=asset_key(value)
     match=re.fullmatch(r'([A-Z]{1,6})(\d{1,8})([A-Z]?)',key)
     return match.groups() if match else None
@@ -1912,7 +1923,8 @@ def _asset_id_parts(value):
 
 def _authoritative_asset_candidates(observations,known_items):
     """Keep complete observed IDs whose prefix is already valid for this project."""
-    prefixes={parts[0] for key in known_items if (parts:=_asset_id_parts(key))}
+    known_values=known_items.values() if isinstance(known_items,dict) else known_items
+    prefixes={parts[0] for value in known_values if (parts:=_asset_id_parts(value))}
     out=[]
     for raw in observations:
         parts=_asset_id_parts(raw)
@@ -1925,7 +1937,7 @@ def _authoritative_asset_candidates(observations,known_items):
         if prefix not in prefixes and len(prefix)>1 and prefix[0] in ('I','L') and prefix[1:] in prefixes:
             prefix=prefix[1:]
         if prefix in prefixes:
-            value=canonical_asset_id(f'{prefix}{number}{suffix}')
+            value=canonical_asset_id(f'{prefix}-{number}{suffix}')
             if value not in out: out.append(value)
     return out
 
@@ -2107,7 +2119,10 @@ def _resolve_pipe_pair(up_observations,dn_observations,master_index):
     for up in up_full:
         for dn in dn_full:
             item=master_index.get('pipes',{}).get((asset_key(up),asset_key(dn)))
-            if item: exact_pairs[item['row']]=item
+            # The master index also carries a synthetic reverse lookup so older
+            # damaged OCR can find the physical row. Two complete printed endpoint
+            # IDs are stronger evidence and must never be silently reversed.
+            if item and not item.get('reverse'): exact_pairs[item['row']]=item
     if len(exact_pairs)==1:
         return next(iter(exact_pairs.values())),'Matched'
     if len(exact_pairs)>1:
@@ -2508,6 +2523,31 @@ def _independent_row_length_read(cell_img,expanded_img=None,kind='Pipe',expected
                         bucket.append(value)
     value,confident,source=_select_independent_length_candidate(
         gray_values,threshold_values,kind,expected)
+    if (kind=='Pipe' and expected not in (None,0) and
+            (not confident or value is None or abs(float(value)-float(expected))>LENGTH_DIFF_THRESHOLD)):
+        # Some thin 3/9 glyphs merge only at the normal 3x/4x enlargement. A
+        # lower-scale grayscale view preserves their printed shape (323.72 vs
+        # 393.72) and participates as another OCR observation.
+        for view in views:
+            gray=cv2.cvtColor(view,cv2.COLOR_RGB2GRAY)
+            # Different thin numeric glyphs survive at different render scales.
+            # Keep both a low and an intermediate grayscale view as independent
+            # observations; the master can only reject implausible observations,
+            # never create a replacement value.
+            for scale in (1.6,2.5):
+                extra=cv2.resize(gray,None,fx=scale,fy=scale,interpolation=cv2.INTER_CUBIC)
+                for psm in (7,6):
+                    raw=cached_ocr_string(
+                        extra,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789.'
+                    ).strip().replace(',','')
+                    for token in re.findall(r'\d+(?:\.\d+)?',raw):
+                        candidate=_row_length_token_value(token)
+                        if candidate is not None:
+                            gray_values.append(candidate)
+        value,confident,source=_select_independent_length_candidate(
+            gray_values,threshold_values,kind,expected)
+        if confident:
+            source='low-scale cross-check / '+source
     return {'value':value if confident else None,'confident':confident,
             'candidates':gray_values+threshold_values,'source':source}
 
@@ -2950,13 +2990,26 @@ def _year15_oriented(page, kind, preferred_deg=None, return_deg=False):
     for deg in (0,270,90):
         img=rotated(deg)
         txt=ocr_text(img[:max(1,int(img.shape[0]*.30)),:],11).lower()
+        norm=re.sub(r'[^a-z0-9]+',' ',txt)
+        compact=re.sub(r'[^a-z0-9]+','',txt)
+        # Compact B&C headers often OCR as UP_MH / DN_MH / Section No. rather
+        # than the longer Upstream/Downstream labels. These are orientation clues
+        # only; they do not determine row identity or matching.
+        structure_score=(
+            4*('drainage area' in norm or 'drainagearea' in compact)+
+            3*('section no' in norm or 'sectionno' in compact)+
+            2*('field crew' in norm or 'fieldcrew' in compact)+
+            2*('up mh' in norm or 'upmh' in compact)+
+            2*('dn mh' in norm or 'dnmh' in compact))
         if kind=='cleaning':
-            norm=re.sub(r'[^a-z0-9]+',' ',txt)
-            score=(8*(('wheel walk' in norm) or ('wheel' in norm and 'walk' in norm))+
+            score=(structure_score+
+                   8*(('wheel walk' in norm) or ('wheel' in norm and 'walk' in norm))+
                    5*(('cleaning date' in norm) or ('cleaning' in norm and 'date' in norm))+
-                   2*('up mh' in norm))
-        elif kind=='pipes': score=8*('length surveyed' in txt or 'surveyed length' in txt)+3*('upstream' in txt)+3*('downstream' in txt)
-        else: score=8*('manhole number' in txt)+4*('drainage area' in txt)
+                   2*('up mh' in norm or 'upmh' in compact))
+        elif kind=='pipes':
+            score=(structure_score+8*('length surveyed' in txt or 'surveyed length' in txt)+
+                   3*('upstream' in txt)+3*('downstream' in txt))
+        else: score=structure_score+8*('manhole number' in txt)+4*('drainage area' in txt)
         if best is None or score>best[0]: best=(score,img,deg)
     return (best[1],best[2]) if return_deg else best[1]
 
@@ -3103,19 +3156,31 @@ def _year15_compact_grid_bands(img):
         return found
 
     rule_ys=compact_horizontal_rule_ys(roi)
-    if len(rule_ys)<=4:
-        # Some compact B&C scans have real row rules printed as faint/dashed
-        # segments. Keep the normal raw-line pass authoritative; only when it
-        # finds almost no table rows, join tiny horizontal gaps and retry the
-        # same long-rule test. This repairs the physical grid without inferring
-        # rows from OCR text or from the master workbook.
+    # Besides the v95 case where almost every horizontal rule is faint, a scan
+    # can lose exactly one separator and leave one band almost twice normal row
+    # height. That is still physical-grid evidence, not OCR/master inference.
+    raw_sorted=sorted(rule_ys)
+    raw_gaps=[b-a for a,b in zip(raw_sorted,raw_sorted[1:])]
+    typical_gap=float(np.median(raw_gaps)) if raw_gaps else 0.0
+    anomalous_gap=bool(typical_gap and any(gap>typical_gap*1.60 for gap in raw_gaps))
+    if len(rule_ys)<=4 or anomalous_gap:
+        # Join only tiny horizontal gaps and rerun the same long-rule test. For
+        # the single-missing-rule case, accept the repair only when it adds a
+        # separator and reduces the anomalously tall gap toward normal height.
         join_width=max(3,int(round((right-left)*.003)))
         repaired=cv2.morphologyEx(
             roi,cv2.MORPH_CLOSE,
             cv2.getStructuringElement(cv2.MORPH_RECT,(join_width,1)))
         repaired_ys=compact_horizontal_rule_ys(repaired)
         if len(repaired_ys)>len(rule_ys):
-            rule_ys=repaired_ys
+            if len(rule_ys)<=4:
+                rule_ys=repaired_ys
+            else:
+                repaired_sorted=sorted(repaired_ys)
+                repaired_gaps=[b-a for a,b in zip(repaired_sorted,repaired_sorted[1:])]
+                repaired_max=max(repaired_gaps) if repaired_gaps else float('inf')
+                if repaired_max<=typical_gap*1.45:
+                    rule_ys=repaired_ys
 
     ys=[by,by+bh-1]+rule_ys
     ys.sort(); ymerged=[]
@@ -3129,6 +3194,11 @@ def _year15_compact_grid_bands(img):
     for a,b in zip(ymerged,ymerged[1:]):
         gap=b-a
         if gap<10:
+            continue
+        # A doubled/thick top border can create a tiny pseudo-band before the
+        # actual wrapped header. Do not let that artifact consume the one tall
+        # leading-band allowance, or the real header can be skipped entirely.
+        if first_meaningful and gap<=max(12,int(bh*.025)):
             continue
         gap_limit=max(140,int(bh*.30)) if first_meaningful else max(90,int(bh*.18))
         if gap<=gap_limit:
@@ -3612,8 +3682,8 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
     img=prepared['img']; h,w=img.shape[:2]; bands=prepared.get('bands',[]); table=prepared.get('table')
     if not bands or not table: return []
     left,right=table; tw=max(1,right-left)
-    detected=prepared.get('mapping')
-    if detected:
+    detected=prepared.get('mapping') or {}
+    if all(role in detected for role in ('up','down','value','date')):
         up_box=detected['up']; dn_box=detected['down']; val_box=detected['value']; date_box=detected['date']
     else:
         # Never reinterpret unrelated columns as assets. A visible review row is
@@ -3670,11 +3740,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         return False
     for band_index,(y1,y2) in enumerate(bands):
         mandatory_data_band=band_index in mandatory_data_bands
-        if header_band_index is not None and band_index==header_band_index:
+        if header_band_index is not None and band_index<=header_band_index:
             # Layout detection already proved this band contains the printed
-            # column headers. Never let OCR/master coincidence turn it into
-            # an asset row (for example a header accidentally resolving to
-            # a real master pair).
+            # column headers. Any earlier compact-table bands are title/spacer
+            # structure above that header, never asset data. Never let OCR/master
+            # coincidence turn either into a false row.
             continue
         if total_band_index is not None and band_index==total_band_index:
             # The printed total is validation evidence, never an asset row.
@@ -3796,6 +3866,17 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                     if consensus:
                         value_candidates=consensus
                         value=_choose_cleaning_length(consensus,None)
+            # The stacked column is one OCR observation. Cross-check each printed
+            # Wheel Walk cell with two direct segmentation modes; when both direct
+            # modes agree, that stable cell read outranks a conflicting stack read.
+            # No master length or printed total supplies the replacement value.
+            cleaning_reread=_conservative_cleaning_reread(value_cell)
+            if cleaning_reread.get('confident') and cleaning_reread.get('value') is not None:
+                direct_value=float(cleaning_reread['value'])
+                if _valid_row_length_value(direct_value):
+                    for candidate in cleaning_reread.get('candidates',[]):
+                        if candidate not in value_candidates: value_candidates.append(candidate)
+                    value=direct_value
         else:
             # Pair-table video lengths start with the exact detected row band.
             # If that untouched cell is missing or wildly implausible against the
@@ -5517,7 +5598,11 @@ class App(tk.Tk):
                     self.status.set(f'Preparing table layout {n} of {len(pair_items)}...'); self.pump_analysis_ui()
                     layout=item.pop('preprepared_layout',None) or prepare_year15_pair_layout(
                         item['page'],idx,kind,inherited_layout=inherited,
-                        preferred_deg=item.get('effective_deg') if item.get('is_continuation') else None)
+                        # Stage-1 classification already determined the headed
+                        # table's rotation. Reuse it here instead of rerunning an
+                        # expensive three-orientation OCR search on the same page.
+                        # Continuations already inherit this same confirmed value.
+                        preferred_deg=item.get('effective_deg'))
                     roles=layout.get('role_indices',{})
                     if (not layout.get('column_boxes') or
                             not all(role in roles for role in ('up','down','value','date'))):
@@ -5767,12 +5852,56 @@ class App(tk.Tk):
             old_value=record.get('video_length')
             if old_value is not None and float(old_value)==float(new_value):
                 continue
-            # Cleaning's aligned-column first pass is intentionally conservative.
-            # During the all-row audit, conflicting isolated OCR remains review
-            # evidence rather than silently replacing a valid batch-column value.
             if kind=='Cleaning' and all_rows and _valid_row_length_value(old_value):
-                record['_length_crosscheck_conflict']=new_value
-                continue
+                # A final Cleaning audit may correct a valid-looking stacked-column
+                # OCR token only when an independent PDF read materially improves
+                # the printed-total mismatch and also improves master plausibility,
+                # unless it closes the printed total exactly. The master/total never
+                # create a value; both old and new values were OCR-observed.
+                current_rows=[r for _,r in self._total_check_records(check)]
+                current_result=_length_total_result(current_rows,expected_total)
+                current_diff=current_result.get('difference')
+                old_numeric=float(old_value); new_numeric=float(new_value)
+                record['video_length']=new_numeric
+                trial_rows=[r for _,r in self._total_check_records(check)]
+                trial_result=_length_total_result(trial_rows,expected_total)
+                record['video_length']=old_numeric
+                trial_diff=trial_result.get('difference')
+                improves_total=(current_diff is not None and trial_diff is not None and
+                                abs(float(trial_diff))<abs(float(current_diff)))
+                closes_total=bool(trial_result.get('matches'))
+                master=record.get('master_length')
+                improves_master=True
+                if master not in (None,0):
+                    improves_master=(abs(new_numeric-float(master))<=abs(old_numeric-float(master)))
+                if not improves_total or (not improves_master and not closes_total):
+                    record['_length_crosscheck_conflict']=new_value
+                    continue
+            if kind=='Pipe' and all_rows and _valid_row_length_value(old_value):
+                # The all-row pass is a final total audit, not permission to replace
+                # a valid first read with any different OCR result. Require the new
+                # observed value to reduce the printed-total mismatch. When a master
+                # length exists it must also improve master plausibility, unless the
+                # new value closes the printed total exactly.
+                current_rows=[r for _,r in self._total_check_records(check)]
+                current_result=_length_total_result(current_rows,expected_total)
+                current_diff=current_result.get('difference')
+                old_numeric=float(old_value); new_numeric=float(new_value)
+                record['video_length']=new_numeric
+                trial_rows=[r for _,r in self._total_check_records(check)]
+                trial_result=_length_total_result(trial_rows,expected_total)
+                record['video_length']=old_numeric
+                trial_diff=trial_result.get('difference')
+                improves_total=(current_diff is not None and trial_diff is not None and
+                                abs(float(trial_diff))<abs(float(current_diff)))
+                closes_total=bool(trial_result.get('matches'))
+                master=record.get('master_length')
+                improves_master=True
+                if master not in (None,0):
+                    improves_master=(abs(new_numeric-float(master))<=abs(old_numeric-float(master)))
+                if not improves_total or (not improves_master and not closes_total):
+                    record['_length_crosscheck_conflict']=new_value
+                    continue
             if kind=='Pipe' and int(record.get('part_count') or 0)>1:
                 part_values=reread.get('part_values') or []
                 if part_values:

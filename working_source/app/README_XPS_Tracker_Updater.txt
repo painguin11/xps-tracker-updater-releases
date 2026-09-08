@@ -651,4 +651,11 @@ XPS Tracker Updater v96
 - Route compact tables with usable geometry but incomplete automatic role mapping into the existing Layout Review instead of skipping or crashing.
 - Preserve faint/interrupted compact-row recovery plus the post-v95 MSA review, NEW PIPE suffix-priority, and padded complete endpoint-ID safeguards.
 - Verified against the 8-20, 8-21, 8-25, and 8-27 Phase 2 packet matrix and the full active regression suite.
+XPS Tracker Updater v97
+- Make Upstream ID, Downstream ID, and Length editable for both physical rows in MSA review.
+- Save corrected rows without combining them when edited IDs no longer identify the same directed pipe.
+- Protect manual MSA length corrections from later OCR retries.
+- Fix the 8-26 Pipe split where printed 82.87 could degrade to 2.87.
+- Refresh the persistent OCR cache generation so stale v96 OCR observations are not reused.
+- Preserve all v96 OCR reconciliation, R2 direction, compact-layout, suffix, padded-endpoint, faint-row, and review safeguards.
 

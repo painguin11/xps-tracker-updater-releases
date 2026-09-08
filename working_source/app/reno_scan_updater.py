@@ -18,13 +18,13 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '96'
+APP_VERSION = '97'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 DUPLICATE_PIPE_REVIEW = 'Duplicate pipe - check IDs'
 MAX_ROW_LENGTH = 1700.0
 MAX_ROW_LENGTH_DECIMALS = 2
-OCR_CACHE_VERSION = 'v6'
+OCR_CACHE_VERSION = 'v7'
 _OCR_CACHE = {}
 _OCR_CACHE_PATH = ''
 _OCR_CACHE_DIRTY = 0
@@ -2552,6 +2552,33 @@ def _independent_row_length_read(cell_img,expanded_img=None,kind='Pipe',expected
             'candidates':gray_values+threshold_values,'source':source}
 
 
+def _choose_pair_length_observation(value_candidates,direct_value,expected,cell_img,expanded_img=None):
+    """Choose a Pipe row value without mistaking a part for the whole master pipe."""
+    value=_choose_length(value_candidates,expected)
+    # An MSA part can legitimately be far shorter than the master length, which
+    # represents the combined pipe. When the untouched cell and a fallback view
+    # disagree and *none* of the OCR-observed values is close enough to master to
+    # break that tie, do not let the last fallback token overwrite the conservative
+    # first read. Cross-check the same PDF cell independently and use that consensus
+    # when available. This fixes printed 82.87 degrading to 2.87 while preserving
+    # the established master-assisted correction path for ordinary single-row pipes.
+    distinct_values={float(x) for x in value_candidates if _valid_row_length_value(x)}
+    master_plausible=[]
+    if expected not in (None,0):
+        master_plausible=[x for x in distinct_values
+                          if abs(float(x)-float(expected))/max(float(expected),1.0) < .35]
+    if (direct_value is not None and len(distinct_values)>1 and
+            expected not in (None,0) and not master_plausible):
+        reread=_independent_row_length_read(cell_img,expanded_img,'Pipe',None)
+        if reread.get('confident') and _valid_row_length_value(reread.get('value')):
+            value=float(reread['value'])
+            for candidate in reread.get('candidates',[]):
+                if candidate not in value_candidates: value_candidates.append(candidate)
+        else:
+            value=float(direct_value)
+    return value
+
+
 def _conservative_cleaning_reread(cell_img):
     """Reread one suspect cleaning cell without master/total arithmetic."""
     if cell_img is None or getattr(cell_img,'size',0)==0:
@@ -3885,6 +3912,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # or manufactured from the master/printed total.
             value_candidates=_direct_pair_length_candidates(value_cell)
             direct_value=_choose_length(value_candidates,None) if value_candidates else None
+            expanded_cell=None
             needs_vertical_retry=(not value_candidates)
             if (not needs_vertical_retry and expected not in (None,0) and direct_value is not None):
                 needs_vertical_retry=(abs(float(direct_value)-float(expected))/max(float(expected),1.0) >= .35)
@@ -3909,7 +3937,8 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             if not value_candidates:
                 value_candidates=_ocr_length_candidates(value_cell,fast_plain=True)
                 if not value_candidates: value_candidates=_ocr_length_candidates(value_cell,fast_plain=False)
-            value=_choose_length(value_candidates,expected)
+            value=_choose_pair_length_observation(
+                value_candidates,direct_value,expected,value_cell,expanded_cell)
         if (kind!='cleaning' and value is not None and expected not in (None,0) and
                 abs(float(value)-float(expected))>max(100,float(expected)*1.5)):
             # Keep the established pipe-video fallback unchanged. Cleaning values
@@ -4224,6 +4253,43 @@ def apply_manual_asset_edit(record,master_index,up=None,down=None,asset=None):
         record['skip_update']=not bool(item); record['status']='Matched' if item else status
         return bool(item)
     return False
+
+
+def msa_records_share_pair(first,second):
+    """Return True only when both physical rows currently identify the same directed pipe."""
+    first_pair=(asset_key(first.get('up','')),asset_key(first.get('down','')))
+    second_pair=(asset_key(second.get('up','')),asset_key(second.get('down','')))
+    return bool(all(first_pair) and first_pair==second_pair)
+
+
+def apply_msa_review_edits(first,second,master_index,edits):
+    """Apply user-verified MSA popup fields without bypassing normal matching safeguards."""
+    if not isinstance(edits,(list,tuple)) or len(edits)!=2:
+        raise ValueError('MSA review requires two edited rows.')
+    for record,values in zip((first,second),edits):
+        up=canonical_asset_id(values.get('up'))
+        down=canonical_asset_id(values.get('down'))
+        if not up or not down:
+            raise ValueError('Upstream ID and Downstream ID are required for both MSA rows.')
+        number=_pdf_decimal(values.get('video_length'))
+        if number is None or not _valid_row_length_value(number):
+            raise ValueError('Enter a valid length for both MSA rows.')
+        old_length=record.get('video_length')
+        record['video_length']=float(number)
+        apply_manual_asset_edit(record,master_index,up=up,down=down)
+        if old_length!=record.get('video_length'):
+            # Manual review is authoritative until the user changes it again;
+            # later total-recovery OCR must not overwrite the correction.
+            record['_length_user_edited']=True
+            record.pop('_msa_rejected',None)
+        refresh_length_status(record)
+    if not msa_records_share_pair(first,second):
+        for record in (first,second):
+            record['warnings']=[w for w in record.get('warnings',[]) if w!=DUPLICATE_PIPE_REVIEW]
+            record.pop('_duplicate_pipe_block',None)
+            record.pop('_msa_pending',None)
+            record.pop('_msa_rejected',None)
+    return msa_records_share_pair(first,second)
 
 
 def refresh_length_status(record):
@@ -4744,26 +4810,16 @@ class ProgressFillButton(tk.Canvas):
 
 class MsaConfirmDialog(tk.Toplevel):
     def __init__(self,parent,first,second,difference):
-        super().__init__(parent); self.result=None; self.crop_photos=[]
+        super().__init__(parent); self.result=None; self.edits=None; self.crop_photos=[]; self.edit_vars=[]
         apply_app_icon(self)
         self.title('Confirm MSA'); self.transient(parent); self.grab_set(); self.resizable(False,False)
-        pipe=f"{first.get('up','')} → {first.get('down','')}"
-        first_length=first.get('video_length'); second_length=second.get('video_length')
-        combined=(float(first_length)+float(second_length)
-                  if first_length is not None and second_length is not None else None)
-        master=first.get('master_length')
-        if master is None: master=second.get('master_length')
-        details=[]
-        if combined is not None: details.append(f"Combined PDF length: {_format_pdf_number(combined)} ft")
-        if master is not None: details.append(f"Master length: {_format_pdf_number(master)} ft")
-        details.append(f"Difference: {difference:.1f} ft")
-        text=(f"Two rows have the same Pipe IDs.\n\n"
-              f"Pipe: {pipe}\n"
-              + '\n'.join(details) + "\n\n"
-              "Compare both printed rows below, then confirm whether they are two parts of the same MSA.")
-        ttk.Label(self,text=text,justify='left',wraplength=780).grid(row=0,column=0,columnspan=2,padx=16,pady=(16,8),sticky='w')
+        self.master_length=first.get('master_length')
+        if self.master_length is None: self.master_length=second.get('master_length')
+        self.summary_var=tk.StringVar()
+        ttk.Label(self,textvariable=self.summary_var,justify='left',wraplength=780).grid(
+            row=0,column=0,columnspan=2,padx=16,pady=(16,8),sticky='w')
 
-        preview_frame=ttk.LabelFrame(self,text='PDF MSA verification',padding=10)
+        preview_frame=ttk.LabelFrame(self,text='PDF MSA verification — correct any misread field before choosing an action',padding=10)
         preview_frame.grid(row=1,column=0,columnspan=2,padx=16,pady=(0,12),sticky='ew')
 
         def add_part(column,label,record):
@@ -4772,16 +4828,22 @@ class MsaConfirmDialog(tk.Toplevel):
             ttk.Label(part,text=f"{label} — PDF page {page}",font=('Segoe UI',10,'bold')).pack(anchor='w',pady=(0,5))
             previews=dict(record.get('_field_previews') or {})
             preview_pages=dict(record.get('_field_preview_pages') or {})
-            specs=(('Upstream ID',record.get('up') or '','upstream'),
-                   ('Downstream ID',record.get('down') or '','downstream'),
-                   ('Length',_format_pdf_number(record.get('video_length')),'activity_value'))
-            for field_label,value,key in specs:
+            values={'up':record.get('up') or '',
+                    'down':record.get('down') or '',
+                    'video_length':_format_pdf_number(record.get('video_length'))}
+            vars_for_row={}
+            specs=(('Upstream ID','up','upstream'),
+                   ('Downstream ID','down','downstream'),
+                   ('Length','video_length','activity_value'))
+            for field_label,field_key,preview_key in specs:
                 block=ttk.Frame(part); block.pack(anchor='w',fill='x',pady=3)
-                ttk.Label(block,text=f'{field_label}: {value}',font=('Segoe UI',9,'bold')).pack(anchor='w')
-                raw=previews.get(key)
+                ttk.Label(block,text=f'{field_label}:',font=('Segoe UI',9,'bold')).pack(anchor='w')
+                var=tk.StringVar(value=values[field_key]); vars_for_row[field_key]=var
+                ttk.Entry(block,textvariable=var,width=26).pack(anchor='w',fill='x',pady=(1,2))
+                raw=previews.get(preview_key)
                 raw_items=list(raw) if isinstance(raw,(list,tuple)) else [raw]
                 crops=[crop for crop in raw_items if getattr(crop,'size',0)]
-                pages=list(preview_pages.get(key) or [])
+                pages=list(preview_pages.get(preview_key) or [])
                 if not pages:
                     pages=list(record.get('source_pages') or [])
                     if not pages and record.get('source_page') is not None: pages=[record.get('source_page')]
@@ -4803,18 +4865,78 @@ class MsaConfirmDialog(tk.Toplevel):
                     except Exception:
                         ttk.Label(block,text=_preview_unavailable_text(pages),foreground='#8A5200').pack(anchor='w')
                         break
+            self.edit_vars.append(vars_for_row)
 
         add_part(0,'Part 1',first); add_part(1,'Part 2',second)
         preview_frame.columnconfigure(0,weight=1); preview_frame.columnconfigure(1,weight=1)
 
         buttons=ttk.Frame(self); buttons.grid(row=2,column=0,columnspan=2,pady=(0,14))
-        ttk.Button(buttons,text='Confirm MSA',command=lambda:self.finish('confirm'),style='Primary.TButton').pack(side='left',padx=6)
-        ttk.Button(buttons,text='Not MSA',command=lambda:self.finish('not_msa')).pack(side='left',padx=6)
-        ttk.Button(buttons,text='Back to Summary',command=self.cancel).pack(side='left',padx=6)
+        self.confirm_button=ttk.Button(buttons,text='Confirm MSA',command=lambda:self.finish('confirm'),style='Primary.TButton')
+        self.confirm_button.grid(row=0,column=0,padx=6)
+        ttk.Button(buttons,text='Not MSA',command=lambda:self.finish('not_msa')).grid(row=0,column=1,padx=6)
+        self.save_cancel_button=ttk.Button(buttons,text='Save Changes & Cancel MSA',command=lambda:self.finish('save_cancel'))
+        self.save_cancel_button.grid(row=0,column=2,padx=6)
+        ttk.Button(buttons,text='Back to Summary',command=self.cancel).grid(row=0,column=3,padx=6)
+
+        for row_vars in self.edit_vars:
+            for var in row_vars.values(): var.trace_add('write',lambda *_:self.refresh_review_state())
+        self.refresh_review_state()
         self.protocol('WM_DELETE_WINDOW',self.cancel)
         self.update_idletasks(); self.geometry(f'+{parent.winfo_rootx()+45}+{parent.winfo_rooty()+35}')
-    def finish(self,value): self.result=value; self.destroy()
-    def cancel(self): self.result=None; self.destroy()
+
+    def _raw_edits(self):
+        return [{'up':row['up'].get().strip(),'down':row['down'].get().strip(),
+                 'video_length':row['video_length'].get().strip()} for row in self.edit_vars]
+
+    def _edited_pairs_match(self):
+        edits=self._raw_edits()
+        pairs=[(asset_key(canonical_asset_id(item['up'])),asset_key(canonical_asset_id(item['down']))) for item in edits]
+        return bool(len(pairs)==2 and all(all(pair) for pair in pairs) and pairs[0]==pairs[1])
+
+    def refresh_review_state(self):
+        edits=self._raw_edits()
+        pair_text=[]
+        for item in edits:
+            pair_text.append(f"{canonical_asset_id(item['up']) or '?'} → {canonical_asset_id(item['down']) or '?'}")
+        lengths=[]
+        for item in edits:
+            value=_pdf_decimal(item.get('video_length'))
+            lengths.append(float(value) if value is not None and _valid_row_length_value(value) else None)
+        combined=sum(lengths) if all(value is not None for value in lengths) else None
+        difference=(abs(float(combined)-float(self.master_length))
+                    if combined is not None and self.master_length is not None else None)
+        details=[f"Part 1 Pipe: {pair_text[0]}",f"Part 2 Pipe: {pair_text[1]}"]
+        if combined is not None: details.append(f"Combined PDF length: {_format_pdf_number(combined)} ft")
+        if self.master_length is not None: details.append(f"Master length: {_format_pdf_number(self.master_length)} ft")
+        if difference is not None: details.append(f"Difference: {difference:.1f} ft")
+        same=self._edited_pairs_match()
+        action=('The edited IDs still identify the same directed pipe. Confirm MSA only if the two printed rows are parts of one survey.'
+                if same else
+                'The edited IDs no longer identify the same pipe. Save Changes & Cancel MSA will keep your corrections without combining the rows.')
+        self.summary_var.set('Review both printed rows and correct any OCR mistake below.\n\n'+'\n'.join(details)+'\n\n'+action)
+        if same:
+            self.confirm_button.state(['!disabled'])
+            self.save_cancel_button.grid_remove()
+        else:
+            self.confirm_button.state(['disabled'])
+            self.save_cancel_button.grid()
+
+    def finish(self,value):
+        edits=self._raw_edits()
+        try:
+            for item in edits:
+                if not canonical_asset_id(item.get('up')) or not canonical_asset_id(item.get('down')):
+                    raise ValueError('Upstream ID and Downstream ID are required for both rows.')
+                number=_pdf_decimal(item.get('video_length'))
+                if number is None or not _valid_row_length_value(number):
+                    raise ValueError('Enter a valid length for both rows.')
+            if value=='confirm' and not self._edited_pairs_match():
+                raise ValueError('The two edited rows no longer have the same Pipe IDs. Use Save Changes & Cancel MSA instead.')
+        except Exception as exc:
+            messagebox.showerror('Invalid MSA correction',str(exc),parent=self); return
+        self.edits=edits; self.result=value; self.destroy()
+
+    def cancel(self): self.result=None; self.edits=None; self.destroy()
 
 
 class NewAssetApprovalDialog(tk.Toplevel):
@@ -5295,19 +5417,36 @@ class App(tk.Tk):
         first=self.records[first_index]; second=self.records[second_index]
         difference=pipe_msa_difference(first,second)
         dlg=MsaConfirmDialog(parent or self,first,second,difference); self.wait_window(dlg)
+        if dlg.result in ('confirm','not_msa','save_cancel'):
+            try:
+                same_pair=apply_msa_review_edits(first,second,self.master_index,dlg.edits)
+            except Exception as exc:
+                messagebox.showerror('MSA correction could not be saved',str(exc),parent=parent or self)
+                return None
+            for record in (first,second): self.revalidate_total_checks_for_record(record)
+        else:
+            same_pair=True
         if dlg.result=='confirm':
+            if not same_pair:
+                self._refresh_record_rows_only()
+                return 'save_cancel'
             self._merge_pipe_record_indices(first_index,second_index)
             for check in self.total_validations:
                 self.refresh_total_check(check,redraw=False)
             self._refresh_record_rows_only()
-            self.status.set('MSA decision changed: the two Pipe rows are now combined.')
+            self.status.set('MSA decision changed: corrected fields saved and the two Pipe rows are now combined.')
             return 'confirm'
         if dlg.result=='not_msa':
-            for record in (first,second):
-                record.setdefault('warnings',[]).append(DUPLICATE_PIPE_REVIEW)
-                record['_msa_pending']=True; record['_msa_rejected']=True
+            if same_pair:
+                for record in (first,second):
+                    record.setdefault('warnings',[]).append(DUPLICATE_PIPE_REVIEW)
+                    record['_msa_pending']=True; record['_msa_rejected']=True
             self._refresh_record_rows_only()
-            return 'not_msa'
+            return 'not_msa' if same_pair else 'save_cancel'
+        if dlg.result=='save_cancel':
+            self._refresh_record_rows_only()
+            self.status.set('MSA review changes saved; the corrected rows were not combined.')
+            return 'save_cancel'
         return None
 
     def _merge_pipe_record_indices(self,first_index,second_index):
@@ -5367,11 +5506,26 @@ class App(tk.Tk):
                 record['_msa_pending']=True
             if prompt and difference>LENGTH_DIFF_THRESHOLD:
                 dlg=MsaConfirmDialog(self,first,second,difference); self.wait_window(dlg)
-                if dlg.result=='confirm':
+                same_pair=True
+                if dlg.result in ('confirm','not_msa','save_cancel'):
+                    try:
+                        same_pair=apply_msa_review_edits(first,second,self.master_index,dlg.edits)
+                    except Exception as exc:
+                        messagebox.showerror('MSA correction could not be saved',str(exc),parent=self)
+                        if update_mode:
+                            self._refresh_record_rows_only(); return False
+                        continue
+                if dlg.result=='confirm' and same_pair:
                     self._merge_pipe_record_indices(first_index,second_index); changed=True
                     continue
-                if dlg.result=='not_msa':
+                if dlg.result=='not_msa' and same_pair:
                     first['_msa_rejected']=True; second['_msa_rejected']=True
+                elif dlg.result=='save_cancel' or (dlg.result in ('confirm','not_msa') and not same_pair):
+                    needs_refresh=True
+                    # Corrected IDs no longer form this duplicate pair. Preserve
+                    # both rows separately and let the normal matching/review flow
+                    # handle their newly edited identities.
+                    continue
                 if update_mode:
                     self._refresh_record_rows_only()
                     return False

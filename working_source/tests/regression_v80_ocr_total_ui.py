@@ -6,7 +6,7 @@ import re
 src=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
 version_match=re.search(r"APP_VERSION = ['\"](\d+)['\"]",src)
 assert version_match and int(version_match.group(1))>=80
-assert "OCR_CACHE_VERSION = 'v6'" in src
+assert "OCR_CACHE_VERSION = 'v7'" in src
 
 # Printed total: least-destructive stable source wins before fallback transforms.
 assert 'def _preferred_printed_total_candidates' in src

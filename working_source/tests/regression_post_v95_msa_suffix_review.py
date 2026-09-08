@@ -27,7 +27,7 @@ for required in (
 assert "NOT MSA — EDIT ROW TO CHANGE DECISION" in s
 assert 'def _msa_pair_indices_for_record(self,index):' in s
 assert 'def review_msa_for_record(self,index,parent=None):' in s
-assert "self.status.set('MSA decision changed: the two Pipe rows are now combined.')" in s
+assert "self.status.set('MSA decision changed: corrected fields saved and the two Pipe rows are now combined.')" in s
 assert "text='Review / Change MSA Decision'" in s
 
 edit_helper_start=s.index('def apply_manual_asset_edit')

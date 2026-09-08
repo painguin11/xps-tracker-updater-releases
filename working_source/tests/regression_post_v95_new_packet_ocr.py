@@ -16,6 +16,7 @@ for required in (
     "for scale in (1.6,2.5):",
     "if kind=='Cleaning' and all_rows and _valid_row_length_value(old_value):",
     "preferred_deg=item.get('effective_deg'))",
+    "if not layout.get('column_boxes'):",
 ):
     assert required in s, required
 
@@ -61,6 +62,46 @@ try:
     changed=xps.App._retry_length_total_mismatch(d,check,all_rows=True,force=True)
     assert changed and d.records[0]['video_length']==96.0,d.records
     assert xps._length_total_result(d.records,96.0)['matches']
+finally:
+    xps._independent_row_length_read=orig
+
+
+# Partial role mappings must remain safe and reviewable rather than raising a
+# KeyError or being treated as a fully parsed row before review.
+import numpy as np
+partial_prepared={
+    'img':np.zeros((120,240),dtype=np.uint8),
+    'bands':[(20,40),(40,60)],
+    'table':(10,230),
+    'mapping':{'up':(0.0,0.25),'down':(0.25,0.50)},
+    'header_band_index':0,
+}
+partial=xps.parse_year15_pair_list(None,{'asset_format':{}},'cleaning',prepared=partial_prepared)
+assert len(partial)==1 and partial[0]['asset']=='COLUMN HEADERS NOT RESOLVED',partial
+assert partial[0]['skip_update'] is True,partial
+assert "not all(role in roles for role in ('up','down','value','date'))" not in s
+
+# A whole-table Pipe audit must not replace an already-valid 250 with a worse
+# independently observed 260 when doing so increases the printed-total mismatch.
+d2=Dummy(); d2.records=[
+    {'wo':'P','kind':'Pipe','video_length':250.0,'master_length':250.0,
+     '_length_value_cell':'pipe-sentinel'},
+    {'wo':'P','kind':'Pipe','video_length':100.0,'master_length':100.0,
+     '_length_value_cell':'other-sentinel'},
+]
+d2._total_check_records=types.MethodType(xps.App._total_check_records,d2)
+orig=xps._independent_row_length_read
+try:
+    def fake_pipe(cell,*_a,**_k):
+        if cell=='pipe-sentinel':
+            return {'value':260.0,'confident':True,'source':'synthetic worse OCR','candidates':[260.0]}
+        return {'value':100.0,'confident':True,'source':'synthetic same OCR','candidates':[100.0]}
+    xps._independent_row_length_read=fake_pipe
+    check={'wo':'P','kind':'Pipe','pdf_total':355.0,'pdf_total_confident':True}
+    changed=xps.App._retry_length_total_mismatch(d2,check,all_rows=True,force=True)
+    assert not changed,d2.records
+    assert d2.records[0]['video_length']==250.0,d2.records
+    assert d2.records[0].get('_length_crosscheck_conflict')==260.0,d2.records
 finally:
     xps._independent_row_length_read=orig
 

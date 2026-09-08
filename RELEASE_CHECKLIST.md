@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v95 new-packet OCR/direction/total/layout regression;
 - post-v95 padded complete endpoint-ID recovery regression;
 - post-v95 MSA preview/reversal and NEW PIPE suffix-priority regression;
 - v95 faint compact-table row recovery;
@@ -63,6 +64,7 @@ The active baseline includes, at minimum:
 
 The current unreleased regressions are:
 
+- `working_source/tests/regression_post_v95_new_packet_ocr.py`
 - `working_source/tests/regression_post_v95_msa_suffix_review.py`
 - `working_source/tests/regression_post_v95_padded_endpoint_ids.py`
 
@@ -87,6 +89,9 @@ it. Resolve the behavior intentionally.
 - Both endpoint cells must provide OCR/PDF numeric evidence before conservative
   pair recovery may use the master.
 - Recovery must identify exactly one directional master pair.
+- Complete printed upstream/downstream direction remains authoritative; a
+  synthetic reverse-master lookup must not turn the opposite direction into an
+  exact match.
 - Exact numeric-body matches outrank tolerated leading-junk matches.
 - True prefix ambiguity remains unresolved.
 - Fully printed valid non-master pairs remain unresolved for Add/Ignore review.
@@ -126,6 +131,9 @@ it. Resolve the behavior intentionally.
   warning appears at the top of Live Summary.
 - Faint/dashed compact B&C row rules remain recoverable without changing the
   normal solid-grid first pass.
+- A compact table with usable column geometry but only a partial role mapping
+  must enter the existing Layout Review instead of being skipped or crashing;
+  only missing/unusable table geometry is an automatic skip.
 
 ### Manholes
 
@@ -156,6 +164,11 @@ it. Resolve the behavior intentionally.
 - Confirmed physical rows remain represented even when a field needs review.
 - OCR/total recovery must not manufacture or round a PDF value to match master
   data.
+- Cleaning disagreement handling retains competing batch/independent OCR as
+  actual PDF observations; the master may break ties only between observed values.
+- A whole-table Pipe audit must not replace a currently valid measurement with a
+  different OCR observation unless it improves printed-total mismatch and master
+  plausibility, except when the new observation closes the printed total exactly.
 
 ## Private real-fixture checks
 
@@ -171,6 +184,27 @@ target. The 8-28 page-4 table is a key complete-suffix-ID target.
 The supplied 8-24, 8-26, and 8-28 private fixtures have passed the current
 post-v95 source locally against the supplied Phase 2 Year 1 master, with Trouble
 Tickets intentionally excluded from this test pass.
+
+
+The current additional Phase 2 matrix must also preserve:
+
+- 8-20 Manholes 20/20 and Cleaning 27 / 5690, including PDF-observed 56, 171,
+  and 47 corrections.
+- 8-21 Pipe page 2 = 22 / 6408.66 with 323.72 recovered and correct 250 not
+  replaced by worse 260; Cleaning page 4 = 23 normal printed rows / 3926;
+  Cleaning page 6 = 14 / 3724; Cleaning page 8 = 12 / 3180; Manholes page 10 =
+  27/27. The known non-table anomaly on page 4 is excluded from this private
+  fixture expectation only and must not create generic parser/filtering logic.
+- 8-25 Pipe page 2 = 12 / 2803.46 and `R2-491 -> R2-489 = 53.22` remains NOT
+  MATCHED; Cleaning page 4 = 5 / 1220; Cleaning page 6 = 20 / 4821 and
+  `EC-1507 -> EC-1477 = 110` remains 110.
+- 8-27 first Pipe = 34 / 5164.64; Manholes = 3/3; later Pipe = 9 / 2698.20;
+  Cleaning = 12 / 3475 with production classification selecting the 90° table
+  orientation.
+
+These 8-20, 8-21, 8-25, and 8-27 private fixtures passed the current post-v95
+source locally against the supplied Phase 2 Year 1 master. Trouble Tickets were
+intentionally excluded from this matrix.
 
 Private fixtures must remain local and must never be committed or packaged.
 

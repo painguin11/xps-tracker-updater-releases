@@ -61,6 +61,31 @@ must be preserved until they are intentionally released:
      suffix such as `DN-2241A` / `DN-2242A` is not erased by numeric recovery.
    - The existing suffix/new-asset and ambiguity review rules still decide whether
      an observed ID is matched, NEW PIPE, or unresolved.
+4. **Observed-value length reconciliation for new Phase 2 packets**
+   - Cleaning mismatch recovery keeps batch and independent cell OCR as actual PDF
+     observations; the master may break ties between observed values but never
+     manufactures a measurement.
+   - Targeted rereads remain limited to suspect/mismatch rows instead of rereading
+     every Cleaning cell.
+   - Pipe mismatch recovery includes the lower-scale alternate view that can
+     recover values such as `323.72` when another view reads `393.72`.
+   - A whole-table Pipe audit cannot replace an already-valid value with a different
+     OCR observation unless the replacement reduces the printed-total mismatch and
+     also improves master plausibility, unless it closes the printed total exactly.
+5. **Digit-bearing R2 direction protection**
+   - Explicit IDs such as `R2-491` retain the `R2` prefix instead of being parsed as
+     prefix `R` plus numeric body `2491`.
+   - Complete printed upstream/downstream direction is authoritative; a synthetic
+     reverse-master alias cannot turn the opposite printed direction into an exact
+     match.
+6. **Compact partial-header review safety**
+   - If table geometry/column boxes are detected but OCR maps only some required
+     roles, the page enters the existing Layout Review instead of being skipped or
+     raising a missing-role exception.
+   - Only pages without usable table geometry are skipped as structurally unsafe.
+7. **Faint compact row separators remain protected**
+   - The v95 faint/interrupted separator recovery remains active and is covered by
+     its permanent regression plus the new 8-25 real-PDF check.
 
 Functional source commits for these changes:
 
@@ -71,6 +96,7 @@ Permanent regressions:
 
 - `working_source/tests/regression_post_v95_msa_suffix_review.py`
 - `working_source/tests/regression_post_v95_padded_endpoint_ids.py`
+- `working_source/tests/regression_post_v95_new_packet_ocr.py`
 
 The full active Linux regression suite passed after the padded-ID source commit.
 The supplied private 8-24, 8-26, and 8-28 packets were also exercised locally
@@ -386,12 +412,44 @@ High-level expectations to preserve:
   suffix IDs including `DN-2241A` and `DN-2242A`; valid printed non-master pairs
   remain explicit review rows rather than being fuzzy-corrected.
 
+
+Additional post-v95 Phase 2 packet expectations verified against the supplied
+Phase 2 Year 1 master, with Trouble Tickets intentionally out of scope:
+
+- 8-20 Manholes: 20/20.
+- 8-20 Cleaning: 27 normal printed rows / 5690 exact; difficult printed values
+  finish as 56, 171, and 47 from PDF-observed rereads.
+- 8-21 Pipe page 2: 22 rows / 6408.66 exact. The difficult values include
+  431.36, 300.95, 315.58, 168.86, 375.89, 323.72, and 325.89. An already-correct
+  250 must remain 250 during the final whole-table audit rather than being
+  replaced by a worse 260 observation.
+- 8-21 Cleaning page 4: 23 normal printed rows / 3926. One known non-table anomaly
+  in this private fixture is excluded from the fixture expectation only; it must
+  not create a generic parser/filtering rule.
+- 8-21 Cleaning page 6: 14 rows / 3724.
+- 8-21 Cleaning page 8: 12 rows / 3180. Compact-header role detection/layout
+  review must not crash or skip a detected table with usable column geometry.
+- 8-21 Manholes page 10: 27/27.
+- 8-25 Pipe page 2: 12 physical rows / 2803.46 exact. Printed
+  `R2-491 -> R2-489 = 53.22` remains NOT MATCHED when the master only contains the
+  opposite direction.
+- 8-25 Cleaning page 4: 5 rows / 1220.
+- 8-25 Cleaning page 6: 20 rows / 4821; `EC-1507 -> EC-1477` remains 110 rather
+  than accepting the worse alternate OCR observation 1101.
+- 8-27 first Pipe table: 34 rows / 5164.64.
+- 8-27 Manholes: 3/3.
+- 8-27 later Pipe table: 9 rows / 2698.20.
+- 8-27 Cleaning table: 12 rows / 3475; production classification selects its 90°
+  orientation and the total reconciliation corrects the observed 6 to the
+  independently observed 96.
+
 Exact customer documents remain private even when these expected counts/totals
 are documented.
 
 ## Active regression expectations
 
 Before publishing, the full active suite should pass, including
+`regression_post_v95_new_packet_ocr.py`,
 `regression_post_v95_msa_suffix_review.py`,
 `regression_post_v95_padded_endpoint_ids.py`, and the current
 v95/v94/v93/v92/v91/v90/v89/v88/v87/v86/v85/v84/v83/v82 and older active

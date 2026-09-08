@@ -5604,8 +5604,10 @@ class App(tk.Tk):
                         # Continuations already inherit this same confirmed value.
                         preferred_deg=item.get('effective_deg'))
                     roles=layout.get('role_indices',{})
-                    if (not layout.get('column_boxes') or
-                            not all(role in roles for role in ('up','down','value','date'))):
+                    # A detected table with usable column geometry must be allowed
+                    # into the existing Layout Review flow even when OCR mapped only
+                    # some roles. Only missing table geometry is unsafe to review.
+                    if not layout.get('column_boxes'):
                         self.add_unprocessed_page(wo,pi+1,kind,'table layout could not be resolved safely')
                         item['skip_processing']=True
                         continue

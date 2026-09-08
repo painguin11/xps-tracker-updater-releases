@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v97**.
+Current production version: **v98**.
 
 Current development branch: **`v95-work`**.
 
@@ -12,6 +12,18 @@ The editable source and active regression suite are under `working_source/` on
 `v95-work`. Start future work from that branch and preserve the v95 baseline plus
 all documented unreleased `v95-work` safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
+
+
+Public v98 release:
+
+- Tag: `v98`
+- Release title: `XPS Tracker Updater v98`
+- Release commit: `a9de8fc6a7edbb4e5b5eb6c38ba9faccbb40740f`
+- Asset: `XPS_Tracker_Updater_v98.zip`
+- Asset size: `306737` bytes
+- SHA-256: `ce720bbaef5707b54da4ac99cd8170ba6da0c19aa9cbd64a3ea72aff7887675d`
+- 8-26 Cleaning page 12 preserves 34 ft and 54 ft and totals 1700 ft.
+- Permanent regression: `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`.
 
 Public v97 release:
 

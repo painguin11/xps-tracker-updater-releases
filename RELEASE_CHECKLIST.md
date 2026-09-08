@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v97 production baseline**, the current
+This checklist applies to the current **v98 production baseline**, the current
 unreleased `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -273,11 +273,11 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v97 is the current production release:
+v98 is the current production release:
 
-- Release commit: `2e998a066abfe4b0026dd7e6046445ae9829abcf`
-- Asset: `XPS_Tracker_Updater_v97.zip`
-- Size: `305920` bytes
-- SHA-256: `0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494`
+- Release commit: `a9de8fc6a7edbb4e5b5eb6c38ba9faccbb40740f`
+- Asset: `XPS_Tracker_Updater_v98.zip`
+- Size: `306737` bytes
+- SHA-256: `ce720bbaef5707b54da4ac99cd8170ba6da0c19aa9cbd64a3ea72aff7887675d`
 
-The public updater manifest points to that verified v97 asset. The v96 MSA/suffix/padded-endpoint, OCR reconciliation, R2 direction, and compact-layout safeguards are part of the published baseline.
+The public updater manifest points to that verified v98 asset. The v96 MSA/suffix/padded-endpoint, OCR reconciliation, R2 direction, and compact-layout safeguards are part of the published baseline.

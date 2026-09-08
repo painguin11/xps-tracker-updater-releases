@@ -6,16 +6,16 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v97
+## Current production release: v98
 
-- Tag: `v97`
-- Release: `XPS Tracker Updater v97`
-- Release commit: `2e998a066abfe4b0026dd7e6046445ae9829abcf`
-- Asset: `XPS_Tracker_Updater_v97.zip`
-- Size: `305920` bytes
-- SHA-256: `0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494`
+- Tag: `v98`
+- Release: `XPS Tracker Updater v98`
+- Release commit: `a9de8fc6a7edbb4e5b5eb6c38ba9faccbb40740f`
+- Asset: `XPS_Tracker_Updater_v98.zip`
+- Size: `306737` bytes
+- SHA-256: `ce720bbaef5707b54da4ac99cd8170ba6da0c19aa9cbd64a3ea72aff7887675d`
 
-The public updater manifest points to this verified v97 asset.
+The public updater manifest points to this verified v98 asset.
 
 ## v85
 
@@ -112,3 +112,9 @@ The public updater manifest points to this verified v97 asset.
 ## Development baseline
 
 Current development continues on `v95-work`. Read `AGENTS.md`, `PROJECT_CONTEXT.md`, and `RELEASE_CHECKLIST.md` before changing behavior. Do not publish a new release until explicitly instructed to do so.
+
+## v98
+
+- Fixes the 8-26 Cleaning rows whose printed Wheel Walk values 34 ft and 54 ft could be reduced to 7 ft during total reconciliation.
+- Restores a clipped leading digit only when the complete value was independently observed by both stacked-column and row-cell OCR.
+- Preserves v97 editable MSA review and all earlier safeguards.

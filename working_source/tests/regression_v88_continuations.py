@@ -11,7 +11,7 @@ for required in (
     "'source':'inherited continuation / '+geometry_source",
     "item['is_continuation']=True",
     "last_pair_layout[template_key]=layout",
-    "preferred_deg=item.get('effective_deg') if item.get('is_continuation') else None",
+    "preferred_deg=item.get('effective_deg'))",
     'def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, orientation_deg=None):',
     "img=_year15_oriented(page,'manholes',preferred_deg=orientation_deg)",
     'def add_unprocessed_page(self,wo,page_number,kind,reason):',

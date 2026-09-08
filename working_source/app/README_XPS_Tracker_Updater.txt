@@ -659,3 +659,7 @@ XPS Tracker Updater v97
 - Refresh the persistent OCR cache generation so stale v96 OCR observations are not reused.
 - Preserve all v96 OCR reconciliation, R2 direction, compact-layout, suffix, padded-endpoint, faint-row, and review safeguards.
 
+XPS Tracker Updater v98
+- Fix Cleaning Wheel Walk cells whose leading digit is clipped by one OCR view, including the 8-26 rows that printed 34 ft and 54 ft but could fall to 7 ft during total reconciliation.
+- Require the complete replacement value to be independently observed by both the stacked-column and row-cell OCR paths; the master may only break ties between actual PDF observations.
+- Preserve v97 editable MSA fields and all prior OCR, matching, row, total, and review safeguards.

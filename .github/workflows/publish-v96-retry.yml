@@ -1,0 +1,251 @@
+name: Publish v96 corrected retry
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_v96_publish_retry'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Refuse overwrite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          ! gh release view v96 >/dev/null 2>&1 || { echo 'v96 release already exists'; exit 1; }
+          ! git ls-remote --exit-code --tags origin refs/tags/v96 >/dev/null 2>&1 || { echo 'v96 tag already exists'; exit 1; }
+
+      - name: Prepare v96 source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py')
+          s=app.read_text(encoding='utf-8').replace("APP_VERSION = '95'", "APP_VERSION = '96'", 1)
+          if "APP_VERSION = '96'" not in s: raise SystemExit('APP_VERSION bump failed')
+          app.write_text(s,encoding='utf-8')
+          upd=Path('working_source/app/xps_update.py')
+          u=upd.read_text(encoding='utf-8').replace('CURRENT_VERSION = "95"','CURRENT_VERSION = "96"',1)
+          if 'CURRENT_VERSION = "96"' not in u: raise SystemExit('CURRENT_VERSION bump failed')
+          upd.write_text(u,encoding='utf-8')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          r=readme.read_text(encoding='utf-8')
+          entry='''\nXPS Tracker Updater v96\n- Harden Phase 2 Pipe/Cleaning OCR reconciliation so alternate reads can correct real PDF values without manufacturing measurements or worsening already-correct lengths.\n- Preserve digit-bearing R2 IDs and printed upstream/downstream direction; opposite-direction master pairs remain unresolved instead of being force-matched.\n- Route compact tables with usable geometry but incomplete automatic role mapping into the existing Layout Review instead of skipping or crashing.\n- Preserve faint/interrupted compact-row recovery plus the post-v95 MSA review, NEW PIPE suffix-priority, and padded complete endpoint-ID safeguards.\n- Verified against the 8-20, 8-21, 8-25, and 8-27 Phase 2 packet matrix and the full active regression suite.\n'''
+          if 'XPS Tracker Updater v96' not in r: readme.write_text(r.rstrip()+entry+'\n',encoding='utf-8')
+          PY
+
+      - name: Compile and run full active regression suite
+        run: |
+          set -e
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          tests=(
+            regression_post_v95_new_packet_ocr.py
+            regression_post_v95_padded_endpoint_ids.py
+            regression_post_v95_msa_suffix_review.py
+            regression_v95_faint_compact_rows.py
+            regression_v95_exact_endpoint_priority.py
+            regression_v94_stacked_endpoint_digits.py
+            regression_v93_workorder_low_confidence_blank.py
+            regression_v93_new_asset_notes.py
+            regression_v92_workorder_4_or_5_digits.py
+            regression_v91_workorder_color_ocr.py
+            regression_v91_new_asset_preview_and_endpoint_recovery.py
+            regression_v90_review_ui.py
+            regression_v89_review_workflow.py
+            regression_v89_printed_pair_identity.py
+            regression_v89_manhole_count_and_final_total.py
+            regression_v88_continuations.py
+            regression_v87_total_summary_separator.py
+            regression_v86_assets_and_edit.py
+            regression_v85_edit_row_previews.py
+            regression_v85_mandatory_rows_and_length_votes.py
+            regression_v84_real_packet_length_logic.py
+            regression_v83_length_recovery.py
+            regression_v83_exact_pdf_numbers.py
+            regression_v83_total_preview_group_errors.py
+            regression_v82_pair_video_lengths.py
+            regression_v82_master_asset_format.py
+            regression_v82_suffix_guard.py
+            regression_v82_cleaning_header_noise.py
+            regression_v82_layout_threshold.py
+            regression_v81_header_outline.py
+            regression_v80_ocr_total_ui.py
+            regression_v79_layout_speed.py
+            regression_v78_rollback.py
+            regression_v75_811_ocr.py
+            regression_v74_row_filtering.py
+            regression_v73_total_dates.py
+            regression_compact_table_fallback.py
+            regression_length_totals.py
+            regression_split_pipes.py
+            regression_new_assets.py
+            regression_master_insert.py
+            regression_r2_endpoint_ocr.py
+          )
+          for t in "${tests[@]}"; do echo "===== $t ====="; python "working_source/tests/$t"; done
+
+      - name: Validate release scope
+        run: |
+          set -e
+          grep -q "APP_VERSION = '96'" working_source/app/reno_scan_updater.py
+          grep -q 'CURRENT_VERSION = "96"' working_source/app/xps_update.py
+          grep -q 'XPS Tracker Updater v96' working_source/app/README_XPS_Tracker_Updater.txt
+          git restore working_source/app/__pycache__ 2>/dev/null || true
+          git status --short
+          unexpected=$(git status --short | awk '{print $2}' | grep -vE '^(working_source/app/reno_scan_updater.py|working_source/app/xps_update.py|working_source/app/README_XPS_Tracker_Updater.txt)$' || true)
+          test -z "$unexpected" || { echo 'Unexpected changed files:'; echo "$unexpected"; exit 1; }
+
+      - name: Build and validate v96 ZIP
+        run: |
+          set -e
+          rm -rf dist_v96 verify_v96 XPS_Tracker_Updater_v96.zip
+          mkdir -p dist_v96/XPS_Tracker_Updater
+          cp -a working_source/app/. dist_v96/XPS_Tracker_Updater/
+          find dist_v96 -type d -name __pycache__ -prune -exec rm -rf {} +
+          if find dist_v96 -type f \( -iname '*.pdf' -o -iname '*.xlsx' -o -iname '*.xls' -o -iname '*.xlsm' \) -print -quit | grep -q .; then exit 1; fi
+          test -f dist_v96/XPS_Tracker_Updater/reno_scan_updater.py
+          test -f dist_v96/XPS_Tracker_Updater/xps_update.py
+          test -f dist_v96/XPS_Tracker_Updater/run_xps_tracker.bat
+          cd dist_v96 && zip -qr ../XPS_Tracker_Updater_v96.zip XPS_Tracker_Updater && cd ..
+          unzip -t XPS_Tracker_Updater_v96.zip
+          python - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('XPS_Tracker_Updater_v96.zip') as z:
+              n=[x for x in z.namelist() if x]
+              assert n and all(x.startswith('XPS_Tracker_Updater/') for x in n)
+              assert 'XPS_Tracker_Updater/reno_scan_updater.py' in n
+              assert 'XPS_Tracker_Updater/xps_update.py' in n
+              assert 'XPS_Tracker_Updater/run_xps_tracker.bat' in n
+              assert not [x for x in n if x.lower().endswith(('.pdf','.xlsx','.xls','.xlsm'))]
+          print('ZIP package validation passed')
+          PY
+          sha256sum XPS_Tracker_Updater_v96.zip | tee v96.sha256
+          stat -c '%s' XPS_Tracker_Updater_v96.zip | tee v96.size
+
+      - name: Commit v96 source
+        run: |
+          set -e
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          git commit -m 'Release v96 [skip ci]'
+          git push origin HEAD:v95-work
+          echo "RELEASE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Publish and verify public v96 asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          git tag v96 "$RELEASE_COMMIT"
+          git push origin v96
+          gh release create v96 XPS_Tracker_Updater_v96.zip --target "$RELEASE_COMMIT" --title 'XPS Tracker Updater v96' --notes 'v96 hardens Phase 2 Pipe/Cleaning OCR reconciliation, protects correct values from worse rereads, preserves digit-bearing R2 direction, sends partial compact headers into Layout Review, and includes the post-v95 MSA/suffix/padded-endpoint safeguards. The 8-20, 8-21, 8-25, and 8-27 matrix and full active regression suite were verified before release.'
+          expected_sha=$(cut -d' ' -f1 v96.sha256)
+          expected_size=$(cat v96.size)
+          mkdir -p verify_v96
+          gh release download v96 -p XPS_Tracker_Updater_v96.zip -D verify_v96
+          actual_sha=$(sha256sum verify_v96/XPS_Tracker_Updater_v96.zip | cut -d' ' -f1)
+          actual_size=$(stat -c%s verify_v96/XPS_Tracker_Updater_v96.zip)
+          test "$expected_sha" = "$actual_sha"
+          test "$expected_size" = "$actual_size"
+          gh release view v96 --json tagName,name,isDraft,isPrerelease,url | tee release_v96.json
+          python - <<'PY'
+          import json
+          d=json.load(open('release_v96.json'))
+          assert d['tagName']=='v96' and d['name']=='XPS Tracker Updater v96'
+          assert d['isDraft'] is False and d['isPrerelease'] is False
+          PY
+          echo "V96_SHA=$actual_sha" >> "$GITHUB_ENV"
+          echo "V96_SIZE=$actual_size" >> "$GITHUB_ENV"
+          echo "Verified v96 SHA=$actual_sha size=$actual_size"
+
+      - name: Advance public manifest after verification
+        run: |
+          set -e
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path('update_manifest.json'); old=json.loads(p.read_text())
+          if str(old.get('version'))!='95': raise SystemExit(f"Expected manifest v95, got {old.get('version')}")
+          data={'version':'96','download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v96/XPS_Tracker_Updater_v96.zip','sha256':os.environ['V96_SHA'],'release_notes':[
+            'Harden Phase 2 Pipe/Cleaning OCR reconciliation while keeping corrections grounded in independently observed PDF values',
+            'Prevent whole-table Pipe rereads from replacing already-correct measurements with worse OCR alternatives',
+            'Preserve digit-bearing R2 IDs and printed upstream/downstream direction so reversed master pairs stay unresolved',
+            'Send compact tables with usable geometry but incomplete header-role mapping into Layout Review instead of skipping or crashing',
+            'Include the post-v95 MSA review, NEW PIPE suffix-priority, padded endpoint-ID, and faint-row safeguards']}
+          p.write_text(json.dumps(data,indent=2)+'\n')
+          PY
+          git add update_manifest.json
+          git commit -m 'Advance updater manifest to v96'
+          git push origin main
+          git pull --ff-only origin main
+          python - <<'PY'
+          import json,os
+          d=json.load(open('update_manifest.json'))
+          assert d['version']=='96' and d['sha256']==os.environ['V96_SHA']
+          assert d['download_url'].endswith('/v96/XPS_Tracker_Updater_v96.zip')
+          print('Public v96 manifest verified')
+          PY
+
+      - name: Document v96 and remove all temporary v96 publish files
+        run: |
+          set -e
+          git checkout v95-work
+          git pull --ff-only origin v95-work
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          sha=os.environ['V96_SHA']; size=os.environ['V96_SIZE']; commit=os.environ['RELEASE_COMMIT']
+
+          p=Path('README.md'); s=p.read_text()
+          old='''## Current production release: v95\n\n- Tag: `v95`\n- Release: `XPS Tracker Updater v95`\n- Release commit: `427bf94939484ed7aa19d05a6a9166893d190b75`\n- Asset: `XPS_Tracker_Updater_v95.zip`\n- Size: `298928` bytes\n- SHA-256: `eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41`\n\nThe public updater manifest points to this verified v95 asset.'''
+          new=f'''## Current production release: v96\n\n- Tag: `v96`\n- Release: `XPS Tracker Updater v96`\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v96.zip`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n\nThe public updater manifest points to this verified v96 asset.'''
+          if old not in s: raise SystemExit('README current-release block missing')
+          s=s.replace(old,new,1)
+          if '\n## v96\n' not in s:
+              sec='''\n## v96\n\n- Hardens Phase 2 Pipe/Cleaning OCR reconciliation while keeping corrections grounded in PDF-observed values.\n- Prevents a whole-table Pipe reread from replacing an already-correct measurement with a worse OCR alternative.\n- Preserves digit-bearing R2 IDs and printed direction, leaving opposite-direction master pairs unresolved.\n- Sends compact tables with usable geometry but incomplete automatic role mapping into Layout Review instead of skipping or crashing.\n- Includes the post-v95 MSA review/reversal, NEW PIPE suffix-priority, padded complete endpoint-ID, and faint-row safeguards.\n- Verified against the 8-20, 8-21, 8-25, and 8-27 private Phase 2 matrix plus the full active regression suite.\n'''
+              s=s.replace('\n## Development baseline\n',sec+'\n## Development baseline\n',1)
+          p.write_text(s)
+
+          p=Path('PROJECT_CONTEXT.md'); s=p.read_text()
+          s=s.replace('Current production version: **v95**.','Current production version: **v96**.',1)
+          old='''Public v95 release:\n\n- Tag: `v95`\n- Release title: `XPS Tracker Updater v95`\n- Release commit: `427bf94939484ed7aa19d05a6a9166893d190b75`\n- Asset: `XPS_Tracker_Updater_v95.zip`\n- Asset size: `298928` bytes\n- SHA-256: `eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41`\n- `working_source/app/reno_scan_updater.py`: `APP_VERSION = '95'`\n- `working_source/app/xps_update.py`: `CURRENT_VERSION = "95"`\n- Public `update_manifest.json` points to that exact v95 asset/checksum.'''
+          new=f'''Public v96 release:\n\n- Tag: `v96`\n- Release title: `XPS Tracker Updater v96`\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v96.zip`\n- Asset size: `{size}` bytes\n- SHA-256: `{sha}`\n- `working_source/app/reno_scan_updater.py`: `APP_VERSION = '96'`\n- `working_source/app/xps_update.py`: `CURRENT_VERSION = "96"`\n- Public `update_manifest.json` points to that exact v96 asset/checksum.'''
+          if old not in s: raise SystemExit('PROJECT_CONTEXT public-release block missing')
+          s=s.replace(old,new,1)
+          s=s.replace('### Current unreleased `v95-work` changes','### Current v96 release changes',1)
+          s=s.replace('The following development changes are present **after** the public v95 release and\nmust be preserved until they are intentionally released:','The following changes are included in public v96 and remain part of the required\nbaseline:',1)
+          s=s.replace('they do not change the published v95 release commit above.','they do not change the published v96 release commit above.',1)
+          p.write_text(s)
+
+          p=Path('RELEASE_CHECKLIST.md'); s=p.read_text()
+          s=s.replace('current **v95 production baseline**','current **v96 production baseline**',1)
+          old='''## Current verified production reference\n\nv95 is the current production release:\n\n- Release commit: `427bf94939484ed7aa19d05a6a9166893d190b75`\n- Asset: `XPS_Tracker_Updater_v95.zip`\n- Size: `298928` bytes\n- SHA-256: `eb4e816b010d7cf8730e97ad83acc40bc502f6f175085d49c13fce891999be41`\n\nThe public updater manifest points to that verified v95 asset. The current\n`v95-work` MSA/suffix/padded-endpoint changes are unreleased until the user\nexplicitly says `PUBLISH`.'''
+          new=f'''## Current verified production reference\n\nv96 is the current production release:\n\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v96.zip`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n\nThe public updater manifest points to that verified v96 asset. The v96 MSA/suffix/padded-endpoint, OCR reconciliation, R2 direction, and compact-layout safeguards are part of the published baseline.'''
+          if old not in s: raise SystemExit('RELEASE_CHECKLIST production block missing')
+          s=s.replace(old,new,1); p.write_text(s)
+          print('Canonical v96 docs updated')
+          PY
+          git rm -f .github/workflows/publish-v96.yml .trigger_v96_publish_run .github/workflows/publish-v96-retry.yml .trigger_v96_publish_retry
+          git add README.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md
+          git commit -m 'Document v96 release and remove publish machinery [skip ci]'
+          git push origin HEAD:v95-work

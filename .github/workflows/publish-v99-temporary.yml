@@ -1,0 +1,356 @@
+name: Publish XPS Tracker Updater v99
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_publish_v99'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: '99'
+      TAG: 'v99'
+      ASSET: 'XPS_Tracker_Updater_v99.zip'
+    steps:
+      - name: Check out v95-work
+        uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Guard release state
+        run: |
+          set -e
+          if gh api "repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG release already exists; refusing to overwrite it."
+            exit 1
+          fi
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "$TAG tag already exists; refusing to overwrite it."
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          assert "APP_VERSION = '98'" in app
+          assert 'CURRENT_VERSION = "98"' in updater
+          assert 'XPS Tracker Updater v99' not in Path('working_source/app/README_XPS_Tracker_Updater.txt').read_text(encoding='utf-8')
+          print('v98 development source confirmed; v99 tag/release is unused.')
+          PY
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Prepare versioned v99 source
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+
+          app_path=Path('working_source/app/reno_scan_updater.py')
+          app=app_path.read_text(encoding='utf-8')
+          old="APP_VERSION = '98'"
+          new="APP_VERSION = '99'"
+          assert app.count(old)==1,app.count(old)
+          app_path.write_text(app.replace(old,new,1),encoding='utf-8')
+
+          updater_path=Path('working_source/app/xps_update.py')
+          updater=updater_path.read_text(encoding='utf-8')
+          old='CURRENT_VERSION = "98"'
+          new='CURRENT_VERSION = "99"'
+          assert updater.count(old)==1,updater.count(old)
+          updater_path.write_text(updater.replace(old,new,1),encoding='utf-8')
+
+          readme_path=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          readme=readme_path.read_text(encoding='utf-8').rstrip()
+          assert 'XPS Tracker Updater v99' not in readme
+          readme += '''\n\nXPS Tracker Updater v99\n- Recognize very short Brown & Caldwell Pipe and Cleaning tables when the real table spans most of the page width but contains only a few rows.\n- Keep the short-table relaxation narrow and preserve the existing grid, header-role, layout-review, total, matching, and OCR safeguards.\n- Protect very short and one-row Manhole reports through the existing positioned-token Manhole parser without imposing a minimum table height or row count.\n- Preserve v98 Cleaning clipped-digit recovery and all prior OCR, matching, continuation, MSA, new-asset, and review behavior.\n'''
+          readme_path.write_text(readme,encoding='utf-8')
+          PY
+
+          # The release commit must not retain temporary validation/publish machinery.
+          git rm -f .github/workflows/validate-post-v98-short-tables.yml \
+                    .trigger_validate_post_v98_short_tables \
+                    .github/workflows/publish-v99-temporary.yml \
+                    .trigger_publish_v99
+
+      - name: Compile and run full active regression suite
+        run: |
+          set -e
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          run_test() { echo "===== $1 ====="; python "$1"; }
+          run_test working_source/tests/regression_post_v98_short_wide_compact_table.py
+          run_test working_source/tests/regression_post_v97_cleaning_clipped_digits.py
+          run_test working_source/tests/regression_post_v96_msa_editable_fields.py
+          run_test working_source/tests/regression_post_v95_new_packet_ocr.py
+          run_test working_source/tests/regression_post_v95_padded_endpoint_ids.py
+          run_test working_source/tests/regression_post_v95_msa_suffix_review.py
+          run_test working_source/tests/regression_v95_faint_compact_rows.py
+          run_test working_source/tests/regression_v95_exact_endpoint_priority.py
+          run_test working_source/tests/regression_v94_stacked_endpoint_digits.py
+          run_test working_source/tests/regression_v93_workorder_low_confidence_blank.py
+          run_test working_source/tests/regression_v93_new_asset_notes.py
+          run_test working_source/tests/regression_v92_workorder_4_or_5_digits.py
+          run_test working_source/tests/regression_v91_workorder_color_ocr.py
+          run_test working_source/tests/regression_v91_new_asset_preview_and_endpoint_recovery.py
+          run_test working_source/tests/regression_v90_review_ui.py
+          run_test working_source/tests/regression_v89_review_workflow.py
+          run_test working_source/tests/regression_v89_printed_pair_identity.py
+          run_test working_source/tests/regression_v89_manhole_count_and_final_total.py
+          run_test working_source/tests/regression_v88_continuations.py
+          run_test working_source/tests/regression_v87_total_summary_separator.py
+          run_test working_source/tests/regression_v86_assets_and_edit.py
+          run_test working_source/tests/regression_v85_edit_row_previews.py
+          run_test working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          run_test working_source/tests/regression_v84_real_packet_length_logic.py
+          run_test working_source/tests/regression_v83_length_recovery.py
+          run_test working_source/tests/regression_v83_exact_pdf_numbers.py
+          run_test working_source/tests/regression_v83_total_preview_group_errors.py
+          run_test working_source/tests/regression_v82_pair_video_lengths.py
+          run_test working_source/tests/regression_v82_master_asset_format.py
+          run_test working_source/tests/regression_v82_suffix_guard.py
+          run_test working_source/tests/regression_v82_cleaning_header_noise.py
+          run_test working_source/tests/regression_v82_layout_threshold.py
+          run_test working_source/tests/regression_v81_header_outline.py
+          run_test working_source/tests/regression_v80_ocr_total_ui.py
+          run_test working_source/tests/regression_v79_layout_speed.py
+          run_test working_source/tests/regression_v78_rollback.py
+          run_test working_source/tests/regression_v75_811_ocr.py
+          run_test working_source/tests/regression_v74_row_filtering.py
+          run_test working_source/tests/regression_v73_total_dates.py
+          run_test working_source/tests/regression_compact_table_fallback.py
+          run_test working_source/tests/regression_length_totals.py
+          run_test working_source/tests/regression_split_pipes.py
+          run_test working_source/tests/regression_new_assets.py
+          run_test working_source/tests/regression_master_insert.py
+          run_test working_source/tests/regression_r2_endpoint_ocr.py
+          run_test working_source/tests/regression_trouble_workbook.py
+          echo 'Private customer OCR fixtures and Windows Excel COM/Tkinter interaction are not available on this Linux runner.'
+
+      - name: Verify versions and release scope
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt').read_text(encoding='utf-8')
+          assert "APP_VERSION = '99'" in app
+          assert 'CURRENT_VERSION = "99"' in updater
+          assert 'XPS Tracker Updater v99' in readme
+          assert 'short_wide_region=ww>=w*.70 and hh>=h*.055' in app
+          print('Application, updater, README, and short-table source version checks passed.')
+          PY
+          if git diff --name-only a9de8fc6a7edbb4e5b5eb6c38ba9faccbb40740f -- | grep -Eiq '\.(pdf|xlsx|xls|xlsm)$'; then
+            echo 'Private/customer document extension found in release-scope changes.'
+            git diff --name-only a9de8fc6a7edbb4e5b5eb6c38ba9faccbb40740f -- | grep -Ei '\.(pdf|xlsx|xls|xlsm)$' || true
+            exit 1
+          fi
+          if find working_source/app -maxdepth 1 -type f \( -iname '*.pdf' -o -iname '*.xlsx' -o -iname '*.xls' -o -iname '*.xlsm' \) | grep -q .; then
+            echo 'Private/customer document found in package source.'
+            exit 1
+          fi
+
+      - name: Commit tested v99 release source
+        run: |
+          set -e
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py \
+                  working_source/app/xps_update.py \
+                  working_source/app/README_XPS_Tracker_Updater.txt
+          git status --short
+          git commit -m 'Prepare XPS Tracker Updater v99 release [skip ci]'
+          git push origin HEAD:v95-work
+          git rev-parse HEAD | tee "$RUNNER_TEMP/release_commit"
+          test -z "$(git status --porcelain)"
+
+      - name: Build and validate v99 package
+        run: |
+          set -e
+          ZIP="$RUNNER_TEMP/$ASSET"
+          rm -rf dist
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name __pycache__ -prune -exec rm -rf {} +
+          find dist -name '*.pyc' -delete
+          if find dist -type f \( -iname '*.pdf' -o -iname '*.xlsx' -o -iname '*.xls' -o -iname '*.xlsm' \) | grep -q .; then
+            echo 'Private/customer document found in package.'
+            exit 1
+          fi
+          (cd dist && zip -qr "$ZIP" XPS_Tracker_Updater)
+          unzip -t "$ZIP"
+          test "$(zipinfo -1 "$ZIP" | head -1)" = 'XPS_Tracker_Updater/'
+          for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json xps_tracker_updater.ico xps_tracker_shortcut.ico; do
+            zipinfo -1 "$ZIP" | grep -qx "XPS_Tracker_Updater/$required"
+          done
+          LOCAL_SHA="$(sha256sum "$ZIP" | awk '{print $1}')"
+          LOCAL_SIZE="$(stat -c%s "$ZIP")"
+          test "$LOCAL_SIZE" -gt 0
+          printf '%s\n' "$LOCAL_SHA" > "$RUNNER_TEMP/local_sha"
+          printf '%s\n' "$LOCAL_SIZE" > "$RUNNER_TEMP/local_size"
+          echo "Local asset: $ASSET"
+          echo "Local size: $LOCAL_SIZE"
+          echo "Local SHA-256: $LOCAL_SHA"
+
+      - name: Create draft v99 release
+        run: |
+          set -e
+          RELEASE_COMMIT="$(cat "$RUNNER_TEMP/release_commit")"
+          cat > "$RUNNER_TEMP/v99_notes.md" <<'EOF'
+          - Recognizes very short Brown & Caldwell Pipe and Cleaning tables that span most of the page width even when they contain only a few rows.
+          - Keeps the short-table relaxation narrow and retains existing grid, header-role, layout-review, total, OCR, and matching safeguards.
+          - Protects very short and one-row Manhole reports through the existing positioned-token Manhole parser without imposing a minimum row count or table height.
+          - Preserves v98 Cleaning clipped-digit recovery and all prior safeguards.
+          EOF
+          gh release create "$TAG" "$RUNNER_TEMP/$ASSET" \
+            --repo "${{ github.repository }}" \
+            --target "$RELEASE_COMMIT" \
+            --title 'XPS Tracker Updater v99' \
+            --notes-file "$RUNNER_TEMP/v99_notes.md" \
+            --draft
+          release_json="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG")"
+          test "$(printf '%s' "$release_json" | jq -r .tag_name)" = "$TAG"
+          test "$(printf '%s' "$release_json" | jq -r .name)" = 'XPS Tracker Updater v99'
+          test "$(printf '%s' "$release_json" | jq -r .draft)" = 'true'
+          test "$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v99.zip") | .size')" = "$(cat "$RUNNER_TEMP/local_size")"
+          git fetch --tags origin
+          test "$(git rev-list -n1 "$TAG")" = "$RELEASE_COMMIT"
+
+      - name: Publish and re-download public asset
+        run: |
+          set -e
+          release_json="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG")"
+          release_id="$(printf '%s' "$release_json" | jq -r .id)"
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$release_id" -F draft=false >/dev/null
+
+          public_json="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG")"
+          test "$(printf '%s' "$public_json" | jq -r .draft)" = 'false'
+          test "$(printf '%s' "$public_json" | jq -r .tag_name)" = "$TAG"
+          test "$(printf '%s' "$public_json" | jq -r .name)" = 'XPS Tracker Updater v99'
+          ASSET_URL="$(printf '%s' "$public_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v99.zip") | .browser_download_url')"
+          test "$ASSET_URL" = 'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v99/XPS_Tracker_Updater_v99.zip'
+
+          mkdir -p "$RUNNER_TEMP/public_download"
+          curl --fail --location --retry 3 --retry-all-errors "$ASSET_URL" -o "$RUNNER_TEMP/public_download/$ASSET"
+          PUBLIC_SHA="$(sha256sum "$RUNNER_TEMP/public_download/$ASSET" | awk '{print $1}')"
+          PUBLIC_SIZE="$(stat -c%s "$RUNNER_TEMP/public_download/$ASSET")"
+          test "$PUBLIC_SHA" = "$(cat "$RUNNER_TEMP/local_sha")"
+          test "$PUBLIC_SIZE" = "$(cat "$RUNNER_TEMP/local_size")"
+          printf '%s\n' "$PUBLIC_SHA" > "$RUNNER_TEMP/verified_sha"
+          printf '%s\n' "$PUBLIC_SIZE" > "$RUNNER_TEMP/verified_size"
+          printf '%s\n' "$ASSET_URL" > "$RUNNER_TEMP/verified_url"
+          echo "Public v99 asset verified: $PUBLIC_SIZE bytes, SHA-256 $PUBLIC_SHA"
+
+      - name: Point public updater manifest to verified v99 asset
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Update and verify public manifest
+        working-directory: mainrepo
+        run: |
+          set -e
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          sha=(root/'verified_sha').read_text().strip()
+          url=(root/'verified_url').read_text().strip()
+          data={
+            'version':'99',
+            'download_url':url,
+            'sha256':sha,
+            'release_notes':[
+              'Recognize very short Brown & Caldwell Pipe and Cleaning tables that span most of the page width even when they contain only a few rows',
+              'Keep the short-table relaxation narrow while preserving existing grid, header-role, layout-review, total, OCR, and matching safeguards',
+              'Protect very short and one-row Manhole reports without imposing a minimum table height or row count',
+              'Preserve v98 Cleaning clipped-digit recovery and all prior safeguards'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add update_manifest.json
+          git commit -m 'Point auto-updater manifest to v99'
+          git push origin HEAD:main
+          git pull --ff-only origin main
+          remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          printf '%s\n' "$remote_manifest" | jq -e '.version=="99"' >/dev/null
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .download_url)" = "$(cat "$RUNNER_TEMP/verified_url")"
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$(cat "$RUNNER_TEMP/verified_sha")"
+          echo 'Public manifest v99 version, URL, and checksum verified.'
+
+      - name: Document verified v99 release on development branch
+        run: |
+          set -e
+          RELEASE_COMMIT="$(cat "$RUNNER_TEMP/release_commit")"
+          VERIFIED_SHA="$(cat "$RUNNER_TEMP/verified_sha")"
+          VERIFIED_SIZE="$(cat "$RUNNER_TEMP/verified_size")"
+          export RELEASE_COMMIT VERIFIED_SHA VERIFIED_SIZE
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+
+          commit=os.environ['RELEASE_COMMIT']
+          sha=os.environ['VERIFIED_SHA']
+          size=os.environ['VERIFIED_SIZE']
+
+          pc_path=Path('PROJECT_CONTEXT.md')
+          pc=pc_path.read_text(encoding='utf-8')
+          pc=pc.replace('Current production version: **v98**.','Current production version: **v99**.',1)
+          pc=pc.replace('## Unreleased post-v98 short-wide compact-table safeguard','## Released in v99: short-table safeguard',1)
+          if 'Public v99 release:' not in pc:
+              section=f'''Public v99 release:\n\n- Tag: `v99`\n- Release title: `XPS Tracker Updater v99`\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v99.zip`\n- Asset size: `{size}` bytes\n- SHA-256: `{sha}`\n- Very short Pipe and Cleaning pair tables are admitted only through the narrow short-wide compact-grid path.\n- Very short/one-row Manhole reports remain handled by the separate positioned-token parser.\n- Permanent regression: `working_source/tests/regression_post_v98_short_wide_compact_table.py`.\n\n'''
+              marker='Public v98 release:\n'
+              assert marker in pc
+              pc=pc.replace(marker,section+marker,1)
+          pc_path.write_text(pc,encoding='utf-8')
+
+          agents_path=Path('AGENTS.md')
+          agents=agents_path.read_text(encoding='utf-8')
+          agents=agents.replace('Production version: **v95**.','Production version: **v99**.',1)
+          agents_path.write_text(agents,encoding='utf-8')
+
+          checklist_path=Path('RELEASE_CHECKLIST.md')
+          checklist=checklist_path.read_text(encoding='utf-8')
+          checklist=checklist.replace('current **v98 production baseline**','current **v99 production baseline**',1)
+          marker='## Current verified production reference'
+          assert marker in checklist
+          checklist=checklist[:checklist.index(marker)] + f'''## Current verified production reference\n\nv99 is the current production release:\n\n- Release commit: `{commit}`\n- Asset: `XPS_Tracker_Updater_v99.zip`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n\nThe public updater manifest points to that verified v99 asset. The v99 short-table safeguard covers very short Pipe/Cleaning pair tables while preserving the separate Manhole token parser and all v98-and-earlier safeguards.\n'''
+          checklist_path.write_text(checklist,encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add PROJECT_CONTEXT.md AGENTS.md RELEASE_CHECKLIST.md
+          git commit -m 'Document v99 release [skip ci]'
+          git push origin HEAD:v95-work
+
+      - name: Final public and branch verification
+        run: |
+          set -e
+          test ! -e .github/workflows/publish-v99-temporary.yml
+          test ! -e .trigger_publish_v99
+          test ! -e .github/workflows/validate-post-v98-short-tables.yml
+          test ! -e .trigger_validate_post_v98_short_tables
+          test -z "$(git status --porcelain)"
+          release_json="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG")"
+          test "$(printf '%s' "$release_json" | jq -r .draft)" = 'false'
+          test "$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="XPS_Tracker_Updater_v99.zip") | .size')" = "$(cat "$RUNNER_TEMP/verified_size")"
+          remote_manifest="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .version)" = '99'
+          test "$(printf '%s\n' "$remote_manifest" | jq -r .sha256)" = "$(cat "$RUNNER_TEMP/verified_sha")"
+          echo 'v99 release, public asset, updater manifest, documentation, and temporary-file cleanup verified.'

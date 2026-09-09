@@ -663,3 +663,9 @@ XPS Tracker Updater v98
 - Fix Cleaning Wheel Walk cells whose leading digit is clipped by one OCR view, including the 8-26 rows that printed 34 ft and 54 ft but could fall to 7 ft during total reconciliation.
 - Require the complete replacement value to be independently observed by both the stacked-column and row-cell OCR paths; the master may only break ties between actual PDF observations.
 - Preserve v97 editable MSA fields and all prior OCR, matching, row, total, and review safeguards.
+
+XPS Tracker Updater v99
+- Recognize very short Brown & Caldwell Pipe and Cleaning tables when the real table spans most of the page width but contains only a few rows.
+- Keep the short-table relaxation narrow and preserve the existing grid, header-role, layout-review, total, matching, and OCR safeguards.
+- Protect very short and one-row Manhole reports through the existing positioned-token Manhole parser without imposing a minimum table height or row count.
+- Preserve v98 Cleaning clipped-digit recovery and all prior OCR, matching, continuation, MSA, new-asset, and review behavior.

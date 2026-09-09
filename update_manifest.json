@@ -1,11 +1,11 @@
 {
-  "version": "98",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v98/XPS_Tracker_Updater_v98.zip",
-  "sha256": "ce720bbaef5707b54da4ac99cd8170ba6da0c19aa9cbd64a3ea72aff7887675d",
+  "version": "99",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v99/XPS_Tracker_Updater_v99.zip",
+  "sha256": "71aadb56227a4b47290447b260b58bd6689b3c187715262f9cef85a3ecc0ce27",
   "release_notes": [
-    "Fix 8-26 Cleaning rows where printed 34 ft and 54 ft could become 7 ft during total reconciliation",
-    "Require complete clipped-digit corrections to be independently observed by both OCR paths",
-    "Keep master data limited to tie-breaking between values actually observed in the PDF",
-    "Preserve v97 editable MSA fields and all prior safeguards"
+    "Recognize very short Brown & Caldwell Pipe and Cleaning tables that span most of the page width even when they contain only a few rows",
+    "Keep the short-table relaxation narrow while preserving existing grid, header-role, layout-review, total, OCR, and matching safeguards",
+    "Protect very short and one-row Manhole reports without imposing a minimum table height or row count",
+    "Preserve v98 Cleaning clipped-digit recovery and all prior safeguards"
   ]
 }

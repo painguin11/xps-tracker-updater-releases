@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v98 production baseline**, the current
+This checklist applies to the current **v99 production baseline**, the current
 unreleased `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -273,11 +273,11 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v98 is the current production release:
+v99 is the current production release:
 
-- Release commit: `a9de8fc6a7edbb4e5b5eb6c38ba9faccbb40740f`
-- Asset: `XPS_Tracker_Updater_v98.zip`
-- Size: `306737` bytes
-- SHA-256: `ce720bbaef5707b54da4ac99cd8170ba6da0c19aa9cbd64a3ea72aff7887675d`
+- Release commit: `bd194969add8b762633d17859a3838712ec358d9`
+- Asset: `XPS_Tracker_Updater_v99.zip`
+- Size: `307138` bytes
+- SHA-256: `71aadb56227a4b47290447b260b58bd6689b3c187715262f9cef85a3ecc0ce27`
 
-The public updater manifest points to that verified v98 asset. The v96 MSA/suffix/padded-endpoint, OCR reconciliation, R2 direction, and compact-layout safeguards are part of the published baseline.
+The public updater manifest points to that verified v99 asset. The v99 short-table safeguard covers very short Pipe/Cleaning pair tables while preserving the separate Manhole token parser and all v98-and-earlier safeguards.

@@ -5,7 +5,7 @@ Before modifying this project, read `PROJECT_CONTEXT.md` and
 
 ## Current baseline
 
-- Production version: **v95**.
+- Production version: **v99**.
 - Development branch: **`v95-work`**.
 - The authoritative editable source is under `working_source/` on the development
   branch. Preserve all documented v95 behavior unless the user explicitly asks

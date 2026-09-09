@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v98**.
+Current production version: **v99**.
 
 Current development branch: **`v95-work`**.
 
@@ -13,6 +13,18 @@ The editable source and active regression suite are under `working_source/` on
 all documented unreleased `v95-work` safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
+
+Public v99 release:
+
+- Tag: `v99`
+- Release title: `XPS Tracker Updater v99`
+- Release commit: `bd194969add8b762633d17859a3838712ec358d9`
+- Asset: `XPS_Tracker_Updater_v99.zip`
+- Asset size: `307138` bytes
+- SHA-256: `71aadb56227a4b47290447b260b58bd6689b3c187715262f9cef85a3ecc0ce27`
+- Very short Pipe and Cleaning pair tables use the narrow short-wide compact-grid path.
+- Very short/one-row Manhole reports remain handled by the separate positioned-token parser.
+- Permanent regression: `working_source/tests/regression_post_v98_short_wide_compact_table.py`.
 
 Public v98 release:
 
@@ -536,7 +548,7 @@ re-downloaded and its public size/SHA verified.
 - Never commit private customer PDF/workbook fixtures.
 
 
-## Unreleased post-v98 short-wide compact-table safeguard
+## Released in v99: short-table safeguard
 
 - Very short Brown & Caldwell pair tables can contain only a header, a few data
   rows, and a total, leaving the real table under the previous 12% page-height

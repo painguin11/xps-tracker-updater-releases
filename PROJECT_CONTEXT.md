@@ -534,3 +534,16 @@ re-downloaded and its public size/SHA verified.
 - Do not claim real PDF/OCR behavior is validated solely because code compiles or
   a static source assertion passes.
 - Never commit private customer PDF/workbook fixtures.
+
+
+## Unreleased post-v98 short-wide compact-table safeguard
+
+- Very short Brown & Caldwell pair tables can contain only a header, a few data
+  rows, and a total, leaving the real table under the previous 12% page-height
+  threshold after rotation even though it spans almost the full page width.
+- The compact-grid candidate stage now admits that short shape only when the
+  connected region spans at least 70% of page width and at least 5.5% of page
+  height. Existing vertical-rule, horizontal-rule, column-count, header-role,
+  matching, and review safeguards remain unchanged.
+- Permanent synthetic regression:
+  `working_source/tests/regression_post_v98_short_wide_compact_table.py`.

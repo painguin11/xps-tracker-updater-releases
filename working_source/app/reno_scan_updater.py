@@ -3149,7 +3149,15 @@ def _year15_compact_grid_bands(img):
     candidates=[]
     for contour in contours:
         x,y,ww,hh=cv2.boundingRect(contour)
-        if ww>=w*.35 and hh>=h*.12 and ww*hh<=w*h*.85:
+        # Normal compact tables still use the established minimum height. A very
+        # short report (header + only a couple of rows + total) can be physically
+        # valid while occupying less than 12% of the page after rotation. Admit
+        # that shorter shape only when it spans most of the page width; the strict
+        # vertical-rule, horizontal-rule, column-count, and header-role checks
+        # below still have to validate the region before it can become a table.
+        normal_region=ww>=w*.35 and hh>=h*.12
+        short_wide_region=ww>=w*.70 and hh>=h*.055
+        if (normal_region or short_wide_region) and ww*hh<=w*h*.85:
             candidates.append((ww*hh,x,y,ww,hh))
     if not candidates:
         return [],None,None

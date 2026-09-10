@@ -66,6 +66,7 @@ The active baseline includes, at minimum:
 
 The current unreleased regressions are:
 
+- `working_source/tests/regression_post_v99_faint_vertical_grid.py`
 - `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`
 - `working_source/tests/regression_post_v96_msa_editable_fields.py`
 - `working_source/tests/regression_post_v95_new_packet_ocr.py`
@@ -135,6 +136,7 @@ it. Resolve the behavior intentionally.
   warning appears at the top of Live Summary.
 - Faint/dashed compact B&C row rules remain recoverable without changing the
   normal solid-grid first pass.
+- Faint interior vertical rules in a compact pair table may use the guarded post-v99 lighter-grid retry only after the established dark-grid passes fail; accepted rules must still satisfy the long-span/count/width evidence gates before row/header parsing.
 - A compact table with usable column geometry but only a partial role mapping
   must enter the existing Layout Review instead of being skipped or crashing;
   only missing/unusable table geometry is an automatic skip.

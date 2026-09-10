@@ -14,6 +14,14 @@ all documented unreleased `v95-work` safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
 
+### Unreleased post-v99 faint vertical-grid safeguard
+
+- Some image-only Phase 2 pair tables preserve clear horizontal rules while their interior vertical rules scan lighter than the established compact-grid threshold.
+- The compact-grid parser now makes one guarded lighter vertical-rule retry only after both established dark-grid passes fail.
+- The retry is accepted only when 5-20 long rules span at least 75% of the isolated table height and 70% of its width; normal row-rule, header-role, matching, and review safeguards remain unchanged.
+- Permanent regression: `working_source/tests/regression_post_v99_faint_vertical_grid.py`.
+- The supplied private fixture was used only for local diagnosis and was not committed or packaged.
+
 Public v99 release:
 
 - Tag: `v99`

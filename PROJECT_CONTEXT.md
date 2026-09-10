@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v99**.
+Current production version: **v100**.
 
 Current development branch: **`v95-work`**.
 
@@ -21,6 +21,18 @@ version until the user explicitly says `PUBLISH`.
 - The retry is accepted only when 5-20 long rules span at least 75% of the isolated table height and 70% of its width; normal row-rule, header-role, matching, and review safeguards remain unchanged.
 - Permanent regression: `working_source/tests/regression_post_v99_faint_vertical_grid.py`.
 - The supplied private fixture was used only for local diagnosis and was not committed or packaged.
+
+Public v100 release:
+
+- Tag: `v100`
+- Release title: `XPS Tracker Updater v100`
+- Release commit: `ab55fb90ceb833b5663f3561a1a2d86938ac0a93`
+- Asset: `XPS_Tracker_Updater_v100.zip`
+- Asset size: `306725` bytes
+- SHA-256: `8737420f93bc9bda55fb3693c3231c163ff9881013660762685126788afc3fcd`
+- Adds a guarded faint-vertical-grid retry for image-only B&C compact Pipe/Cleaning tables after the normal dark-grid detectors fail.
+- Permanent regression: `working_source/tests/regression_post_v99_faint_vertical_grid.py`.
+- The supplied failing PDF was validated locally and remains private/uncommitted.
 
 Public v99 release:
 

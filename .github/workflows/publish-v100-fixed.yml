@@ -1,0 +1,280 @@
+name: Publish XPS Tracker Updater v100 fixed
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_publish_v100_fixed'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: painguin11/xps-tracker-updater-releases
+      TAG: v100
+      ASSET: XPS_Tracker_Updater_v100.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Guard release state
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = 'v95-work'
+          grep -q "^APP_VERSION = '99'$" working_source/app/reno_scan_updater.py
+          grep -q '^CURRENT_VERSION = "99"$' working_source/app/xps_update.py
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "$TAG already exists; refusing to overwrite it."
+            exit 1
+          fi
+          if git ls-files | grep -E '\.(pdf|xlsx|xls|xlsm)$' >/tmp/private_files.txt; then
+            echo 'Private/customer document types are tracked; refusing release:'
+            cat /tmp/private_files.txt
+            exit 1
+          fi
+
+      - name: Install regression dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk zip unzip >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Bump release files to v100
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py')
+          s=app.read_text(encoding='utf-8')
+          assert s.count("APP_VERSION = '99'")==1
+          app.write_text(s.replace("APP_VERSION = '99'","APP_VERSION = '100'",1),encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py')
+          s=updater.read_text(encoding='utf-8')
+          assert s.count('CURRENT_VERSION = "99"')==1
+          updater.write_text(s.replace('CURRENT_VERSION = "99"','CURRENT_VERSION = "100"',1),encoding='utf-8')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          s=readme.read_text(encoding='utf-8').rstrip()+"\n"
+          if 'XPS Tracker Updater v100\n' not in s:
+              s += '''\nXPS Tracker Updater v100
+- Recover image-only Brown & Caldwell compact Pipe/Cleaning tables whose interior vertical grid rules scan substantially lighter than the outer border.
+- Use the lighter vertical-grid pass only after the established dark-grid detectors fail, and require a plausible long-rule count plus near-full table-height and width coverage before accepting it.
+- Preserve the existing row-grid, header-role, layout-review, total, matching, OCR, MSA, new-asset, continuation, and review safeguards.
+- Add a permanent post-v99 faint-vertical-grid regression and validate the supplied failing PDF locally before release.
+'''
+          readme.write_text(s,encoding='utf-8')
+          PY
+          grep -q "^APP_VERSION = '100'$" working_source/app/reno_scan_updater.py
+          grep -q '^CURRENT_VERSION = "100"$' working_source/app/xps_update.py
+          grep -q '^XPS Tracker Updater v100$' working_source/app/README_XPS_Tracker_Updater.txt
+
+      - name: Compile and run full active regression matrix
+        run: |
+          set -euo pipefail
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          run_test() { echo "===== $1 ====="; python "$1"; }
+          run_test working_source/tests/regression_post_v99_faint_vertical_grid.py
+          run_test working_source/tests/regression_post_v98_short_wide_compact_table.py
+          run_test working_source/tests/regression_post_v97_cleaning_clipped_digits.py
+          run_test working_source/tests/regression_post_v96_msa_editable_fields.py
+          run_test working_source/tests/regression_post_v95_new_packet_ocr.py
+          run_test working_source/tests/regression_post_v95_padded_endpoint_ids.py
+          run_test working_source/tests/regression_post_v95_msa_suffix_review.py
+          run_test working_source/tests/regression_v95_faint_compact_rows.py
+          run_test working_source/tests/regression_v95_exact_endpoint_priority.py
+          run_test working_source/tests/regression_v94_stacked_endpoint_digits.py
+          run_test working_source/tests/regression_v93_workorder_low_confidence_blank.py
+          run_test working_source/tests/regression_v93_new_asset_notes.py
+          run_test working_source/tests/regression_v92_workorder_4_or_5_digits.py
+          run_test working_source/tests/regression_v91_workorder_color_ocr.py
+          run_test working_source/tests/regression_v91_new_asset_preview_and_endpoint_recovery.py
+          run_test working_source/tests/regression_v90_review_ui.py
+          run_test working_source/tests/regression_v89_review_workflow.py
+          run_test working_source/tests/regression_v89_printed_pair_identity.py
+          run_test working_source/tests/regression_v89_manhole_count_and_final_total.py
+          run_test working_source/tests/regression_v88_continuations.py
+          run_test working_source/tests/regression_v87_total_summary_separator.py
+          run_test working_source/tests/regression_v86_assets_and_edit.py
+          run_test working_source/tests/regression_v85_edit_row_previews.py
+          run_test working_source/tests/regression_v85_mandatory_rows_and_length_votes.py
+          run_test working_source/tests/regression_v84_real_packet_length_logic.py
+          run_test working_source/tests/regression_v83_length_recovery.py
+          run_test working_source/tests/regression_v83_exact_pdf_numbers.py
+          run_test working_source/tests/regression_v83_total_preview_group_errors.py
+          run_test working_source/tests/regression_v82_pair_video_lengths.py
+          run_test working_source/tests/regression_v82_master_asset_format.py
+          run_test working_source/tests/regression_v82_suffix_guard.py
+          run_test working_source/tests/regression_v82_cleaning_header_noise.py
+          run_test working_source/tests/regression_v82_layout_threshold.py
+          run_test working_source/tests/regression_v81_header_outline.py
+          run_test working_source/tests/regression_v80_ocr_total_ui.py
+          run_test working_source/tests/regression_v79_layout_speed.py
+          run_test working_source/tests/regression_v78_rollback.py
+          run_test working_source/tests/regression_v75_811_ocr.py
+          run_test working_source/tests/regression_v74_row_filtering.py
+          run_test working_source/tests/regression_v73_total_dates.py
+          run_test working_source/tests/regression_compact_table_fallback.py
+          run_test working_source/tests/regression_length_totals.py
+          run_test working_source/tests/regression_split_pipes.py
+          run_test working_source/tests/regression_new_assets.py
+          run_test working_source/tests/regression_master_insert.py
+          run_test working_source/tests/regression_r2_endpoint_ocr.py
+
+      - name: Commit v100 release source
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          git commit -m 'Release XPS Tracker Updater v100'
+          git push origin HEAD:v95-work
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Package and validate release ZIP
+        run: |
+          set -euo pipefail
+          rm -rf output package_stage verify
+          mkdir -p package_stage/XPS_Tracker_Updater output
+          cp -a working_source/app/. package_stage/XPS_Tracker_Updater/
+          rm -rf package_stage/XPS_Tracker_Updater/__pycache__
+          find package_stage -type f -name '*.pyc' -delete
+          if find package_stage -type f | grep -E '\.(pdf|xlsx|xls|xlsm)$'; then
+            echo 'Private/customer document type found in package; refusing release.'
+            exit 1
+          fi
+          (cd package_stage && zip -qr -9 "../output/$ASSET" XPS_Tracker_Updater)
+          unzip -t "output/$ASSET"
+          LOCAL_SHA=$(sha256sum "output/$ASSET" | awk '{print $1}')
+          LOCAL_SIZE=$(stat -c '%s' "output/$ASSET")
+          echo "LOCAL_SHA=$LOCAL_SHA" >> "$GITHUB_ENV"
+          echo "LOCAL_SIZE=$LOCAL_SIZE" >> "$GITHUB_ENV"
+          echo "Local asset: size=$LOCAL_SIZE sha256=$LOCAL_SHA"
+          FIRST=$(unzip -Z1 "output/$ASSET" | sed -n '1p')
+          test "${FIRST%%/*}" = 'XPS_Tracker_Updater'
+
+      - name: Publish GitHub release
+        run: |
+          set -euo pipefail
+          git tag "$TAG" "$RELEASE_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" "output/$ASSET" --repo "$REPO" --target "$RELEASE_SHA" --title 'XPS Tracker Updater v100' --notes $'Fixes Brown & Caldwell image-only compact Pipe/Cleaning tables whose interior vertical grid rules scan too faint for the normal detector.\n\nThe fallback runs only after the established dark-grid passes fail and still requires a plausible set of long rules spanning most of the isolated table. Existing row, header, OCR, matching, total, MSA, new-asset, continuation, and review safeguards are preserved.'
+
+      - name: Re-download and verify public asset
+        run: |
+          set -euo pipefail
+          mkdir verify
+          gh release download "$TAG" --repo "$REPO" --pattern "$ASSET" --dir verify
+          PUBLIC_SHA=$(sha256sum "verify/$ASSET" | awk '{print $1}')
+          PUBLIC_SIZE=$(stat -c '%s' "verify/$ASSET")
+          test "$PUBLIC_SHA" = "$LOCAL_SHA"
+          test "$PUBLIC_SIZE" = "$LOCAL_SIZE"
+          test "$(gh release view "$TAG" --repo "$REPO" --json tagName --jq .tagName)" = "$TAG"
+          test "$(gh release view "$TAG" --repo "$REPO" --json name --jq .name)" = 'XPS Tracker Updater v100'
+          test "$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[0].name')" = "$ASSET"
+          echo "PUBLIC_SHA=$PUBLIC_SHA" >> "$GITHUB_ENV"
+          echo "PUBLIC_SIZE=$PUBLIC_SIZE" >> "$GITHUB_ENV"
+          echo "Verified public asset: size=$PUBLIC_SIZE sha256=$PUBLIC_SHA"
+
+      - name: Update and verify public manifest on main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git worktree add /tmp/xps-main origin/main
+          cd /tmp/xps-main
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data={
+            'version':'100',
+            'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v100/XPS_Tracker_Updater_v100.zip',
+            'sha256':os.environ['PUBLIC_SHA'],
+            'release_notes':[
+              'Recover image-only Brown & Caldwell compact Pipe/Cleaning tables with unusually faint interior vertical grid rules',
+              'Use the lighter grid retry only after normal detection fails and require strong long-rule height/width evidence',
+              'Preserve existing row, header-role, layout-review, total, OCR, matching, MSA, new-asset, continuation, and review safeguards',
+              'Validated against the supplied failing PDF before release'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add update_manifest.json
+          git commit -m 'Point updater manifest to v100'
+          git push origin HEAD:main
+          cd "$GITHUB_WORKSPACE"
+          git worktree remove /tmp/xps-main
+          export REMOTE="$(gh api "repos/$REPO/contents/update_manifest.json?ref=main" --jq .content | tr -d '\n' | base64 -d)"
+          python - <<'PY'
+          import json, os
+          data=json.loads(os.environ['REMOTE'])
+          assert data['version']=='100',data
+          assert data['download_url'].endswith('/v100/XPS_Tracker_Updater_v100.zip'),data
+          assert data['sha256']==os.environ['PUBLIC_SHA'],data
+          print('Public manifest verified:',data['version'],data['sha256'])
+          PY
+
+      - name: Update living documentation
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          release_sha=os.environ['RELEASE_SHA']
+          public_size=os.environ['PUBLIC_SIZE']
+          public_sha=os.environ['PUBLIC_SHA']
+
+          ag=Path('AGENTS.md')
+          s=ag.read_text(encoding='utf-8').replace('Production version: **v99**.','Production version: **v100**.',1)
+          ag.write_text(s,encoding='utf-8')
+
+          pc=Path('PROJECT_CONTEXT.md')
+          s=pc.read_text(encoding='utf-8').replace('Current production version: **v99**.','Current production version: **v100**.',1)
+          if 'Public v100 release:' not in s:
+              marker='Public v99 release:\n'
+              block=(
+                  'Public v100 release:\n\n'
+                  '- Tag: `v100`\n'
+                  '- Release title: `XPS Tracker Updater v100`\n'
+                  f'- Release commit: `{release_sha}`\n'
+                  '- Asset: `XPS_Tracker_Updater_v100.zip`\n'
+                  f'- Asset size: `{public_size}` bytes\n'
+                  f'- SHA-256: `{public_sha}`\n'
+                  '- Adds a guarded faint-vertical-grid retry for image-only B&C compact Pipe/Cleaning tables after the normal dark-grid detectors fail.\n'
+                  '- Permanent regression: `working_source/tests/regression_post_v99_faint_vertical_grid.py`.\n'
+                  '- The supplied failing PDF was validated locally and remains private/uncommitted.\n\n'
+              )
+              if marker not in s: raise SystemExit('PROJECT_CONTEXT v99 marker not found')
+              s=s.replace(marker,block+marker,1)
+          pc.write_text(s,encoding='utf-8')
+
+          rc=Path('RELEASE_CHECKLIST.md')
+          s=rc.read_text(encoding='utf-8').replace('current **v99 production baseline**','current **v100 production baseline**',1)
+          marker='## Current verified production reference\n\n'
+          if marker not in s: raise SystemExit('RELEASE_CHECKLIST current-reference marker not found')
+          start=s.index(marker)+len(marker)
+          s=s[:start]+(
+              'v100 is the current production release:\n\n'
+              f'- Release commit: `{release_sha}`\n'
+              '- Asset: `XPS_Tracker_Updater_v100.zip`\n'
+              f'- Size: `{public_size}` bytes\n'
+              f'- SHA-256: `{public_sha}`\n\n'
+              'The public updater manifest points to that verified v100 asset. The v100 safeguard adds a fail-closed lighter vertical-grid retry for compact B&C pair tables while preserving all v99-and-earlier safeguards.\n'
+          )
+          rc.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Commit docs and clean temporary release files
+        run: |
+          set -euo pipefail
+          git rm -f .github/workflows/publish-v100.yml .github/workflows/publish-v100-fixed.yml .trigger_publish_v100 .trigger_publish_v100_fixed
+          git add AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md
+          git commit -m 'Document v100 release and clean publish files [skip ci]'
+          git push origin HEAD:v95-work
+          echo "v100 release complete. release_sha=$RELEASE_SHA final_head=$(git rev-parse HEAD) public_size=$PUBLIC_SIZE public_sha=$PUBLIC_SHA"

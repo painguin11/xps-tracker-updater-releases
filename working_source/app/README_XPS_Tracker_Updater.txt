@@ -669,3 +669,8 @@ XPS Tracker Updater v99
 - Keep the short-table relaxation narrow and preserve the existing grid, header-role, layout-review, total, matching, and OCR safeguards.
 - Protect very short and one-row Manhole reports through the existing positioned-token Manhole parser without imposing a minimum table height or row count.
 - Preserve v98 Cleaning clipped-digit recovery and all prior OCR, matching, continuation, MSA, new-asset, and review behavior.
+
+XPS Tracker Updater v100
+- Recover image-only Brown & Caldwell compact Pipe/Cleaning tables whose interior vertical grid rules scan unusually faint.
+- Use the lighter vertical-grid retry only after normal detection fails and require strong long-rule height/width evidence.
+- Preserve existing row, header-role, layout-review, total, OCR, matching, MSA, new-asset, continuation, and review safeguards.

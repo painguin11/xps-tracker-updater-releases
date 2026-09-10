@@ -1,11 +1,11 @@
 {
-  "version": "99",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v99/XPS_Tracker_Updater_v99.zip",
-  "sha256": "71aadb56227a4b47290447b260b58bd6689b3c187715262f9cef85a3ecc0ce27",
+  "version": "100",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v100/XPS_Tracker_Updater_v100.zip",
+  "sha256": "8737420f93bc9bda55fb3693c3231c163ff9881013660762685126788afc3fcd",
   "release_notes": [
-    "Recognize very short Brown & Caldwell Pipe and Cleaning tables that span most of the page width even when they contain only a few rows",
-    "Keep the short-table relaxation narrow while preserving existing grid, header-role, layout-review, total, OCR, and matching safeguards",
-    "Protect very short and one-row Manhole reports without imposing a minimum table height or row count",
-    "Preserve v98 Cleaning clipped-digit recovery and all prior safeguards"
+    "Recover image-only Brown & Caldwell compact Pipe/Cleaning tables with unusually faint interior vertical grid rules",
+    "Use the lighter grid retry only after normal detection fails and require strong long-rule height/width evidence",
+    "Preserve existing row, header-role, layout-review, total, OCR, matching, MSA, new-asset, continuation, and review safeguards",
+    "Validated against the supplied failing PDF before release"
   ]
 }

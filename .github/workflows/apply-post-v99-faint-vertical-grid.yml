@@ -1,0 +1,50 @@
+name: Apply post-v99 faint vertical-grid recovery
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_post_v99_faint_vertical_grid'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Apply targeted faint vertical-grid recovery
+        run: python working_source/tools/apply_post_v99_faint_vertical_grid.py
+
+      - name: Compile and run active regressions
+        run: |
+          set -euo pipefail
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          for test in working_source/tests/regression_*.py; do
+            echo "===== $test ====="
+            python "$test"
+          done
+
+      - name: Commit tested source change
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py
+          if git diff --cached --quiet; then
+            echo 'No source change to commit.'
+          else
+            git commit -m 'Recover faint compact vertical grid rules'
+            git push origin HEAD:v95-work
+          fi

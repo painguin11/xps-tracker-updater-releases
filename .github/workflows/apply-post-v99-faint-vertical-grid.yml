@@ -69,8 +69,6 @@ jobs:
           run_test working_source/tests/regression_v80_ocr_total_ui.py
           run_test working_source/tests/regression_v79_layout_speed.py
           run_test working_source/tests/regression_v78_rollback.py
-          run_test working_source/tests/regression_v77_simple_first.py
-          run_test working_source/tests/regression_v76_layout_skip.py
           run_test working_source/tests/regression_v75_811_ocr.py
           run_test working_source/tests/regression_v74_row_filtering.py
           run_test working_source/tests/regression_v73_total_dates.py

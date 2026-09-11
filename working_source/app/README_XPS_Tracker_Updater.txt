@@ -674,3 +674,9 @@ XPS Tracker Updater v100
 - Recover image-only Brown & Caldwell compact Pipe/Cleaning tables whose interior vertical grid rules scan unusually faint.
 - Use the lighter vertical-grid retry only after normal detection fails and require strong long-rule height/width evidence.
 - Preserve existing row, header-role, layout-review, total, OCR, matching, MSA, new-asset, continuation, and review safeguards.
+
+XPS Tracker Updater v101
+- Read Consor and Brown & Caldwell Trouble Tickets from detected labeled ruled cells instead of relying on one fixed page-relative layout.
+- Preserve complete numeric, prefixed/suffixed, and pipe-pair IDs, wrapped descriptions, ticket dates, field previews, and explicit review flags for uncertain OCR.
+- Tolerate the small bounded ruled-cell overlap caused by perspective/skew in scans such as the supplied 8-26-2026 packet while keeping unrecognized layouts fail-closed for review.
+- Preserve Trouble Tickets.xlsx history, duplicate-page identity, workbook migration, Work Order/Truck inheritance, and all existing Pipe/Cleaning/Manhole safeguards.

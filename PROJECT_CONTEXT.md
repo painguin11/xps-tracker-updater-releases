@@ -9,12 +9,49 @@ Current production version: **v101**.
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the v95 baseline plus
-all documented unreleased `v95-work` safeguards. Do **not** publish another
+`v95-work`. Start future work from that branch and preserve the full released v101 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
 
-### Unreleased post-v99 faint vertical-grid safeguard
+## State audit — September 11, 2026
+
+- Reviewed development head: `b53d049734f2e4d7ad768999a23d2fe8113f5104`.
+- Both application version constants are 101. The published v101 release and
+  `main/update_manifest.json` agree on the asset URL and SHA-256 below.
+- The updater reads the manifest on `main`. The old manifest on `v95-work` is
+  not the production update channel; do not use it to infer the installed release.
+- The temporary v101 publish workflow/trigger and earlier source-export files
+  are absent from the reviewed head. Older historical automation is not a new task.
+- The September 8 handoff's local/uncommitted parser work is superseded by the
+  released v96-v101 history below; do not restart that completed recovery work.
+- Prior real-fixture results below are recorded historical validation, not a new
+  OCR run performed by this documentation audit.
+
+## Pending user requests
+
+Follow-up check: v102 implementation automation has started on `v95-work`.
+As of head `9a5fb5777aebb0b91d87e2522f9edd2c5e926414`, this adds patch/runner
+infrastructure and a retired-fixture skip; the application code is still v101.
+Fetch the latest head before implementing these requests to avoid duplicating
+concurrent work. No v102 completion or release is claimed here.
+
+These September 11 requests are not implemented in the reviewed v101 source:
+
+1. Discard one or multiple entire work orders and update the master using the
+   remaining work orders. Current Cancel Current Process stops analysis; it is
+   not selective work-order discard. Implementation must keep remaining groups'
+   validation and writes consistent and prevent discarded groups from writing.
+2. Enlarge the Description of Work image in the Manhole work-order count popup
+   so small writing is readable. Current `WorkOrderDialog` uses a 420 × 125
+   thumbnail and a non-resizable dialog. Preserve editable count confirmation.
+
+These are next implementation tasks, not release claims. No code/version change
+is part of this documentation audit. Keep the user's preference for normal chat
+for targeted changes; use Work Mode when direct fixture inspection or substantial
+local validation provides a clear advantage, and provide a concrete handoff when
+switching. Publication still requires an explicit `PUBLISH` instruction.
+
+### Released in v100: faint vertical-grid safeguard
 
 - Some image-only Phase 2 pair tables preserve clear horizontal rules while their interior vertical rules scan lighter than the established compact-grid threshold.
 - The compact-grid parser now makes one guarded lighter vertical-rule retry only after both established dark-grid passes fail.
@@ -78,9 +115,9 @@ Public v97 release:
 - SHA-256: `0853c74c082c05cf30f62fe86506a32a462dc4c7894ffe11eab272a37ec38494`
 - `working_source/app/reno_scan_updater.py`: `APP_VERSION = '97'`
 - `working_source/app/xps_update.py`: `CURRENT_VERSION = "97"`
-- Public `update_manifest.json` points to that exact v97 asset/checksum.
+- At the v97 release, the public manifest pointed to that asset/checksum (historical).
 
-### Current v97 release changes
+### Released in v97
 
 - MSA review exposes editable Upstream ID, Downstream ID, and Length for both physical rows.
 - Corrected IDs that diverge can be saved with `Save Changes & Cancel MSA`, preserving separate rows and normal re-matching.
@@ -89,7 +126,7 @@ Public v97 release:
 - OCR cache generation is v7 so stale v96 observations are not reused.
 - Permanent regression: `working_source/tests/regression_post_v96_msa_editable_fields.py`.
 
-### Unreleased post-v97 Cleaning clipped-digit safeguard
+### Released in v98: Cleaning clipped-digit safeguard
 
 - 8-26 page 12 exposed two right-aligned Wheel Walk cells where the first pass
   retained clipped single digits and the whole-table audit could degrade both to 7.
@@ -114,9 +151,9 @@ Public v96 release:
 - SHA-256: `d8d65072fdcd902ccf736c112dcddc0bceffd9ab5d54451882cdc6b513ffa4dc`
 - `working_source/app/reno_scan_updater.py`: `APP_VERSION = '96'`
 - `working_source/app/xps_update.py`: `CURRENT_VERSION = "96"`
-- Public `update_manifest.json` points to that exact v96 asset/checksum.
+- At the v96 release, the public manifest pointed to that asset/checksum (historical).
 
-### Current v96 release changes
+### Released in v96
 
 The following changes are included in public v96 and remain part of the required
 baseline:
@@ -205,8 +242,8 @@ In a new conversation, begin with:
 
 > Continue the XPS Tracker Updater project from the connected GitHub repository.
 > Read AGENTS.md, PROJECT_CONTEXT.md, and RELEASE_CHECKLIST.md before changing
-> anything. Start from v95-work, preserve the current v95 behavior and unreleased
-> v95-work safeguards, and do not publish until I explicitly say PUBLISH.
+> anything. Fetch the latest v95-work head, preserve all behavior through v101,
+> and do not publish until I explicitly say PUBLISH.
 
 Ask for a private PDF/workbook only when a new real-fixture regression actually
 requires it. Customer fixtures must never be committed to this public repository.
@@ -432,7 +469,7 @@ reviewable from Edit Selected as documented above.
 
 ## Trouble Tickets.xlsx
 
-### Unreleased post-v100 trouble-ticket field accuracy fix
+### Released in v101: Trouble Ticket field accuracy and scan geometry
 
 - Ticket OCR now locates labeled ruled cells on Consor and B&C forms instead of
   assuming the same page-relative crop coordinates and column widths.
@@ -459,7 +496,7 @@ reviewable from Edit Selected as documented above.
 - The 47 existing active regression scripts including the ticket workbook mock
   regression passed. The R2 test skipped its unavailable private fixture OCR;
   Windows Excel COM and interactive Tk checks were not run on Linux.
-- Production remains v100. This fix is unreleased; await explicit `PUBLISH`.
+- Both the labeled-cell fix and the following 8-26 geometry follow-up shipped in v101.
 
 Follow-up validation for the 8-26 B&C Trouble Ticket scan variation:
 
@@ -494,7 +531,7 @@ must remain private and must not be committed or packaged.
   Resolved, and No Action Needed.
 - Keep the green workbook header and edit-field PDF previews.
 
-## Current v95 fixes
+## Released in v95
 
 1. **Faint/dashed compact-table row detection**
    - Recovers faint/interrupted horizontal row rules on the affected compact B&C
@@ -505,12 +542,12 @@ must remain private and must not be committed or packaged.
    - Keeps both-endpoint evidence, unique directional pair, non-master, suffix,
      and ambiguity safeguards intact.
 
-Current v95 regression scripts include:
+Retained v95 regression scripts include:
 
 - `regression_v95_faint_compact_rows.py`
 - `regression_v95_exact_endpoint_priority.py`
 
-Current unreleased regressions added on `v95-work`:
+Additional retained regressions released in v96:
 
 - `regression_post_v95_msa_suffix_review.py`
 - `regression_post_v95_padded_endpoint_ids.py`
@@ -532,7 +569,7 @@ High-level expectations to preserve:
 - 8-19 Cleaning: 11/11 rows, printed total 2296.
 - 8-24 Manholes: 24/24.
 - 8-24 Pipe page 4: 7 rows, total 2034.58. This page includes legitimate
-  letter-suffixed asset IDs and is a key real-PDF target for the unreleased
+  letter-suffixed asset IDs and is a key real-PDF target for the released v96
   suffix-priority fix; `DN-2243S -> DN-2243 = 52` must remain a valid NEW PIPE.
 - 8-24 Pipe page 6: 9 rows, total 2402.95.
 - 8-24 Cleaning page 8: 10 rows, total 1207.
@@ -603,7 +640,7 @@ platform validation.
 
 ## Automatic updates
 
-At startup, the app reads the public `update_manifest.json`, offers a newer
+At startup, the app reads the public `update_manifest.json` on `main`, offers a newer
 release, downloads its ZIP, verifies SHA-256 and package contents, closes,
 installs, rolls back on failure, and restarts. It preserves `.venv`, LocalAppData
 settings, OCR caches, history, and layout profiles. Network failure must never

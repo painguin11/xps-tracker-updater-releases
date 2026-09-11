@@ -5,10 +5,10 @@ Before modifying this project, read `PROJECT_CONTEXT.md` and
 
 ## Current baseline
 
-- Production version: **v100**.
+- Production version: **v101**.
 - Development branch: **`v95-work`**.
 - The authoritative editable source is under `working_source/` on the development
-  branch. Preserve all documented v95 behavior unless the user explicitly asks
+  branch. Preserve all documented behavior through v101 unless the user explicitly asks
   to change it.
 - Do **not** publish a new release unless the user explicitly says `PUBLISH`.
 
@@ -48,3 +48,11 @@ For every release, and only after an explicit `PUBLISH` instruction:
 Do not upload customer PDFs, master workbooks, operator names, work-order
 documents, OCR caches, generated Trouble Tickets workbooks, logs, or other
 company data to this public repository.
+
+## Documentation maintenance
+
+Root documents on `v95-work` are authoritative. Keep their copies under
+`working_source/docs/` synchronized and refresh the root documentation on `main`
+when release or project status changes. Paths in these documents are relative to
+the repository root on `v95-work`. Historical source ZIPs and published release
+assets are immutable history, not the starting point for new development.

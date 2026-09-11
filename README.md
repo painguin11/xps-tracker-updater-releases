@@ -6,16 +6,22 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v98
+## Current production release: v101
 
-- Tag: `v98`
-- Release: `XPS Tracker Updater v98`
-- Release commit: `a9de8fc6a7edbb4e5b5eb6c38ba9faccbb40740f`
-- Asset: `XPS_Tracker_Updater_v98.zip`
-- Size: `306737` bytes
-- SHA-256: `ce720bbaef5707b54da4ac99cd8170ba6da0c19aa9cbd64a3ea72aff7887675d`
+- Release: [XPS Tracker Updater v101](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v101)
+- Release commit: `a32495b20d14783d4d0a54ac2ebcbbf2a715fd95`
+- Asset: `XPS_Tracker_Updater_v101.zip`
+- Size: `310270` bytes
+- SHA-256: `dbf578af1bb8f01b937af9273bd1a4a872378ff751ec13a0c4c99763663d1003`
 
-The public updater manifest points to this verified v98 asset.
+The production updater reads `update_manifest.json` on `main`, which points to
+this v101 asset. Development remains on `v95-work`, under `working_source/`.
+Old source bundles and release notes are historical; fetch the latest development
+head and read its project instructions before editing.
+
+As of September 11, selective discard of entire work orders and enlargement of
+the MH count confirmation image are pending requests, not v101 features.
+See `PROJECT_CONTEXT.md` for current state and validation history.
 
 ## v85
 
@@ -118,3 +124,20 @@ Current development continues on `v95-work`. Read `AGENTS.md`, `PROJECT_CONTEXT.
 - Fixes the 8-26 Cleaning rows whose printed Wheel Walk values 34 ft and 54 ft could be reduced to 7 ft during total reconciliation.
 - Restores a clipped leading digit only when the complete value was independently observed by both stacked-column and row-cell OCR.
 - Preserves v97 editable MSA review and all earlier safeguards.
+
+## v99
+
+- Recognizes very short, wide B&C Pipe/Cleaning tables with guarded geometry.
+- Preserves the separate short/one-row Manhole parser.
+
+## v100
+
+- Recovers faint interior vertical rules in compact B&C pair tables with a
+  guarded retry after normal detection fails.
+
+## v101
+
+- Detects labeled ruled Trouble Ticket cells across Consor and B&C forms.
+- Preserves complete IDs, wrapped descriptions, dates, field previews, and review
+  safeguards; accommodates bounded scan skew observed in the 8-26 packet.
+- Retains ticket history, duplicate-page identity, and existing table behavior.

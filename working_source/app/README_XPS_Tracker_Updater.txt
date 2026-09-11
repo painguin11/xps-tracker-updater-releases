@@ -1,5 +1,12 @@
-XPS Tracker Updater
-===================
+XPS Tracker Updater v101
+========================
+
+Current status (September 11, 2026)
+----------------------------------
+Production release: v101. Development: v95-work / working_source.
+Version sections below are release history; later changes supersede earlier ones.
+Selective whole-work-order discard and a larger MH count preview are pending
+requests and are not included in v101.
 
 Purpose
 -------

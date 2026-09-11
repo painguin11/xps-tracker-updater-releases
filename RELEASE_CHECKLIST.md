@@ -1,7 +1,7 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v101 production baseline**, the current
-unreleased `v95-work` safeguards, and all future releases. Do not publish unless
+This checklist applies to the current **v101 production baseline**, the retained
+`v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
 Never overwrite an existing release/tag. If a published version needs a fix,
@@ -64,11 +64,12 @@ The active baseline includes, at minimum:
 - R2 structural/canonicalization safeguards;
 - Trouble Ticket tests when release scope could affect that path.
 
-The current unreleased regressions are:
+The following post-version-named regressions are already released and remain required:
 
 - `working_source/tests/regression_post_v100_trouble_cells.py`
 - `working_source/tests/regression_post_v100_826_trouble_geometry.py`
 - `working_source/tests/regression_post_v99_faint_vertical_grid.py`
+- `working_source/tests/regression_post_v98_short_wide_compact_table.py`
 - `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`
 - `working_source/tests/regression_post_v96_msa_editable_fields.py`
 - `working_source/tests/regression_post_v95_new_packet_ocr.py`
@@ -188,13 +189,18 @@ it. Resolve the behavior intentionally.
 
 ## Private real-fixture checks
 
-For the post-v100 Trouble Ticket fix, also run
+For the Trouble Ticket fixes released in v101, also run
 `regression_post_v100_trouble_cells.py --fixtures /private/expected.json` against
 the four B&C tickets and three older Consor/Reno tickets when available. Verify
 complete IDs, all populated/blank fields, wrapped descriptions, small Pipe Size
 values, dates, field previews, and edit/save identity. Keep the private fixture
 expectations JSON out of Git and release packages. The default test uses only
 synthetic forms and prints an explicit skip when private fixtures are not supplied.
+
+Also retain `regression_post_v100_826_trouble_geometry.py`; when the private
+8-26 packet is available, compare both ticket pages using detected cells.
+The historical exclusion of Trouble Tickets from the older pair-table matrix
+does not exclude these v101 ticket checks.
 
 When local customer fixtures are available, run the applicable exact-PDF checks.
 Known current fixture targets are documented in `PROJECT_CONTEXT.md` for the
@@ -302,4 +308,14 @@ v100 was the previous production release:
 - Size: `306725` bytes
 - SHA-256: `8737420f93bc9bda55fb3693c3231c163ff9881013660762685126788afc3fcd`
 
-The public updater manifest points to that verified v100 asset. The v100 safeguard adds a fail-closed lighter vertical-grid retry for compact B&C pair tables while preserving all v99-and-earlier safeguards.
+At the v100 release, the public updater manifest pointed to that verified asset; it now points to v101. The v100 safeguard adds a fail-closed lighter vertical-grid retry for compact B&C pair tables while preserving all v99-and-earlier safeguards.
+
+## Documentation checks
+
+Verify current production version, release asset/checksum, development branch,
+and pending work agree across root docs, `working_source/docs/`, the bundled
+README, and root docs on `main`. Check the production manifest on `main`, not
+the historical copy on the development branch. Keep released safeguards out of
+unreleased lists and distinguish prior fixture results from newly run checks.
+The selective work-order discard and enlarged MH count preview requests remain
+pending as of the September 11 audit; do not claim they shipped in v101.

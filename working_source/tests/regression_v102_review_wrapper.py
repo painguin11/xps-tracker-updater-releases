@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 root=Path(__file__).resolve().parents[1]
 wrapper=(root/'app'/'xps_review_controls.py').read_text(encoding='utf-8')
@@ -7,8 +8,9 @@ setup=(root/'app'/'setup_and_run.bat').read_text(encoding='utf-8')
 core=(root/'app'/'reno_scan_updater.py').read_text(encoding='utf-8')
 
 # The review extension is additive: OCR/parser implementation remains in the
-# existing v101 core and both launch paths enter the extension.
-assert "APP_VERSION = '101'" in core
+# existing core and both launch paths enter the extension. The release process
+# legitimately increments APP_VERSION, so do not pin this regression to v101.
+assert re.search(r"^APP_VERSION = '\d+'$", core, re.MULTILINE)
 assert 'xps_review_controls.py' in launcher
 assert 'xps_review_controls.py' in setup
 assert '"%VPY%" reno_scan_updater.py' not in launcher

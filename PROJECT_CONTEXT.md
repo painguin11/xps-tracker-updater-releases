@@ -450,6 +450,21 @@ reviewable from Edit Selected as documented above.
   Windows Excel COM and interactive Tk checks were not run on Linux.
 - Production remains v100. This fix is unreleased; await explicit `PUBLISH`.
 
+Follow-up validation for the 8-26 B&C Trouble Ticket scan variation:
+
+- Adjacent ruled label/value cells may overlap vertically by a few pixels after
+  perspective/skew in the scan. The detector now accepts only a tightly bounded
+  overlap (0.6% of page height), still requires both horizontal edges to align,
+  and selects the closest adjacent boundary. Generic/partial grids remain
+  fail-closed.
+- Leading non-alphanumeric OCR debris is removed from descriptions after the
+  printed `Description` label is stripped; legitimate ending punctuation is
+  preserved.
+- Permanent regression: `working_source/tests/regression_post_v100_826_trouble_geometry.py`.
+- Local private validation on the two Trouble Ticket pages in the supplied 8-26
+  packet produced the expected ticket fields with the detected-cell path. The
+  private PDF and expected customer values remain uncommitted.
+
 To run exact private ticket comparisons, supply a local expectations JSON via
 `python working_source/tests/regression_post_v100_trouble_cells.py --fixtures /private/expected.json`.
 The script documents that JSON's format. Customer PDFs and expected field values

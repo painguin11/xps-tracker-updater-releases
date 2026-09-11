@@ -67,6 +67,7 @@ The active baseline includes, at minimum:
 The current unreleased regressions are:
 
 - `working_source/tests/regression_post_v100_trouble_cells.py`
+- `working_source/tests/regression_post_v100_826_trouble_geometry.py`
 - `working_source/tests/regression_post_v99_faint_vertical_grid.py`
 - `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`
 - `working_source/tests/regression_post_v96_msa_editable_fields.py`

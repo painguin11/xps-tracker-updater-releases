@@ -1077,10 +1077,15 @@ def _ticket_detect_cells(img):
             key=next((value for alias,value in aliases.items()
                       if label.startswith(alias) and len(label)-len(alias)<=2),None)
         if not key: continue
-        below=[b for b in boxes if 0<=b[1]-y2<h*.018
+        # Perspective/skew in scanned forms can make the next ruled cell's
+        # contour begin a few pixels above the label cell's lowest point. Allow
+        # only a tiny bounded overlap and still require both horizontal edges to
+        # align, then choose the boundary nearest the label. This keeps generic
+        # grids fail-closed while preserving real adjacent label/value pairs.
+        below=[b for b in boxes if -h*.006<=b[1]-y2<h*.018
                and abs(b[0]-x1)<w*.018 and abs(b[2]-x2)<w*.018]
         if below:
-            fields[key]=min(below,key=lambda b:b[1])
+            fields[key]=min(below,key=lambda b:abs(b[1]-y2))
     # Do not attach a generic grid or partial form to guessed field positions.
     required={'operator','pipe_id','date','street_name','panel','area',
               'upstream','downstream','map_length','pipe_size',
@@ -1104,7 +1109,11 @@ def _ticket_detected_values(img, layout):
     def clean(value,key):
         if key=='description':
             value=re.sub(r'\s+',' ',value).strip()
-            return re.sub(r'\bDescription\s*[:;]?\s*','',value,count=1,flags=re.I).strip()
+            value=re.sub(r'\bDescription\s*[:;]?\s*','',value,count=1,flags=re.I).strip()
+            # Rule-removal artifacts can leave punctuation ahead of the first
+            # real word. Remove only leading non-content debris so legitimate
+            # terminal punctuation remains intact.
+            return re.sub(r'^[^A-Za-z0-9]+','',value).strip()
         value=_clean_ticket_text(value)
         if key in ('pipe_id','upstream','downstream'): value=_ticket_asset_id(value)
         if key in ('vac','pipe_service','mh_service') and re.fullmatch('[xX]+',value): value='X'

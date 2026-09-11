@@ -4,12 +4,12 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v101**.
+Current production version: **v102**.
 
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the full released v101 baseline and its documented safeguards. Do **not** publish another
+`v95-work`. Start future work from that branch and preserve the full released v102 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
 
@@ -27,29 +27,33 @@ version until the user explicitly says `PUBLISH`.
 - Prior real-fixture results below are recorded historical validation, not a new
   OCR run performed by this documentation audit.
 
-## Pending user requests
+## Released in v102 — selective work-order review controls
 
-Follow-up check: v102 implementation automation has started on `v95-work`.
-As of head `9a5fb5777aebb0b91d87e2522f9edd2c5e926414`, this adds patch/runner
-infrastructure and a retired-fixture skip; the application code is still v101.
-Fetch the latest head before implementing these requests to avoid duplicating
-concurrent work. No v102 completion or release is claimed here.
+Public v102 release:
 
-These September 11 requests are not implemented in the reviewed v101 source:
+- Tag: `v102`
+- Release title: `XPS Tracker Updater v102`
+- Release commit: `0a868946652ef24372838c645857e53f83485e78`
+- Asset: `XPS_Tracker_Updater_v102.zip`
+- Asset size: `316053` bytes
+- SHA-256: `ca2e64ce794eac5e685fb8bc60c050f7d70de0881e6f4f1fc32b08b8f5bbb994`
+- Public updater manifest on `main` points to `https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v102/XPS_Tracker_Updater_v102.zip` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.
+- Full active Linux CI suite: 50/50 regression scripts passed on the v102-versioned source. Private customer fixture OCR and Windows Excel COM/live Tk GUI paths were not run by this Linux release job.
 
-1. Discard one or multiple entire work orders and update the master using the
-   remaining work orders. Current Cancel Current Process stops analysis; it is
-   not selective work-order discard. Implementation must keep remaining groups'
-   validation and writes consistent and prevent discarded groups from writing.
-2. Enlarge the Description of Work image in the Manhole work-order count popup
-   so small writing is readable. Current `WorkOrderDialog` uses a 420 × 125
-   thumbnail and a non-resizable dialog. Preserve editable count confirmation.
+v102 adds the following review controls while leaving the v101 OCR/table parser core behavior unchanged:
 
-These are next implementation tasks, not release claims. No code/version change
-is part of this documentation audit. Keep the user's preference for normal chat
-for targeted changes; use Work Mode when direct fixture inspection or substantial
-local validation provides a clear advantage, and provide a concrete handoff when
-switching. Publication still requires an explicit `PUBLISH` instruction.
+1. **Discard complete work orders before Update Master**
+   - `Discard Work Order(s)` supports selecting one or multiple analyzed W/Os.
+   - Discarding removes that W/O's pending extracted rows, Trouble Tickets, total validations, Manhole-count validations, unprocessed-page blockers, and group state.
+   - The master workbook is not changed at discard time; Update Master writes only what remains.
+2. **Ignore problem work orders and continue**
+   - When Update Master detects W/Os that are not fully green/ready, the user may choose `Ignore Problem Work Orders & Continue`, `Continue Current Review Flow`, or `Back to Review`.
+   - Ignoring is whole-W/O, so a problem W/O cannot leave behind a validation blocker or partial write while clean W/Os continue.
+3. **Larger Manhole expected-count preview**
+   - The Description of Work crop used to confirm expected Manhole count is displayed up to 720 x 300 instead of the older 420 x 125 maximum, making small handwriting easier to verify.
+4. **Runtime integration**
+   - Both normal launch and first-time/setup launch enter `xps_review_controls.py`, which subclasses the existing application/review flow without replacing the established OCR/table parser implementation.
+   - Permanent regression: `working_source/tests/regression_v102_review_wrapper.py`.
 
 ### Released in v100: faint vertical-grid safeguard
 

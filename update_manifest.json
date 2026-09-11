@@ -1,11 +1,11 @@
 {
-  "version": "101",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v101/XPS_Tracker_Updater_v101.zip",
-  "sha256": "dbf578af1bb8f01b937af9273bd1a4a872378ff751ec13a0c4c99763663d1003",
+  "version": "102",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v102/XPS_Tracker_Updater_v102.zip",
+  "sha256": "ca2e64ce794eac5e685fb8bc60c050f7d70de0881e6f4f1fc32b08b8f5bbb994",
   "release_notes": [
-    "Read Consor and Brown & Caldwell Trouble Tickets from detected labeled ruled cells instead of one fixed page layout",
-    "Preserve complete numeric, prefixed/suffixed, and pipe-pair IDs plus wrapped descriptions and ticket field previews",
-    "Handle the bounded scan perspective/skew seen in the supplied 8-26-2026 Trouble Tickets without accepting generic grids",
-    "Keep uncertain OCR review, ticket history/deduplication, Work Order context, and existing Pipe/Cleaning/Manhole safeguards unchanged"
+    "Discard one or multiple complete work orders from the pending review before updating the master",
+    "When Update Master finds problem work orders, ignore those whole work orders and continue with only clean work orders",
+    "Remove ignored work orders from pending rows, Trouble Tickets, validation blockers, and unprocessed-page blockers",
+    "Show a substantially larger Manhole expected-count preview so small handwriting is easier to confirm"
   ]
 }

@@ -18,16 +18,11 @@ sys.modules['pythoncom'] = types.ModuleType('pythoncom')
 sys.modules['pywintypes'] = types.ModuleType('pywintypes')
 
 source = Path('output/package_v69/XPS_Tracker_Updater/reno_scan_updater.py').resolve()
-fixture = Path('upload/8-11-2026.pdf').resolve()
-if not source.exists() or not fixture.exists():
-    print('SKIP retired tall-cleaning-header fixture: v69 package and/or private 8-11 PDF unavailable')
-    raise SystemExit(0)
-
 spec = importlib.util.spec_from_file_location('tracker_v69', source)
 tracker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tracker)
 
-doc = tracker.pymupdf.open(str(fixture))
+doc = tracker.pymupdf.open('upload/8-11-2026.pdf')
 page = doc[1]
 _, rotation, text, kind = tracker.classify_for_profile(page, 'phase2_year1')
 assert kind == 'cleaning', (kind, rotation, text[:500])

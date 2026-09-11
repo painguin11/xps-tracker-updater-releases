@@ -107,7 +107,7 @@ echo.
 echo Starting XPS Tracker Updater...
 "%VPY%" xps_update.py
 if errorlevel 20 exit /b 0
-"%VPY%" reno_scan_updater.py
+"%VPY%" xps_review_controls.py
 if errorlevel 1 (
     echo.
     echo The updater closed with an error. Copy or screenshot the message above and send it to me.

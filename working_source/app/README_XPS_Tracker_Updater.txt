@@ -1,12 +1,13 @@
-XPS Tracker Updater v101
+XPS Tracker Updater v102
 ========================
 
 Current status (September 11, 2026)
 ----------------------------------
-Production release: v101. Development: v95-work / working_source.
+Production release: v102. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-Selective whole-work-order discard and a larger MH count preview are pending
-requests and are not included in v101.
+v102 adds selective whole-work-order discard, an Update Master option to ignore
+problem work orders and continue with clean work orders, and a larger Manhole
+count confirmation preview.
 
 Purpose
 -------
@@ -687,3 +688,14 @@ XPS Tracker Updater v101
 - Preserve complete numeric, prefixed/suffixed, and pipe-pair IDs, wrapped descriptions, ticket dates, field previews, and explicit review flags for uncertain OCR.
 - Tolerate the small bounded ruled-cell overlap caused by perspective/skew in scans such as the supplied 8-26-2026 packet while keeping unrecognized layouts fail-closed for review.
 - Preserve Trouble Tickets.xlsx history, duplicate-page identity, workbook migration, Work Order/Truck inheritance, and all existing Pipe/Cleaning/Manhole safeguards.
+
+Version 102 selective work-order review controls
+-----------------------------------------------
+- Adds Discard Work Order(s) during review, including multi-selection.
+- Update Master can ignore complete problem work orders and continue with only
+  the clean work orders, while preserving the existing review flow as an option.
+- Discarded/ignored work orders are removed from pending extracted rows, Trouble
+  Tickets, total/count validation blockers, and unprocessed-page blockers.
+- Enlarges the Manhole expected-count Description of Work preview for easier
+  reading of small handwriting.
+- Core OCR/table parsing behavior remains unchanged from v101.

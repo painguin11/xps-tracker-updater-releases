@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v100**.
+Current production version: **v101**.
 
 Current development branch: **`v95-work`**.
 
@@ -21,6 +21,17 @@ version until the user explicitly says `PUBLISH`.
 - The retry is accepted only when 5-20 long rules span at least 75% of the isolated table height and 70% of its width; normal row-rule, header-role, matching, and review safeguards remain unchanged.
 - Permanent regression: `working_source/tests/regression_post_v99_faint_vertical_grid.py`.
 - The supplied private fixture was used only for local diagnosis and was not committed or packaged.
+
+Public v101 release:
+
+- Tag: `v101`
+- Release title: `XPS Tracker Updater v101`
+- Release commit: `a32495b20d14783d4d0a54ac2ebcbbf2a715fd95`
+- Asset: `XPS_Tracker_Updater_v101.zip`
+- Asset size: `310270` bytes
+- SHA-256: `dbf578af1bb8f01b937af9273bd1a4a872378ff751ec13a0c4c99763663d1003`
+- Trouble Ticket OCR uses detected labeled ruled cells across Consor/B&C forms, preserves complete IDs/descriptions/previews, and tolerates bounded scan skew from the 8-26 fixture.
+- Production updater manifest was advanced only after re-downloading and verifying the public release asset.
 
 Public v100 release:
 

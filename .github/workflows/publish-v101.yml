@@ -1,0 +1,245 @@
+name: Publish XPS Tracker Updater v101
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_publish_v101'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_BASE: cb610bfe181d07515cb6d0b537e603370df77641
+      VERSION: '101'
+      ASSET: XPS_Tracker_Updater_v101.zip
+    steps:
+      - name: Check out development source
+        uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Verify release base
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
+          unexpected="$(git diff --name-only "$EXPECTED_BASE"..HEAD | grep -Ev '^(.github/workflows/publish-v101.yml|.trigger_publish_v101)$' || true)"
+          test -z "$unexpected" || { echo "Unexpected changes after reviewed base:"; printf '%s\n' "$unexpected"; exit 1; }
+          if gh release view "v$VERSION" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "v$VERSION already exists; refusing to overwrite it."
+            exit 1
+          fi
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Version v101 source and README
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          app=Path('working_source/app/reno_scan_updater.py')
+          text=app.read_text(encoding='utf-8')
+          old="APP_VERSION = '100'"
+          assert text.count(old)==1, 'unexpected APP_VERSION baseline'
+          app.write_text(text.replace(old,"APP_VERSION = '101'",1),encoding='utf-8')
+
+          updater=Path('working_source/app/xps_update.py')
+          text=updater.read_text(encoding='utf-8')
+          old='CURRENT_VERSION = "100"'
+          assert text.count(old)==1, 'unexpected CURRENT_VERSION baseline'
+          updater.write_text(text.replace(old,'CURRENT_VERSION = "101"',1),encoding='utf-8')
+
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          text=readme.read_text(encoding='utf-8')
+          section='''\n\nXPS Tracker Updater v101\n- Read Consor and Brown & Caldwell Trouble Tickets from detected labeled ruled cells instead of relying on one fixed page-relative layout.\n- Preserve complete numeric, prefixed/suffixed, and pipe-pair IDs, wrapped descriptions, ticket dates, field previews, and explicit review flags for uncertain OCR.\n- Tolerate the small bounded ruled-cell overlap caused by perspective/skew in scans such as the supplied 8-26-2026 packet while keeping unrecognized layouts fail-closed for review.\n- Preserve Trouble Tickets.xlsx history, duplicate-page identity, workbook migration, Work Order/Truck inheritance, and all existing Pipe/Cleaning/Manhole safeguards.\n'''
+          if 'XPS Tracker Updater v101' not in text:
+              readme.write_text(text.rstrip()+section,encoding='utf-8')
+          PY
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
+          git diff --check
+
+      - name: Run full active regression suite
+        run: |
+          set -euo pipefail
+          count=0
+          for test in $(find working_source/tests -maxdepth 1 -type f -name 'regression_*.py' | sort); do
+            echo "===== $test ====="
+            python "$test"
+            count=$((count+1))
+          done
+          echo "PASS: $count regression scripts"
+
+      - name: Verify release scope and commit v101 source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt').read_text(encoding='utf-8')
+          assert re.search(r"^APP_VERSION = '101'$",app,re.M)
+          assert re.search(r'^CURRENT_VERSION = "101"$',updater,re.M)
+          assert 'XPS Tracker Updater v101' in readme
+          print('v101 source/version checks passed')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          git commit -m 'Release XPS Tracker Updater v101'
+          git push origin HEAD:v95-work
+          git rev-parse HEAD | tee "$RUNNER_TEMP/release_commit"
+
+      - name: Package and inspect v101
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/XPS_Tracker_Updater" "$RUNNER_TEMP/$ASSET"
+          mkdir -p "$RUNNER_TEMP/XPS_Tracker_Updater"
+          cp -a working_source/app/. "$RUNNER_TEMP/XPS_Tracker_Updater/"
+          find "$RUNNER_TEMP/XPS_Tracker_Updater" -type d -name __pycache__ -prune -exec rm -rf {} +
+          find "$RUNNER_TEMP/XPS_Tracker_Updater" -name '*.pyc' -delete
+          private="$(find "$RUNNER_TEMP/XPS_Tracker_Updater" -type f \( -iname '*.pdf' -o -iname '*.xlsx' -o -iname '*.xls' -o -iname '*.xlsm' \) -print)"
+          test -z "$private" || { echo 'Private/customer document type found in package:'; printf '%s\n' "$private"; exit 1; }
+          (cd "$RUNNER_TEMP" && zip -qr "$ASSET" XPS_Tracker_Updater)
+          unzip -t "$RUNNER_TEMP/$ASSET"
+          test "$(zipinfo -1 "$RUNNER_TEMP/$ASSET" | head -1)" = 'XPS_Tracker_Updater/'
+          for required in reno_scan_updater.py xps_update.py README_XPS_Tracker_Updater.txt setup_and_run.bat run_xps_tracker.bat update_config.json; do
+            zipinfo -1 "$RUNNER_TEMP/$ASSET" | grep -qx "XPS_Tracker_Updater/$required"
+          done
+          sha256sum "$RUNNER_TEMP/$ASSET" | cut -d' ' -f1 | tee "$RUNNER_TEMP/local_sha"
+          stat -c%s "$RUNNER_TEMP/$ASSET" | tee "$RUNNER_TEMP/local_size"
+
+      - name: Publish v101 release
+        run: |
+          set -euo pipefail
+          release_commit="$(cat "$RUNNER_TEMP/release_commit")"
+          gh release create "v$VERSION" "$RUNNER_TEMP/$ASSET" \
+            --repo "${{ github.repository }}" \
+            --target "$release_commit" \
+            --title 'XPS Tracker Updater v101' \
+            --notes 'Improves Trouble Ticket OCR across Consor and Brown & Caldwell forms by using detected labeled ruled cells, preserving complete IDs and wrapped descriptions, and tolerating the bounded scan skew seen in the supplied 8-26-2026 packet while retaining explicit review safeguards and all existing Pipe/Cleaning/Manhole behavior.'
+
+      - name: Re-download and verify public release asset
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/public"
+          gh release download "v$VERSION" --repo "${{ github.repository }}" --pattern "$ASSET" --dir "$RUNNER_TEMP/public"
+          public="$RUNNER_TEMP/public/$ASSET"
+          test -f "$public"
+          local_sha="$(cat "$RUNNER_TEMP/local_sha")"
+          local_size="$(cat "$RUNNER_TEMP/local_size")"
+          public_sha="$(sha256sum "$public" | cut -d' ' -f1)"
+          public_size="$(stat -c%s "$public")"
+          test "$public_sha" = "$local_sha"
+          test "$public_size" = "$local_size"
+          release_json="$(gh api "repos/${{ github.repository }}/releases/tags/v$VERSION")"
+          asset_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name==env.ASSET) | .digest')"
+          asset_size="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name==env.ASSET) | .size')"
+          asset_url="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name==env.ASSET) | .browser_download_url')"
+          test "$asset_digest" = "sha256:$local_sha"
+          test "$asset_size" = "$local_size"
+          test "$asset_url" = "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v101/$ASSET"
+          printf '%s\n' "$asset_url" > "$RUNNER_TEMP/public_url"
+          echo "Verified public v101 asset: $public_size bytes, sha256 $public_sha"
+
+      - name: Update public updater manifest only after asset verification
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Commit and re-read public manifest
+        working-directory: mainrepo
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP'])
+          sha=(temp/'local_sha').read_text().strip()
+          url=(temp/'public_url').read_text().strip()
+          data={
+            'version':'101',
+            'download_url':url,
+            'sha256':sha,
+            'release_notes':[
+              'Read Consor and Brown & Caldwell Trouble Tickets from detected labeled ruled cells instead of one fixed page layout',
+              'Preserve complete numeric, prefixed/suffixed, and pipe-pair IDs plus wrapped descriptions and ticket field previews',
+              'Handle the bounded scan perspective/skew seen in the supplied 8-26-2026 Trouble Tickets without accepting generic grids',
+              'Keep uncertain OCR review, ticket history/deduplication, Work Order context, and existing Pipe/Cleaning/Manhole safeguards unchanged'
+            ]
+          }
+          Path('update_manifest.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add update_manifest.json
+          git commit -m 'Point auto-updater manifest to v101'
+          git push origin HEAD:main
+          remote="$(gh api 'repos/${{ github.repository }}/contents/update_manifest.json?ref=main' --jq .content | base64 -d)"
+          printf '%s\n' "$remote" > "$RUNNER_TEMP/remote_manifest.json"
+          local_sha="$(cat "$RUNNER_TEMP/local_sha")"
+          public_url="$(cat "$RUNNER_TEMP/public_url")"
+          test "$(jq -r .version "$RUNNER_TEMP/remote_manifest.json")" = '101'
+          test "$(jq -r .sha256 "$RUNNER_TEMP/remote_manifest.json")" = "$local_sha"
+          test "$(jq -r .download_url "$RUNNER_TEMP/remote_manifest.json")" = "$public_url"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/manifest_commit"
+
+      - name: Record verified v101 release in living development docs
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          sha="$(cat "$RUNNER_TEMP/local_sha")"
+          size="$(cat "$RUNNER_TEMP/local_size")"
+          release_commit="$(cat "$RUNNER_TEMP/release_commit")"
+          python - "$sha" "$size" "$release_commit" <<'PY'
+          import sys
+          from pathlib import Path
+          sha,size,release_commit=sys.argv[1:]
+          p=Path('PROJECT_CONTEXT.md')
+          t=p.read_text(encoding='utf-8')
+          t=t.replace('Current production version: **v100**.','Current production version: **v101**.',1)
+          block=f'''Public v101 release:\n\n- Tag: `v101`\n- Release title: `XPS Tracker Updater v101`\n- Release commit: `{release_commit}`\n- Asset: `XPS_Tracker_Updater_v101.zip`\n- Asset size: `{size}` bytes\n- SHA-256: `{sha}`\n- Trouble Ticket OCR uses detected labeled ruled cells across Consor/B&C forms, preserves complete IDs/descriptions/previews, and tolerates bounded scan skew from the 8-26 fixture.\n- Production updater manifest was advanced only after re-downloading and verifying the public release asset.\n\n'''
+          if 'Public v101 release:' not in t:
+              marker='Public v100 release:\n'
+              assert marker in t
+              t=t.replace(marker,block+marker,1)
+          p.write_text(t,encoding='utf-8')
+
+          p=Path('RELEASE_CHECKLIST.md')
+          t=p.read_text(encoding='utf-8')
+          t=t.replace('current **v100 production baseline**','current **v101 production baseline**',1)
+          marker='## Current verified production reference\n\n'
+          if 'v101 is the current production release:' not in t:
+              assert marker in t
+              block=f'''v101 is the current production release:\n\n- Release commit: `{release_commit}`\n- Asset: `XPS_Tracker_Updater_v101.zip`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n- Public manifest version/URL/SHA were re-read and verified after release asset re-download.\n\nPrevious verified production reference follows for history.\n\n'''
+              t=t.replace(marker,marker+block,1)
+              t=t.replace('v100 is the current production release:','v100 was the previous production release:',1)
+          p.write_text(t,encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add PROJECT_CONTEXT.md RELEASE_CHECKLIST.md
+          git commit -m 'Document verified v101 release'
+          git push origin HEAD:v95-work
+          git rev-parse HEAD | tee "$RUNNER_TEMP/docs_commit"
+
+      - name: Release summary
+        run: |
+          echo "Release commit: $(cat "$RUNNER_TEMP/release_commit")"
+          echo "Manifest commit: $(cat "$RUNNER_TEMP/manifest_commit")"
+          echo "Docs commit: $(cat "$RUNNER_TEMP/docs_commit")"
+          echo "Asset size: $(cat "$RUNNER_TEMP/local_size")"
+          echo "SHA-256: $(cat "$RUNNER_TEMP/local_sha")"
+          echo 'v101 publish and public manifest verification complete.'

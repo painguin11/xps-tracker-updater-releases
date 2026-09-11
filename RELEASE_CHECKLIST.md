@@ -66,6 +66,7 @@ The active baseline includes, at minimum:
 
 The current unreleased regressions are:
 
+- `working_source/tests/regression_post_v100_trouble_cells.py`
 - `working_source/tests/regression_post_v99_faint_vertical_grid.py`
 - `working_source/tests/regression_post_v97_cleaning_clipped_digits.py`
 - `working_source/tests/regression_post_v96_msa_editable_fields.py`
@@ -185,6 +186,14 @@ it. Resolve the behavior intentionally.
   plausibility, except when the new observation closes the printed total exactly.
 
 ## Private real-fixture checks
+
+For the post-v100 Trouble Ticket fix, also run
+`regression_post_v100_trouble_cells.py --fixtures /private/expected.json` against
+the four B&C tickets and three older Consor/Reno tickets when available. Verify
+complete IDs, all populated/blank fields, wrapped descriptions, small Pipe Size
+values, dates, field previews, and edit/save identity. Keep the private fixture
+expectations JSON out of Git and release packages. The default test uses only
+synthetic forms and prints an explicit skip when private fixtures are not supplied.
 
 When local customer fixtures are available, run the applicable exact-PDF checks.
 Known current fixture targets are documented in `PROJECT_CONTEXT.md` for the

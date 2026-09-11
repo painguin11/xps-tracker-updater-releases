@@ -421,8 +421,39 @@ reviewable from Edit Selected as documented above.
 
 ## Trouble Tickets.xlsx
 
-Trouble Tickets are not part of the current PDF regression focus unless the user
-specifically asks about them, but existing behavior must remain preserved.
+### Unreleased post-v100 trouble-ticket field accuracy fix
+
+- Ticket OCR now locates labeled ruled cells on Consor and B&C forms instead of
+  assuming the same page-relative crop coordinates and column widths.
+- Full numeric IDs, single prefixed/suffixed Manhole IDs, and complete Pipe pairs
+  survive extraction and the ticket editor's Save action.
+- Descriptions are read across the complete ruled section, including continuation
+  text at the left margin and terminal punctuation. Small Pipe Size values use a
+  padded content crop and a single-line fallback; empty cells remain empty.
+- Field previews use the same detected boxes. W/O and Truck still inherit the
+  confirmed Work Order values/previews. Work Order Operator/Truck OCR is unchanged.
+- A readable ticket date is no longer overwritten merely because it differs from
+  the confirmed Work Order date by more than 45 days. Missing ticket dates retain
+  the existing Work Order-date fallback.
+- OCR disagreements and unrecognized layouts are marked for review. The legacy
+  crop fallback remains available for manual correction and is explicitly marked
+  as an unverified layout. Saving in the ticket editor acknowledges that review.
+- Page-based ticket identity and existing workbook history, duplicate suppression,
+  migration, backup, formatting, and write behavior are unchanged.
+- Validation: exact field comparisons passed on all four tickets in the supplied
+  8-28 packet and all three tickets in the older Reno fixture. Synthetic shifted
+  forms, numeric/suffixed/pair IDs, blank fields, description wrapping, distant
+  ticket dates, previews, stable page keys, and the actual editor Save callback
+  pass `working_source/tests/regression_post_v100_trouble_cells.py`.
+- The 47 existing active regression scripts including the ticket workbook mock
+  regression passed. The R2 test skipped its unavailable private fixture OCR;
+  Windows Excel COM and interactive Tk checks were not run on Linux.
+- Production remains v100. This fix is unreleased; await explicit `PUBLISH`.
+
+To run exact private ticket comparisons, supply a local expectations JSON via
+`python working_source/tests/regression_post_v100_trouble_cells.py --fixtures /private/expected.json`.
+The script documents that JSON's format. Customer PDFs and expected field values
+must remain private and must not be committed or packaged.
 
 - Create beside the selected master or append to the existing workbook.
 - Back up an existing Trouble Tickets workbook before modifying it.

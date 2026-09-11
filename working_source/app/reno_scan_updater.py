@@ -1014,42 +1014,177 @@ def trouble_ticket_asset_key(ticket):
     return ''
 
 
+def _ticket_asset_id(value):
+    """Keep numeric IDs, single nodes and complete hyphenated pipe pairs."""
+    value=str(value or '').upper().replace('–','-').replace('—','-')
+    return re.sub(r'[^A-Z0-9-]', '', value).strip('-')
+
+
+def _ticket_cell_image(img, box, rules=None):
+    x1,y1,x2,y2=box
+    crop=img[y1:y2,x1:x2].copy()
+    if rules is not None:
+        crop[cv2.dilate(rules[y1:y2,x1:x2],np.ones((5,5),np.uint8))>0]=255
+    gray=cv2.cvtColor(crop,cv2.COLOR_RGB2GRAY)
+    level,_=cv2.threshold(gray,0,255,cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+    # A blank ruled cell must not have its pale border remnants stretched into
+    # black "text" by Otsu. Use real dark ink to locate content, not scan haze.
+    ink=cv2.threshold(gray,min(level,180),255,cv2.THRESH_BINARY_INV)[1]
+    # Discard isolated scan specks, then pad the actual text. This keeps a lone
+    # pipe-size digit readable without mistaking a large empty cell for text.
+    count,labels,stats,_=cv2.connectedComponentsWithStats(ink)
+    keep=np.zeros_like(ink)
+    for i in range(1,count):
+        if stats[i,cv2.CC_STAT_AREA]>=4:
+            keep[labels==i]=255
+    points=cv2.findNonZero(keep)
+    if points is None: return None
+    x,y,w,h=cv2.boundingRect(points)
+    content=gray[max(0,y-2):y+h+2,max(0,x-2):x+w+2].copy()
+    content[content>220]=255
+    return cv2.copyMakeBorder(content,12,12,12,12,cv2.BORDER_CONSTANT,value=255)
+
+
+def _ticket_detect_cells(img):
+    """Locate labeled ruled cells, independent of page margins and column widths."""
+    h,w=img.shape[:2]
+    gray=cv2.cvtColor(img,cv2.COLOR_RGB2GRAY)
+    ink=cv2.threshold(gray,0,255,cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)[1]
+    horizontal=cv2.morphologyEx(ink,cv2.MORPH_OPEN,np.ones((1,max(20,int(w*.12))),np.uint8))
+    vertical=cv2.morphologyEx(ink,cv2.MORPH_OPEN,np.ones((max(20,int(h*.018)),1),np.uint8))
+    rules=cv2.dilate(horizontal|vertical,np.ones((3,3),np.uint8))
+    contours,_=cv2.findContours(255-rules,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+    boxes=[]
+    for contour in contours:
+        x,y,cw,ch=cv2.boundingRect(contour)
+        if cw>w*.05 and h*.012<ch<h*.15 and y>h*.12 and x>0 and x+cw<w:
+            boxes.append((x,y,x+cw,y+ch))
+    aliases={'reportedby':'operator','pipeid':'pipe_id','pipemhid':'pipe_id',
+             'date':'date','streetname':'street_name','panel':'panel','pane':'panel',
+             'areamajorintersection':'area','vactruck':'vac',
+             'pipesurvey':'pipe_service','mhsurvey':'mh_service',
+             'upstreammanhole':'upstream','downstreammanhole':'downstream',
+             'maplength':'map_length','pipesize':'pipe_size','pipesie':'pipe_size'}
+    fields={}
+    for box in sorted(boxes,key=lambda b:(b[1],b[0])):
+        x1,y1,x2,y2=box
+        if y2-y1>h*.025: continue
+        crop=_ticket_cell_image(img,box,rules)
+        if crop is None: continue
+        label=re.sub(r'[^a-z]','',cached_ocr_string(crop,config='--psm 7').lower())
+        key=aliases.get(label)
+        if not key:
+            key=next((value for alias,value in aliases.items()
+                      if label.startswith(alias) and len(label)-len(alias)<=2),None)
+        if not key: continue
+        below=[b for b in boxes if 0<=b[1]-y2<h*.018
+               and abs(b[0]-x1)<w*.018 and abs(b[2]-x2)<w*.018]
+        if below:
+            fields[key]=min(below,key=lambda b:b[1])
+    # Do not attach a generic grid or partial form to guessed field positions.
+    required={'operator','pipe_id','date','street_name','panel','area',
+              'upstream','downstream','map_length','pipe_size',
+              'vac','pipe_service','mh_service'}
+    if not required.issubset(fields): return None
+    bottom=min(fields[k][3] for k in ('upstream','downstream','map_length','pipe_size'))
+    left=min(b[0] for b in fields.values()); right=max(b[2] for b in fields.values())
+    lines=[b for b in boxes if b[1]>=bottom-h*.003 and abs(b[0]-left)<w*.018
+           and abs(b[2]-right)<w*.018]
+    if not lines: return None
+    fields['description']=(min(b[0] for b in lines),min(b[1] for b in lines),
+                           max(b[2] for b in lines),max(b[3] for b in lines))
+    fields['service_type']=(fields['vac'][0],min(fields[k][1] for k in ('vac','pipe_service','mh_service')),
+                            fields['mh_service'][2],max(fields[k][3] for k in ('vac','pipe_service','mh_service')))
+    return fields,rules
+
+
+def _ticket_detected_values(img, layout):
+    fields,rules=layout
+    values={}; uncertain={}
+    def clean(value,key):
+        if key=='description':
+            value=re.sub(r'\s+',' ',value).strip()
+            return re.sub(r'\bDescription\s*[:;]?\s*','',value,count=1,flags=re.I).strip()
+        value=_clean_ticket_text(value)
+        if key in ('pipe_id','upstream','downstream'): value=_ticket_asset_id(value)
+        if key in ('vac','pipe_service','mh_service') and re.fullmatch('[xX]+',value): value='X'
+        return value
+    for key,box in fields.items():
+        if key=='service_type': continue
+        crop=_ticket_cell_image(img,box,rules)
+        if crop is None:
+            values[key]=''; continue
+        psm=11 if key=='description' else 6 if key in ('map_length','pipe_size') else 7
+        variants=[crop,cv2.threshold(crop,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]]
+        candidates=[]
+        for variant in variants:
+            value=clean(cached_ocr_string(variant,config=f'--psm {psm}'),key)
+            candidates.append(value)
+        if key=='pipe_size' and not any(candidates):
+            candidates=[_clean_ticket_text(cached_ocr_string(variant,config='--psm 7')) for variant in variants]
+        if candidates[0]!=candidates[1] or key=='operator':
+            alternate=13 if key=='operator' else 6 if psm==11 else 11
+            value=clean(cached_ocr_string(crop,config=f'--psm {alternate}'),key)
+            candidates.append(value)
+        chosen=max(candidates,key=lambda v:candidates.count(v))
+        if key=='operator':
+            same_letters=[v for v in candidates if v.replace(' ','')==chosen.replace(' ','')]
+            chosen=max(same_letters,key=lambda v:v.count(' '))
+        values[key]=chosen
+        if len(set(candidates))>1 or not chosen:
+            uncertain[key]=chosen
+    values['service_type']=', '.join(label for key,label in
+        (('vac','Vac Truck'),('pipe_service','Pipe Survey'),('mh_service','MH Survey'))
+        if values.get(key,'').strip().upper()=='X')
+    for key in ('vac','pipe_service','mh_service'):
+        if values.get(key,'').strip().upper() not in ('','X') or key in uncertain:
+            uncertain['service_type']=values['service_type']
+        uncertain.pop(key,None)
+    return values,uncertain
+
+
 def trouble_ticket_status(ticket):
     missing=[]
     if not ticket.get('date'): missing.append('date')
     if not ticket.get('pipe_id'): missing.append('Pipe/MH ID')
     if not ticket.get('operator'): missing.append('operator')
     if not ticket.get('description'): missing.append('description')
-    return 'Review missing ' + ', '.join(missing) if missing else 'Ready for Trouble Tickets.xlsx'
+    warnings=[]
+    if missing: warnings.append('missing '+', '.join(missing))
+    if ticket.get('_ticket_layout_unverified'): warnings.append('verify form layout')
+    uncertain=[key.replace('_',' ') for key,value in ticket.get('_ticket_uncertain',{}).items()
+               if str(ticket.get(key) or '')==str(value or '')]
+    if uncertain: warnings.append('verify '+', '.join(uncertain))
+    return 'Review ' + '; '.join(warnings) if warnings else 'Ready for Trouble Tickets.xlsx'
 
 
 def parse_trouble_ticket(page, page_number, current_wo=None, source_pdf=''):
-    """Extract every labeled field from the fixed Consor trouble-ticket form."""
+    """Read detected Consor/B&C cells; retain the legacy fallback for review."""
     # The form uses small condensed print; 2.5x keeps IDs and location text crisp.
     img=render_page(page,2.5)
-    text=lambda coords,psms=(11,),whitelist=None,preferred_digits=None: _clean_ticket_text(
-        _ticket_field_text(_ticket_crop(img,*coords),psms,whitelist,preferred_digits))
-    reported=text((.085,.242,.360,.268),(11,))
-    pipe_id=digits(text((.360,.242,.690,.268),(6,7,11,13),'0123456789',9))
-    date_text=text((.690,.242,.915,.268),(6,7,11),'0123456789/-')
+    layout=_ticket_detect_cells(img)
+    detected,uncertain=_ticket_detected_values(img,layout) if layout else ({},{})
+    def text(key,coords,psms=(11,),whitelist=None,preferred_digits=None):
+        if layout: return detected[key]
+        return _clean_ticket_text(_ticket_field_text(_ticket_crop(img,*coords),psms,whitelist,preferred_digits))
+    reported=text('operator',(.085,.242,.360,.268),(11,))
+    pipe_id=_ticket_asset_id(text('pipe_id',(.360,.242,.690,.268),(6,7,11,13)))
+    date_text=text('date',(.690,.242,.915,.268),(6,7,11),'0123456789/-')
     ticket_date=parse_date_text(date_text)
-    expected_date=(current_wo or {}).get('date')
-    if isinstance(ticket_date,datetime) and isinstance(expected_date,datetime):
-        if abs((ticket_date-expected_date).days)>45: ticket_date=expected_date
     ticket={
         'date':ticket_date,
         'reported_by':reported,
         'operator':reported or str((current_wo or {}).get('operator') or '').strip(),
         'pipe_id':pipe_id,
-        'street_name':text((.085,.307,.690,.337),(11,)),
-        'panel':text((.690,.307,.915,.337),(11,)),
-        'area':text((.085,.412,.590,.442),(11,)),
-        'service_type':_ticket_service_types(img),
-        'upstream':canonical_asset_id(text((.085,.500,.360,.560),(11,))),
-        'downstream':canonical_asset_id(text((.360,.500,.622,.560),(11,))),
-        'map_length':parse_float(text((.622,.500,.718,.560),(11,),'0123456789.')),
-        'pipe_size':text((.718,.500,.915,.560),(11,)),
-        'description':text((.245,.582,.915,.800),(11,)),
+        'street_name':text('street_name',(.085,.307,.690,.337),(11,)),
+        'panel':text('panel',(.690,.307,.915,.337),(11,)),
+        'area':text('area',(.085,.412,.590,.442),(11,)),
+        'service_type':detected['service_type'] if layout else _ticket_service_types(img),
+        'upstream':canonical_asset_id(text('upstream',(.085,.500,.360,.560),(11,))),
+        'downstream':canonical_asset_id(text('downstream',(.360,.500,.622,.560),(11,))),
+        'map_length':parse_float(text('map_length',(.622,.500,.718,.560),(11,),'0123456789.')),
+        'pipe_size':text('pipe_size',(.718,.500,.915,.560),(11,)),
+        'description':text('description',(.245,.582,.915,.800),(11,)),
         'wo':str((current_wo or {}).get('wo') or '').strip(),
         'truck':str((current_wo or {}).get('truck') or '').strip(),
         'tracker_status':'Open',
@@ -1058,6 +1193,11 @@ def parse_trouble_ticket(page, page_number, current_wo=None, source_pdf=''):
         'source_page':page_number,
         'source_page_hash':hashlib.sha256(img.tobytes()).hexdigest(),
     }
+    if layout:
+        # Compare review evidence in the same representation used by the editor.
+        ticket['_ticket_uncertain']={key:ticket.get(key) for key in uncertain}
+    else:
+        ticket['_ticket_layout_unverified']=True
     wo_previews=(current_wo or {}).get('_field_previews') or {}
     wo_pages=(current_wo or {}).get('_field_preview_pages') or {}
     def ticket_preview(coords):
@@ -1076,13 +1216,18 @@ def parse_trouble_ticket(page, page_number, current_wo=None, source_pdf=''):
         'map_length':ticket_preview((.622,.500,.718,.560)),
         'pipe_size':ticket_preview((.718,.500,.915,.560)),
     }
+    if layout:
+        for key,box in layout[0].items():
+            if key in ('vac','pipe_service','mh_service'): continue
+            x1,y1,x2,y2=box
+            ticket['_field_previews'][key]=img[y1:y2,x1:x2].copy()
     ticket['_field_preview_pages']={key:[page_number] for key in ticket['_field_previews']}
     for key in ('wo','truck'):
         if key in wo_previews:
             ticket['_field_previews'][key]=wo_previews.get(key)
             ticket['_field_preview_pages'][key]=list(wo_pages.get(key) or [(current_wo or {}).get('_workorder_page') or page_number])
     if reported:
-        ticket['_field_previews']['operator']=ticket_preview((.085,.242,.360,.268))
+        if not layout: ticket['_field_previews']['operator']=ticket_preview((.085,.242,.360,.268))
         ticket['_field_preview_pages']['operator']=[page_number]
     elif 'operator' in wo_previews:
         ticket['_field_previews']['operator']=wo_previews.get('operator')
@@ -6414,7 +6559,7 @@ class App(tk.Tk):
             except Exception:
                 messagebox.showerror('Invalid value','Use MM/DD/YYYY for Date and a number for Map Length.',parent=win); return
             ticket.update({
-                'date':date,'pipe_id':canonical_asset_id(vars['Pipe/MH ID'].get()),'street_name':vars['Street'].get().strip(),
+                'date':date,'pipe_id':_ticket_asset_id(vars['Pipe/MH ID'].get()),'street_name':vars['Street'].get().strip(),
                 'panel':vars['Panel'].get().strip(),'area':vars['Area / Major Intersection'].get().strip(),
                 'service_type':vars['Service Type'].get().strip(),
                 'upstream':canonical_asset_id(vars['Upstream Manhole'].get()),
@@ -6426,6 +6571,9 @@ class App(tk.Tk):
                 'tracker_status':vars['Status'].get().strip() or 'Open',
                 'resolution_notes':vars['Resolution / Follow-up Notes'].get().strip(),
             })
+            # Save is the user's explicit review of these fields and previews.
+            ticket.pop('_ticket_uncertain',None)
+            ticket.pop('_ticket_layout_unverified',None)
             ticket['ticket_key']=trouble_ticket_key(ticket); ticket['review_status']=trouble_ticket_status(ticket)
             self.show_summary_ticket(index); win.destroy()
         ttk.Button(win,text='Save',command=save,style='Primary.TButton').grid(row=(len(fields)+1)//2,column=0,columnspan=6,pady=12)

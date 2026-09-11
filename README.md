@@ -6,22 +6,22 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v101
+## Current production release: v102
 
-- Release: [XPS Tracker Updater v101](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v101)
-- Release commit: `a32495b20d14783d4d0a54ac2ebcbbf2a715fd95`
-- Asset: `XPS_Tracker_Updater_v101.zip`
-- Size: `310270` bytes
-- SHA-256: `dbf578af1bb8f01b937af9273bd1a4a872378ff751ec13a0c4c99763663d1003`
+- Release: [XPS Tracker Updater v102](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v102)
+- Release commit: `0a868946652ef24372838c645857e53f83485e78`
+- Asset: `XPS_Tracker_Updater_v102.zip`
+- Size: `316053` bytes
+- SHA-256: `ca2e64ce794eac5e685fb8bc60c050f7d70de0881e6f4f1fc32b08b8f5bbb994`
 
 The production updater reads `update_manifest.json` on `main`, which points to
-this v101 asset. Development remains on `v95-work`, under `working_source/`.
+this verified v102 asset. Development remains on `v95-work`, under `working_source/`.
 Old source bundles and release notes are historical; fetch the latest development
 head and read its project instructions before editing.
 
-As of September 11, selective discard of entire work orders and enlargement of
-the MH count confirmation image are pending requests, not v101 features.
-See `PROJECT_CONTEXT.md` for current state and validation history.
+v102 adds selective whole-work-order discard, an Update Master path that excludes
+complete problem W/Os while continuing with clean ones, and a larger Manhole
+expected-count preview. See `PROJECT_CONTEXT.md` for validation history and exact behavior.
 
 ## v85
 
@@ -114,6 +114,15 @@ See `PROJECT_CONTEXT.md` for current state and validation history.
 - Saves corrected non-matching rows without merging them into an MSA.
 - Fixes the 8-26 82.87-to-2.87 split-pipe OCR failure and refreshes the OCR cache generation.
 - Preserves the full v96 safeguard baseline.
+
+## v102
+
+- Adds multi-select **Discard Work Order(s)** during review.
+- When Update Master finds W/Os that are not fully green/ready, allows whole problem W/Os to be ignored while clean W/Os continue.
+- Removes discarded/ignored W/Os from pending rows, Trouble Tickets, total/count validations, unprocessed-page blockers, and group state.
+- Enlarges the Manhole expected-count Description of Work preview for small handwriting.
+- Keeps the established v101 OCR/table parsing behavior unchanged.
+- Passed all 50 active Linux regression scripts before publishing; public ZIP checksum/size were verified after re-download before the auto-update manifest advanced.
 
 ## Development baseline
 

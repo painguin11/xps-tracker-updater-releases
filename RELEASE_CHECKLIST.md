@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v101 production baseline**, the retained
+This checklist applies to the current **v102 production baseline**, the retained
 `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -291,7 +291,18 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v101 is the current production release:
+v102 is the current production release:
+
+- Release commit: `0a868946652ef24372838c645857e53f83485e78`
+- Asset: `XPS_Tracker_Updater_v102.zip`
+- Size: `316053` bytes
+- SHA-256: `ca2e64ce794eac5e685fb8bc60c050f7d70de0881e6f4f1fc32b08b8f5bbb994`
+- Public manifest version/URL/SHA were re-read and verified after release asset re-download.
+- 50/50 active Linux regression scripts passed on the versioned release source. Private fixture OCR and Windows Excel COM/live Tk GUI checks remain platform/fixture limitations rather than release-job coverage.
+
+Previous verified production reference follows for history.
+
+v101 was the previous production release:
 
 - Release commit: `a32495b20d14783d4d0a54ac2ebcbbf2a715fd95`
 - Asset: `XPS_Tracker_Updater_v101.zip`
@@ -317,5 +328,4 @@ and pending work agree across root docs, `working_source/docs/`, the bundled
 README, and root docs on `main`. Check the production manifest on `main`, not
 the historical copy on the development branch. Keep released safeguards out of
 unreleased lists and distinguish prior fixture results from newly run checks.
-The selective work-order discard and enlarged MH count preview requests remain
-pending as of the September 11 audit; do not claim they shipped in v101.
+Selective whole-work-order discard, problem-W/O exclusion during Update Master, and the enlarged Manhole count preview shipped in v102. Preserve those behaviors in future releases.

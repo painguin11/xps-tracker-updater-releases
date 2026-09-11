@@ -1,0 +1,109 @@
+name: Sync v102 release documentation
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_v102_docs_sync'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Update authoritative development docs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          release_sha='0a868946652ef24372838c645857e53f83485e78'
+          asset='XPS_Tracker_Updater_v102.zip'
+          size='316053'
+          sha='ca2e64ce794eac5e685fb8bc60c050f7d70de0881e6f4f1fc32b08b8f5bbb994'
+          url='https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v102/XPS_Tracker_Updater_v102.zip'
+
+          # AGENTS.md
+          p=Path('AGENTS.md'); s=p.read_text(encoding='utf-8')
+          s=s.replace('- Production version: **v101**.', '- Production version: **v102**.', 1)
+          s=s.replace('Preserve all documented behavior through v101 unless the user explicitly asks',
+                      'Preserve all documented behavior through v102 unless the user explicitly asks', 1)
+          p.write_text(s,encoding='utf-8')
+
+          # PROJECT_CONTEXT.md
+          p=Path('PROJECT_CONTEXT.md'); s=p.read_text(encoding='utf-8')
+          s=s.replace('Current production version: **v101**.', 'Current production version: **v102**.', 1)
+          s=s.replace('preserve the full released v101 baseline and its documented safeguards.',
+                      'preserve the full released v102 baseline and its documented safeguards.', 1)
+          new_state=f'''## Released in v102 — selective work-order review controls\n\nPublic v102 release:\n\n- Tag: `v102`\n- Release title: `XPS Tracker Updater v102`\n- Release commit: `{release_sha}`\n- Asset: `{asset}`\n- Asset size: `{size}` bytes\n- SHA-256: `{sha}`\n- Public updater manifest on `main` points to `{url}` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.\n- Full active Linux CI suite: 50/50 regression scripts passed on the v102-versioned source. Private customer fixture OCR and Windows Excel COM/live Tk GUI paths were not run by this Linux release job.\n\nv102 adds the following review controls while leaving the v101 OCR/table parser core behavior unchanged:\n\n1. **Discard complete work orders before Update Master**\n   - `Discard Work Order(s)` supports selecting one or multiple analyzed W/Os.\n   - Discarding removes that W/O's pending extracted rows, Trouble Tickets, total validations, Manhole-count validations, unprocessed-page blockers, and group state.\n   - The master workbook is not changed at discard time; Update Master writes only what remains.\n2. **Ignore problem work orders and continue**\n   - When Update Master detects W/Os that are not fully green/ready, the user may choose `Ignore Problem Work Orders & Continue`, `Continue Current Review Flow`, or `Back to Review`.\n   - Ignoring is whole-W/O, so a problem W/O cannot leave behind a validation blocker or partial write while clean W/Os continue.\n3. **Larger Manhole expected-count preview**\n   - The Description of Work crop used to confirm expected Manhole count is displayed up to 720 x 300 instead of the older 420 x 125 maximum, making small handwriting easier to verify.\n4. **Runtime integration**\n   - Both normal launch and first-time/setup launch enter `xps_review_controls.py`, which subclasses the existing application/review flow without replacing the established OCR/table parser implementation.\n   - Permanent regression: `working_source/tests/regression_v102_review_wrapper.py`.\n\n'''
+          s,count=re.subn(r'## Pending user requests\n.*?(?=### Released in v100:)',new_state,s,flags=re.S)
+          if count != 1:
+              raise SystemExit(f'PROJECT_CONTEXT pending block replacement count={count}')
+          p.write_text(s,encoding='utf-8')
+
+          # RELEASE_CHECKLIST.md
+          p=Path('RELEASE_CHECKLIST.md'); s=p.read_text(encoding='utf-8')
+          s=s.replace('current **v101 production baseline**', 'current **v102 production baseline**', 1)
+          marker='## Current verified production reference\n\nv101 is the current production release:'
+          block=f'''## Current verified production reference\n\nv102 is the current production release:\n\n- Release commit: `{release_sha}`\n- Asset: `{asset}`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n- Public manifest version/URL/SHA were re-read and verified after release asset re-download.\n- 50/50 active Linux regression scripts passed on the versioned release source. Private fixture OCR and Windows Excel COM/live Tk GUI checks remain platform/fixture limitations rather than release-job coverage.\n\nPrevious verified production reference follows for history.\n\nv101 was the previous production release:'''
+          if marker not in s:
+              raise SystemExit('RELEASE_CHECKLIST current production marker not found')
+          s=s.replace(marker,block,1)
+          s=s.replace('The selective work-order discard and enlarged MH count preview requests remain\npending as of the September 11 audit; do not claim they shipped in v101.',
+                      'Selective whole-work-order discard, problem-W/O exclusion during Update Master, and the enlarged Manhole count preview shipped in v102. Preserve those behaviors in future releases.',1)
+          p.write_text(s,encoding='utf-8')
+
+          # README.md current production summary + v102 section.
+          p=Path('README.md'); s=p.read_text(encoding='utf-8')
+          old='''## Current production release: v101\n\n- Release: [XPS Tracker Updater v101](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v101)\n- Release commit: `a32495b20d14783d4d0a54ac2ebcbbf2a715fd95`\n- Asset: `XPS_Tracker_Updater_v101.zip`\n- Size: `310270` bytes\n- SHA-256: `dbf578af1bb8f01b937af9273bd1a4a872378ff751ec13a0c4c99763663d1003`\n\nThe production updater reads `update_manifest.json` on `main`, which points to\nthis v101 asset. Development remains on `v95-work`, under `working_source/`.\nOld source bundles and release notes are historical; fetch the latest development\nhead and read its project instructions before editing.\n\nAs of September 11, selective discard of entire work orders and enlargement of\nthe MH count confirmation image are pending requests, not v101 features.\nSee `PROJECT_CONTEXT.md` for current state and validation history.\n'''
+          new=f'''## Current production release: v102\n\n- Release: [XPS Tracker Updater v102](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v102)\n- Release commit: `{release_sha}`\n- Asset: `{asset}`\n- Size: `{size}` bytes\n- SHA-256: `{sha}`\n\nThe production updater reads `update_manifest.json` on `main`, which points to\nthis verified v102 asset. Development remains on `v95-work`, under `working_source/`.\nOld source bundles and release notes are historical; fetch the latest development\nhead and read its project instructions before editing.\n\nv102 adds selective whole-work-order discard, an Update Master path that excludes\ncomplete problem W/Os while continuing with clean ones, and a larger Manhole\nexpected-count preview. See `PROJECT_CONTEXT.md` for validation history and exact behavior.\n'''
+          if old not in s:
+              raise SystemExit('README production block not found')
+          s=s.replace(old,new,1)
+          section='''\n## v102\n\n- Adds multi-select **Discard Work Order(s)** during review.\n- When Update Master finds W/Os that are not fully green/ready, allows whole problem W/Os to be ignored while clean W/Os continue.\n- Removes discarded/ignored W/Os from pending rows, Trouble Tickets, total/count validations, unprocessed-page blockers, and group state.\n- Enlarges the Manhole expected-count Description of Work preview for small handwriting.\n- Keeps the established v101 OCR/table parsing behavior unchanged.\n- Passed all 50 active Linux regression scripts before publishing; public ZIP checksum/size were verified after re-download before the auto-update manifest advanced.\n'''
+          if '## v102\n' not in s:
+              s=s.replace('\n## Development baseline\n',section+'\n## Development baseline\n',1)
+          p.write_text(s,encoding='utf-8')
+
+          # Keep development copies synchronized with authoritative root docs.
+          docs=Path('working_source/docs')
+          for name in ('AGENTS.md','PROJECT_CONTEXT.md','RELEASE_CHECKLIST.md'):
+              (docs/name).write_text(Path(name).read_text(encoding='utf-8'),encoding='utf-8')
+          PY
+
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/publish-v102.yml .trigger_publish_v102
+          git rm -f .github/workflows/sync-v102-docs.yml .trigger_v102_docs_sync
+          git add AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md README.md working_source/docs/AGENTS.md working_source/docs/PROJECT_CONTEXT.md working_source/docs/RELEASE_CHECKLIST.md
+          git commit -m 'Document v102 release and clean publish machinery'
+          git push origin HEAD:v95-work
+
+      - name: Mirror authoritative root docs to main
+        run: |
+          set -euo pipefail
+          git fetch origin main v95-work
+          rm -rf ../xps-main
+          git worktree add ../xps-main origin/main
+          for f in AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md README.md; do
+            git show origin/v95-work:$f > ../xps-main/$f
+          done
+          git -C ../xps-main diff --check
+          git -C ../xps-main config user.name 'github-actions[bot]'
+          git -C ../xps-main config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C ../xps-main add AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md README.md
+          if git -C ../xps-main diff --cached --quiet; then
+            echo 'Main documentation already synchronized.'
+          else
+            git -C ../xps-main commit -m 'docs: sync production documentation with v102'
+            git -C ../xps-main push origin HEAD:main
+          fi

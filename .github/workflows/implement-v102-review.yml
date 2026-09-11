@@ -4,7 +4,7 @@ on:
   push:
     branches: [v95-work]
     paths:
-      - '.trigger_v102_review'
+      - '.trigger_v102_review_2'
 
 permissions:
   contents: write
@@ -13,8 +13,7 @@ jobs:
   implement:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out current development source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: v95-work
           fetch-depth: 0
@@ -25,238 +24,15 @@ jobs:
           sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
           python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
 
-      - name: Add discard-work-order review flow and larger MH preview
+      - name: Apply review changes
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          app=Path('working_source/app/reno_scan_updater.py')
-          text=app.read_text(encoding='utf-8')
-          assert "APP_VERSION = '101'" in text, 'expected v101 development source'
-
-          old_preview="""            if crop is not None and getattr(crop,'size',0):
-                image=Image.fromarray(crop); image.thumbnail((420,125),Image.Resampling.LANCZOS)
-                photo=ImageTk.PhotoImage(image,master=self); self.crop_photos.append(photo)
-                ttk.Label(self,image=photo).grid(row=next_row,column=2,sticky='w',padx=(6,12),pady=4)
-"""
-          new_preview="""            if crop is not None and getattr(crop,'size',0):
-                # The Manhole survey count is often handwritten very small inside
-                # the large description box. Show substantially more pixels than
-                # the normal field previews so the user can verify the count.
-                image=Image.fromarray(crop)
-                image.thumbnail((720,300),Image.Resampling.LANCZOS)
-                photo=ImageTk.PhotoImage(image,master=self); self.crop_photos.append(photo)
-                ttk.Label(self,image=photo).grid(row=next_row,column=2,sticky='w',padx=(6,12),pady=4)
-"""
-          assert text.count(old_preview)==1, 'manhole count preview baseline changed'
-          text=text.replace(old_preview,new_preview,1)
-
-          dialog="""
-
-class DiscardWorkOrdersDialog(tk.Toplevel):
-    \"\"\"Choose one or more analyzed work orders to remove from the pending update.\"\"\"
-    def __init__(self,parent,work_orders,initial_wo=''):
-        super().__init__(parent); self.result=None; self.work_orders=list(work_orders or [])
-        apply_app_icon(self)
-        self.title('Discard Work Order(s)'); self.transient(parent); self.grab_set(); self.resizable(False,True)
-        ttk.Label(self,text='Select the complete work order(s) to discard from this pending update.',
-                  font=('Segoe UI',11,'bold')).grid(row=0,column=0,columnspan=2,sticky='w',padx=14,pady=(14,5))
-        ttk.Label(self,text='Discarding here does not change the master spreadsheet. Only the work orders left in the review will be written when Update Master is clicked.',
-                  wraplength=700,justify='left').grid(row=1,column=0,columnspan=2,sticky='w',padx=14,pady=(0,10))
-        frame=ttk.Frame(self); frame.grid(row=2,column=0,columnspan=2,sticky='nsew',padx=14,pady=(0,10))
-        self.listbox=tk.Listbox(frame,selectmode=tk.EXTENDED,exportselection=False,width=78,
-                                height=max(4,min(12,len(self.work_orders))),font=('Segoe UI',10))
-        scroll=ttk.Scrollbar(frame,orient='vertical',command=self.listbox.yview)
-        self.listbox.configure(yscrollcommand=scroll.set)
-        self.listbox.grid(row=0,column=0,sticky='nsew'); scroll.grid(row=0,column=1,sticky='ns')
-        frame.rowconfigure(0,weight=1); frame.columnconfigure(0,weight=1)
-        initial=str(initial_wo or '').strip(); preselected=False
-        for index,item in enumerate(self.work_orders):
-            wo=str(item.get('wo') or '').strip()
-            rows=int(item.get('rows') or 0); tickets=int(item.get('tickets') or 0)
-            validations=int(item.get('validation_items') or 0)
-            label=f'W/O {wo} — {rows} extracted row(s), {tickets} trouble ticket(s)'
-            if validations: label+=f', {validations} validation item(s)'
-            self.listbox.insert('end',label)
-            if initial and wo==initial:
-                self.listbox.selection_set(index); self.listbox.see(index); preselected=True
-        if not preselected and len(self.work_orders)==1:
-            self.listbox.selection_set(0)
-        buttons=ttk.Frame(self); buttons.grid(row=3,column=0,columnspan=2,pady=(0,14))
-        ttk.Button(buttons,text='Cancel',command=self.cancel).pack(side='left',padx=6)
-        ttk.Button(buttons,text='Discard Selected Work Order(s)',command=self.accept,style='Danger.TButton').pack(side='left',padx=6)
-        self.listbox.bind('<Double-1>',lambda _event:self.accept())
-        self.protocol('WM_DELETE_WINDOW',self.cancel)
-        self.rowconfigure(2,weight=1); self.columnconfigure(0,weight=1)
-        self.update_idletasks(); self.geometry(f'+{parent.winfo_rootx()+80}+{parent.winfo_rooty()+70}')
-    def accept(self):
-        selected=list(self.listbox.curselection())
-        if not selected:
-            messagebox.showinfo('Discard Work Order(s)','Select at least one work order.',parent=self); return
-        self.result=[str(self.work_orders[index].get('wo') or '').strip() for index in selected]
-        self.destroy()
-    def cancel(self): self.result=None; self.destroy()
-"""
-          marker='\n\nclass ProgressFillButton(tk.Canvas):'
-          assert text.count(marker)==1, 'progress button marker changed'
-          text=text.replace(marker,dialog+marker,1)
-
-          old_controls="""        ttk.Button(controls,text='Edit Selected',command=self.edit_selected).pack(side='left',padx=8)
-        ttk.Button(controls,text='2. Update Master',command=self.update_master,style='Success.TButton').pack(side='left',padx=8)
-"""
-          new_controls="""        ttk.Button(controls,text='Edit Selected',command=self.edit_selected).pack(side='left',padx=8)
-        ttk.Button(controls,text='Discard Work Order(s)',command=self.discard_work_orders).pack(side='left',padx=8)
-        ttk.Button(controls,text='2. Update Master',command=self.update_master,style='Success.TButton').pack(side='left',padx=8)
-"""
-          assert text.count(old_controls)==1, 'main review controls baseline changed'
-          text=text.replace(old_controls,new_controls,1)
-
-          methods="""
-    def _work_order_choices(self):
-        \"\"\"Return current review work orders in packet order with discard counts.\"\"\"
-        order=[]; seen=set()
-        def remember(value):
-            wo=str(value or '').strip()
-            if wo and wo!='UNKNOWN' and wo not in seen:
-                seen.add(wo); order.append(wo)
-        for group in self.groups: remember(group.get('wo'))
-        for collection in (self.records,self.trouble_tickets,self.total_validations,
-                           self.manhole_count_validations,self.unprocessed_pages):
-            for item in collection: remember(item.get('wo'))
-        choices=[]
-        for wo in order:
-            same=lambda item:str(item.get('wo') or '').strip()==wo
-            choices.append({
-                'wo':wo,
-                'rows':sum(1 for item in self.records if same(item)),
-                'tickets':sum(1 for item in self.trouble_tickets if same(item)),
-                'validation_items':(
-                    sum(1 for item in self.total_validations if same(item))+
-                    sum(1 for item in self.manhole_count_validations if same(item))+
-                    sum(1 for item in self.unprocessed_pages if same(item))),
-            })
-        return choices
-
-    def _selected_work_order(self):
-        try:
-            selected=self.tree.selection()
-            return str(self.tree.set(selected[0],'wo')).strip() if selected else ''
-        except Exception:
-            return ''
-
-    def _rebuild_review_tree(self):
-        \"\"\"Re-index every visible review row after a whole-work-order removal.\"\"\"
-        try: vertical_position=self.tree.yview()[0]
-        except Exception: vertical_position=0.0
-        self._clear_total_outlines()
-        self.tree.delete(*self.tree.get_children())
-        for index in range(len(self.records)):
-            self.show_summary_record(index)
-        for index in range(len(self.trouble_tickets)):
-            self.show_summary_ticket(index)
-        for check in self.total_validations:
-            self.refresh_total_check(check,redraw=False)
-        self.refresh_unprocessed_summary()
-        for check in self.manhole_count_validations:
-            self.show_manhole_count_summary(check)
-        try:
-            self.tree.update_idletasks(); self.tree.yview_moveto(vertical_position)
-        except Exception:
-            pass
-        self._schedule_total_outlines()
-
-    def discard_work_orders(self):
-        \"\"\"Remove complete selected W/O groups from the pending review/update state.\"\"\"
-        if getattr(self,'_analysis_running',False):
-            messagebox.showinfo('Analysis In Progress','Finish or cancel the current analysis before discarding a work order.',parent=self); return
-        choices=self._work_order_choices()
-        if not choices:
-            messagebox.showinfo('Discard Work Order(s)','There are no analyzed work orders to discard.',parent=self); return
-        dlg=DiscardWorkOrdersDialog(self,choices,self._selected_work_order()); self.wait_window(dlg)
-        if not dlg.result:
-            return
-        selected={str(wo).strip() for wo in dlg.result if str(wo).strip()}
-        selected_items=[item for item in choices if item['wo'] in selected]
-        details='\\n'.join(
-            f\"W/O {item['wo']}: {item['rows']} extracted row(s), {item['tickets']} trouble ticket(s)\"
-            for item in selected_items)
-        if not messagebox.askyesno(
-                'Discard Work Order(s)',
-                'Discard all analyzed data for the selected work order(s)?\\n\\n'+details+
-                '\\n\\nTheir extracted rows, trouble tickets, and validation items will be removed from this review. '
-                'The master spreadsheet is not changed now. Update Master will write only the work orders that remain.',
-                parent=self):
-            return
-        belongs=lambda item:str(item.get('wo') or '').strip() in selected
-        removed_rows=sum(1 for item in self.records if belongs(item))
-        removed_tickets=sum(1 for item in self.trouble_tickets if belongs(item))
-        self.records=[item for item in self.records if not belongs(item)]
-        self.trouble_tickets=[item for item in self.trouble_tickets if not belongs(item)]
-        self.groups=[item for item in self.groups if not belongs(item)]
-        self.total_validations=[item for item in self.total_validations if not belongs(item)]
-        self.manhole_count_validations=[item for item in self.manhole_count_validations if not belongs(item)]
-        self.unprocessed_pages=[item for item in self.unprocessed_pages if not belongs(item)]
-        self._rebuild_review_tree()
-        remaining=self._work_order_choices()
-        discarded=', '.join(sorted(selected))
-        if self.records or self.trouble_tickets:
-            self.status.set(
-                f'Discarded W/O {discarded}: removed {removed_rows} extracted row(s) and {removed_tickets} trouble ticket(s). '
-                f'{len(remaining)} work order(s) remain; Update Master will process only the remaining items.')
-        else:
-            self.status.set(f'Discarded W/O {discarded}. Nothing remains to update from the analyzed work orders.')
-
-"""
-          marker='    def cancel_current_process(self):\n'
-          assert text.count(marker)==1, 'cancel method marker changed'
-          text=text.replace(marker,methods+marker,1)
-          app.write_text(text,encoding='utf-8')
-
-          test=Path('working_source/tests/regression_v102_discard_work_orders.py')
-          test.write_text(r'''from pathlib import Path
-s=(Path(__file__).resolve().parents[1]/'app'/'reno_scan_updater.py').read_text(encoding='utf-8')
-
-# Whole-work-order discard UI supports multi-selection without changing the
-# summary Treeview's single-row Edit Selected behavior.
-d=s[s.index('class DiscardWorkOrdersDialog'):s.index('\n\nclass ProgressFillButton',s.index('class DiscardWorkOrdersDialog'))]
-for token in ("selectmode=tk.EXTENDED","Discard Selected Work Order(s)","self.result=[str(self.work_orders[index].get('wo')"):
-    assert token in d,token
-assert "selectmode='browse'" in s
-assert "text='Discard Work Order(s)',command=self.discard_work_orders" in s
-
-# Discarding is a model-level removal: every state collection that can block or
-# write a W/O must be filtered, then the review tree is re-indexed.
-m=s[s.index('    def discard_work_orders(self):'):s.index('\n    def cancel_current_process',s.index('    def discard_work_orders(self):'))]
-for token in (
-    'self.records=[item for item in self.records if not belongs(item)]',
-    'self.trouble_tickets=[item for item in self.trouble_tickets if not belongs(item)]',
-    'self.groups=[item for item in self.groups if not belongs(item)]',
-    'self.total_validations=[item for item in self.total_validations if not belongs(item)]',
-    'self.manhole_count_validations=[item for item in self.manhole_count_validations if not belongs(item)]',
-    'self.unprocessed_pages=[item for item in self.unprocessed_pages if not belongs(item)]',
-    'self._rebuild_review_tree()',
-    'Update Master will write only the work orders that remain',
-): assert token in m,token
-
-r=s[s.index('    def _rebuild_review_tree(self):'):s.index('\n    def discard_work_orders',s.index('    def _rebuild_review_tree(self):'))]
-for token in ('self.show_summary_record(index)','self.show_summary_ticket(index)','self.refresh_total_check(check,redraw=False)','self.refresh_unprocessed_summary()','self.show_manhole_count_summary(check)'):
-    assert token in r,token
-
-# The Manhole count confirmation keeps the same source crop but presents it much
-# larger than the old 420x125 maximum.
-c=s[s.index('class ConfirmDialog'):s.index('\n\nclass TotalLengthVerifyDialog',s.index('class ConfirmDialog'))]
-assert 'description_preview' in c
-assert 'image.thumbnail((720,300),Image.Resampling.LANCZOS)' in c
-assert 'image.thumbnail((420,125),Image.Resampling.LANCZOS)' not in c
-print('v102 discard-work-order and Manhole preview regression passed')
-''',encoding='utf-8')
-          PY
+          python .github/scripts/patch_v102_review.py
           python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py
           python working_source/tests/regression_v102_discard_work_orders.py
           git diff --check
 
-      - name: Run full active regression suite
+      - name: Run active regression suite
         run: |
           set -euo pipefail
           count=0
@@ -273,6 +49,6 @@ print('v102 discard-work-order and Manhole preview regression passed')
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add working_source/app/reno_scan_updater.py working_source/tests/regression_v102_discard_work_orders.py
-          git commit -m 'Add work-order discard review control'
+          git commit -m 'Add work-order discard review controls'
           git push origin HEAD:v95-work
           git rev-parse HEAD

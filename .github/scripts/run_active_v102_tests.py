@@ -52,7 +52,7 @@ TESTS = [
     'working_source/tests/regression_new_assets.py',
     'working_source/tests/regression_master_insert.py',
     'working_source/tests/regression_r2_endpoint_ocr.py',
-    'working_source/tests/regression_v102_discard_work_orders.py',
+    'working_source/tests/regression_v102_review_wrapper.py',
 ]
 
 for test in TESTS:

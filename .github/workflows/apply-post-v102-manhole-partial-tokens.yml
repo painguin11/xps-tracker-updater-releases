@@ -1,0 +1,62 @@
+name: Apply post-v102 Manhole partial-token recovery
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_post_v102_manhole_partial_tokens'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Apply targeted Manhole parser recovery
+        run: python working_source/tools/apply_post_v102_manhole_partial_tokens.py
+
+      - name: Compile and run full active regression suite
+        run: |
+          set -euo pipefail
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/xps_review_controls.py
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess, sys
+          tests=sorted(Path('working_source/tests').glob('regression_*.py'))
+          if not tests:
+              raise SystemExit('No active regression scripts found')
+          passed=0
+          for test in tests:
+              print(f'===== {test} =====',flush=True)
+              subprocess.run([sys.executable,str(test)],check=True)
+              passed+=1
+          print(f'FULL ACTIVE REGRESSION SUITE: {passed}/{len(tests)} passed')
+          PY
+
+      - name: Commit tested source and documentation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            working_source/app/reno_scan_updater.py \
+            PROJECT_CONTEXT.md working_source/docs/PROJECT_CONTEXT.md \
+            RELEASE_CHECKLIST.md working_source/docs/RELEASE_CHECKLIST.md
+          if git diff --cached --quiet; then
+            echo 'No source or documentation change to commit.'
+          else
+            git commit -m 'Recover partial B&C Manhole table OCR'
+            git push origin HEAD:v95-work
+          fi

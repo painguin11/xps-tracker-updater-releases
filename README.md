@@ -6,22 +6,23 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v102
+## Current production release: v103
 
-- Release: [XPS Tracker Updater v102](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v102)
-- Release commit: `0a868946652ef24372838c645857e53f83485e78`
-- Asset: `XPS_Tracker_Updater_v102.zip`
-- Size: `316053` bytes
-- SHA-256: `ca2e64ce794eac5e685fb8bc60c050f7d70de0881e6f4f1fc32b08b8f5bbb994`
+- Release: [XPS Tracker Updater v103](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v103)
+- Release commit: `97254c534e2d6beb92fcce81bf00a9ed66db071d`
+- Asset: `XPS_Tracker_Updater_v103.zip`
+- Size: `318805` bytes
+- SHA-256: `0235204171d6ff172eb6f8cb56ace5480e2056efaa6798817222fcb3d59e02a7`
 
 The production updater reads `update_manifest.json` on `main`, which points to
-this verified v102 asset. Development remains on `v95-work`, under `working_source/`.
+this verified v103 asset. Development remains on `v95-work`, under `working_source/`.
 Old source bundles and release notes are historical; fetch the latest development
 head and read its project instructions before editing.
 
-v102 adds selective whole-work-order discard, an Update Master path that excludes
-complete problem W/Os while continuing with clean ones, and a larger Manhole
-expected-count preview. See `PROJECT_CONTEXT.md` for validation history and exact behavior.
+v103 improves Manhole OCR recovery for partially read ruled B&C tables and
+automatically performs a slower Manhole-only reread when the parsed row count does
+not match the user-confirmed expected count. Count-driven recovery remains grounded
+in PDF-observed IDs and never fabricates or trims rows just to force the count.
 
 ## v85
 
@@ -123,6 +124,14 @@ expected-count preview. See `PROJECT_CONTEXT.md` for validation history and exac
 - Enlarges the Manhole expected-count Description of Work preview for small handwriting.
 - Keeps the established v101 OCR/table parsing behavior unchanged.
 - Passed all 50 active Linux regression scripts before publishing; public ZIP checksum/size were verified after re-download before the auto-update manifest advanced.
+
+## v103
+
+- Compares positioned-token B&C Manhole OCR with physical ruled-row parsing so clipped or partially read reports can recover missing rows.
+- Automatically performs slower Manhole OCR rereads when the first-pass count differs from the user-confirmed expected Manhole count.
+- Keeps recovery conservative: only PDF-observed IDs that pass existing matching/new-suffix safeguards may be added; rows are never fabricated, deleted, or arbitrarily selected to force the count.
+- Preserves all v102 review controls plus earlier Pipe, Cleaning, Manhole, Trouble Ticket, MSA, continuation, total, and master-write safeguards.
+- Passed all **52 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.
 
 ## Development baseline
 

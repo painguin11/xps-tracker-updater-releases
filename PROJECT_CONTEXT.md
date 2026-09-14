@@ -4,28 +4,48 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v102**.
+Current production version: **v103**.
 
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the full released v102 baseline and its documented safeguards. Do **not** publish another
+`v95-work`. Start future work from that branch and preserve the full released v103 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
 
-## State audit — September 11, 2026
+## State audit — September 14, 2026
 
-- Reviewed development head: `b53d049734f2e4d7ad768999a23d2fe8113f5104`.
-- Both application version constants are 101. The published v101 release and
-  `main/update_manifest.json` agree on the asset URL and SHA-256 below.
-- The updater reads the manifest on `main`. The old manifest on `v95-work` is
-  not the production update channel; do not use it to infer the installed release.
-- The temporary v101 publish workflow/trigger and earlier source-export files
-  are absent from the reviewed head. Older historical automation is not a new task.
-- The September 8 handoff's local/uncommitted parser work is superseded by the
-  released v96-v101 history below; do not restart that completed recovery work.
-- Prior real-fixture results below are recorded historical validation, not a new
-  OCR run performed by this documentation audit.
+- Current production release: **v103** at release source commit `97254c534e2d6beb92fcce81bf00a9ed66db071d`.
+- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 103.
+- The production updater reads `main/update_manifest.json`, which points to the verified v103 public asset and SHA-256 below.
+- The v103 Linux release job compiled the app, passed the full 52/52 active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, verified exact size/SHA-256, and only then advanced the manifest.
+- Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
+- Temporary v103 publishing/documentation machinery is removed after this sync.
+
+## Released in v103 — Manhole OCR count recovery
+
+Public v103 release:
+
+- Tag: `v103`
+- Release title: `XPS Tracker Updater v103`
+- Release commit: `97254c534e2d6beb92fcce81bf00a9ed66db071d`
+- Asset: `XPS_Tracker_Updater_v103.zip`
+- Asset size: `318805` bytes
+- SHA-256: `0235204171d6ff172eb6f8cb56ace5480e2056efaa6798817222fcb3d59e02a7`
+- Public updater manifest on `main` points to `https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v103/XPS_Tracker_Updater_v103.zip` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.
+- Full active Linux CI suite: **52/52 regression scripts passed** on the v103-versioned source. Private customer fixture OCR and Windows Excel COM/live Tk GUI paths were not run by this Linux release job.
+
+v103 adds two conservative Manhole recovery paths while preserving the v102 review controls and all earlier safeguards:
+
+1. **Physical ruled-row recovery for partial B&C Manhole OCR**
+   - The B&C Manhole parser compares positioned whole-page token results with the physical ruled-row parser instead of trusting a short token result.
+   - A narrow padded/trimmed retry can recover a clipped first asset ID without loosening global asset-ID rules.
+   - Permanent regression: `working_source/tests/regression_post_v102_manhole_partial_tokens.py`.
+2. **Expected-count-driven OCR retry**
+   - After the normal Manhole pass, a parsed count that differs from the user-confirmed expected count automatically rereads every Manhole page in that work order with slower alternate row, crop, padding, and OCR segmentation passes.
+   - Recovered IDs must be observed in the PDF and still pass the existing strict matching/new-suffix safeguards.
+   - The expected count never fabricates IDs, deletes a first-pass row, or chooses an arbitrary subset merely to force a match. If a safe recovery would overrun the confirmed count, automatic addition is skipped and review remains required.
+   - Permanent regression: `working_source/tests/regression_post_v102_manhole_expected_count_retry.py`.
 
 ## Released in v102 — selective work-order review controls
 
@@ -246,7 +266,7 @@ In a new conversation, begin with:
 
 > Continue the XPS Tracker Updater project from the connected GitHub repository.
 > Read AGENTS.md, PROJECT_CONTEXT.md, and RELEASE_CHECKLIST.md before changing
-> anything. Fetch the latest v95-work head, preserve all behavior through v101,
+> anything. Fetch the latest v95-work head, preserve all behavior through v103,
 > and do not publish until I explicitly say PUBLISH.
 
 Ask for a private PDF/workbook only when a new real-fixture regression actually
@@ -419,6 +439,16 @@ count against the parsed Manhole rows.
 This is a user-confirmed count safeguard, separate from pair-table printed total
 length validation.
 
+The confirmed count is also an OCR recovery trigger. After the normal Manhole
+pass finishes, any work order whose parsed count does not equal the user-confirmed
+count automatically rereads all of that work order's Manhole pages with slower
+Manhole-only alternate row/crop/segmentation passes. Newly recovered rows are
+accepted only when their IDs are actually observed in the PDF and pass the existing
+strict matching/new-suffix safeguards. The expected count never fabricates an ID,
+deletes a first-pass row, or chooses an arbitrary subset merely to make the number
+match. If recovery would exceed the confirmed count, automatic addition is skipped
+and review remains required.
+
 ## Split Pipe / MSA behavior
 
 If exactly two Pipe rows in one work order represent the same Pipe as separate
@@ -534,6 +564,25 @@ must remain private and must not be committed or packaged.
 - New rows default Status to `Open`; allowed values are Open, In Progress,
   Resolved, and No Action Needed.
 - Keep the green workbook header and edit-field PDF previews.
+
+## Pending after v102 — Manhole partial-token recovery
+
+- A supplied B&C Small Diameter Phase 2 Year 1 Manhole scan contains 21 printed
+  rows, but whole-page positioned-token OCR can see only a small subset because
+  the ruled table interferes with Tesseract segmentation.
+- The Manhole parser now keeps the positioned-token result and also evaluates the
+  existing physical row-grid path, then returns whichever preserves more distinct
+  printed Manhole rows. This is Manhole-only and does not change Pipe/Cleaning
+  matching or global asset-ID rules.
+- When a ruled Manhole row produces no valid ID, one narrow retry trims a few
+  pixels of the left grid rule and reduces right-side street bleed before using
+  the existing strict asset parser. This recovers complete IDs without weakening
+  prefix/dash/suffix safeguards.
+- The supplied private PDF was used locally for diagnosis and recovered all
+  21/21 printed Manhole IDs with this row-grid/narrow-cell path. The customer PDF
+  remains private and uncommitted.
+- Permanent synthetic regression:
+  `working_source/tests/regression_post_v102_manhole_partial_tokens.py`.
 
 ## Released in v95
 

@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v102 production baseline**, the retained
+This checklist applies to the current **v103 production baseline**, the retained
 `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -299,7 +299,18 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v102 is the current production release:
+v103 is the current production release:
+
+- Release commit: `97254c534e2d6beb92fcce81bf00a9ed66db071d`
+- Asset: `XPS_Tracker_Updater_v103.zip`
+- Size: `318805` bytes
+- SHA-256: `0235204171d6ff172eb6f8cb56ace5480e2056efaa6798817222fcb3d59e02a7`
+- Public manifest version/URL/SHA were re-read and verified after release asset re-download.
+- 52/52 active Linux regression scripts passed on the versioned release source. Private fixture OCR and Windows Excel COM/live Tk GUI checks remain platform/fixture limitations rather than release-job coverage.
+
+Previous verified production reference follows for history.
+
+v102 was the previous production release:
 
 - Release commit: `0a868946652ef24372838c645857e53f83485e78`
 - Asset: `XPS_Tracker_Updater_v102.zip`

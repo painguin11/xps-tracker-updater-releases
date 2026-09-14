@@ -1,11 +1,11 @@
 {
-  "version": "102",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v102/XPS_Tracker_Updater_v102.zip",
-  "sha256": "ca2e64ce794eac5e685fb8bc60c050f7d70de0881e6f4f1fc32b08b8f5bbb994",
+  "version": "103",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v103/XPS_Tracker_Updater_v103.zip",
+  "sha256": "0235204171d6ff172eb6f8cb56ace5480e2056efaa6798817222fcb3d59e02a7",
   "release_notes": [
-    "Discard one or multiple complete work orders from the pending review before updating the master",
-    "When Update Master finds problem work orders, ignore those whole work orders and continue with only clean work orders",
-    "Remove ignored work orders from pending rows, Trouble Tickets, validation blockers, and unprocessed-page blockers",
-    "Show a substantially larger Manhole expected-count preview so small handwriting is easier to confirm"
+    "Recover Manhole rows missed when whole-page token OCR sees only part of a ruled B&C table",
+    "Automatically retry Manhole OCR when the parsed count differs from the user-confirmed expected count",
+    "Use slower alternate row, crop, padding, and OCR segmentation passes only after a count mismatch",
+    "Keep count recovery conservative: only PDF-observed IDs are accepted and rows are never fabricated or trimmed just to hit the count"
   ]
 }

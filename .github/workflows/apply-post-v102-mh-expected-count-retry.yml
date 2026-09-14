@@ -29,12 +29,13 @@ jobs:
 
       - name: Compile and run full active regression suite
         run: |
-          set -euo pipefail
-          python -m py_compile \
-            working_source/app/reno_scan_updater.py \
-            working_source/app/xps_update.py \
-            working_source/app/xps_review_controls.py
-          python - <<'PY'
+          set -o pipefail
+          {
+            python -m py_compile \
+              working_source/app/reno_scan_updater.py \
+              working_source/app/xps_update.py \
+              working_source/app/xps_review_controls.py
+            python - <<'PY'
           from pathlib import Path
           import subprocess, sys
           tests=sorted(Path('working_source/tests').glob('regression_*.py'))
@@ -47,7 +48,16 @@ jobs:
               passed+=1
           print(f'FULL ACTIVE REGRESSION SUITE: {passed}/{len(tests)} passed')
           PY
-          git diff --check
+            git diff --check
+          } 2>&1 | tee mh_retry_regression.log
+
+      - name: Upload regression diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mh-retry-regression-log
+          path: mh_retry_regression.log
+          if-no-files-found: ignore
 
       - name: Commit tested source, regression, and docs
         run: |

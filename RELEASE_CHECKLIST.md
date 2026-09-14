@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v102 Manhole expected-count retry regression;
 - post-v102 Manhole partial-token/grid-row recovery regression;
 - post-v97 Cleaning clipped-digit recovery regression;
 - post-v96 editable MSA field / 8-26 OCR regression;
@@ -67,6 +68,7 @@ The active baseline includes, at minimum:
 
 The following post-version-named regressions are already released and remain required:
 
+- `working_source/tests/regression_post_v102_manhole_expected_count_retry.py`
 - `working_source/tests/regression_post_v102_manhole_partial_tokens.py`
 - `working_source/tests/regression_post_v100_trouble_cells.py`
 - `working_source/tests/regression_post_v100_826_trouble_geometry.py`
@@ -151,6 +153,10 @@ it. Resolve the behavior intentionally.
 - Manhole work orders request a user-confirmed expected count using the
   Description of Work crop.
 - Parsed Manhole row count is checked against that expected count.
+- A mismatch automatically triggers a slower reread of every Manhole page in that
+  work order before the final mismatch is presented. The retry may use only
+  PDF-observed IDs that still pass the established matching/new-suffix safeguards;
+  it must never invent, delete, or arbitrarily select rows solely to hit the count.
 
 ### Split Pipes / MSA
 

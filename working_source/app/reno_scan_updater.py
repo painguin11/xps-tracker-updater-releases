@@ -3200,6 +3200,53 @@ def parse_manhole_list(page, master_index, quick_text, on_row=None, on_progress=
     return rows
 
 
+def _retry_manhole_list_rows(page, master_index, quick_text, on_progress=None):
+    """Slower Reno Manhole reread used only after a confirmed-count mismatch.
+
+    It never fabricates an ID from the expected count. Every returned row still
+    comes from OCR of the PDF and uses the existing match/new-suffix rules.
+    """
+    base=render_page(page,2.5)
+    img=np.array(Image.fromarray(base).rotate(270,expand=True))
+    h,w=img.shape[:2]
+    known=master_index['manholes']; asset_format=master_index.get('asset_format')
+    rows=[]; seen=set(); start=.1680*h; step=.0260*h
+    for i in range(40):
+        if on_progress: on_progress()
+        yc=int(start+i*step)
+        if yc>=.82*h: break
+        half=max(18,int(step*.58)); y1,y2=max(0,yc-half),min(h,yc+half)
+        date_img=img[y1:y2,int(.080*w):int(.190*w)]
+        id_img=img[y1:y2,int(.135*w):int(.325*w)]
+        observations=[]
+        for value in _ocr_asset_candidates(id_img,fast_plain=False,asset_format=asset_format):
+            if value not in observations: observations.append(value)
+        try:
+            padded=cv2.copyMakeBorder(id_img,8,8,16,16,cv2.BORDER_CONSTANT,value=(255,255,255))
+            for value in _ocr_asset_candidates(padded,fast_plain=True,asset_format=asset_format):
+                if value not in observations: observations.append(value)
+            gray=cv2.cvtColor(padded,cv2.COLOR_RGB2GRAY)
+            for psm in (8,13):
+                raw=cached_ocr_string(gray,config=f'--psm {psm} -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+                for value in _printed_asset_tokens(raw,asset_format):
+                    if value not in observations: observations.append(value)
+        except Exception:
+            pass
+        sid_candidates=_ocr_digits(id_img,False)+observations
+        new_options=_new_suffix_asset_candidates(observations,known.keys())
+        new_sid=new_options[0] if new_options else ''
+        sid='' if new_sid else _best_known_id(sid_candidates,known.keys(),max_dist=1)
+        if not sid and not new_sid: continue
+        observed=sid or new_sid; key=asset_key(observed)
+        if not key or key in seen: continue
+        seen.add(key)
+        rec={'kind':'Manhole','asset':observed,'video_length':None,
+             'row_date':_parse_sheet_date(date_img),'status':'Matched' if sid else 'NEW MANHOLE'}
+        if not sid: rec['skip_update']=True
+        rows.append(rec)
+    return rows
+
+
 def _year15_oriented(page, kind, preferred_deg=None, return_deg=False):
     """Orient a B&C table page, optionally inheriting the prior table rotation.
 
@@ -4342,6 +4389,74 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
     for rec in out:
         if on_row: on_row(rec)
     return out
+
+
+def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation_deg=None):
+    """Slower B&C Manhole reread used only after a confirmed-count mismatch.
+
+    Alternate row geometry, trimmed cells, padding, and single-word segmentation
+    are allowed here. Generic unmatched guesses are not: only an existing matched
+    Manhole or a structurally valid NEW MANHOLE suffix can be returned.
+    """
+    asset_format=master_index.get('asset_format')
+    img=_year15_oriented(page,'manholes',preferred_deg=orientation_deg); h,w=img.shape[:2]
+    known=master_index['manholes']; retry_layouts=[]
+    bands,table=_table_row_bands(img,.04,.72)
+    if bands and table: retry_layouts.append((bands,table))
+    try:
+        alt_bands,alt_table=_year15_all_row_bands(img,.02,.90)
+        if alt_bands and alt_table:
+            sig=(tuple((int(a),int(b)) for a,b in alt_bands),tuple(map(int,alt_table)))
+            existing={(tuple((int(a),int(b)) for a,b in rb),tuple(map(int,rt))) for rb,rt in retry_layouts}
+            if sig not in existing: retry_layouts.append((alt_bands,alt_table))
+    except Exception:
+        pass
+
+    rows=[]; seen=set()
+    for retry_bands,retry_table in retry_layouts:
+        left,right=retry_table; tw=max(1,right-left)
+        for y1,y2 in retry_bands:
+            if on_progress: on_progress()
+            base=img[y1:y2,left:min(w,int(left+.30*tw))]
+            if not getattr(base,'size',0): continue
+            cells=[(base,False)]
+            trim=max(2,min(10,int(round(tw*.005))))
+            trimmed=img[y1:y2,max(0,left+trim):min(w,int(left+.255*tw))]
+            if getattr(trimmed,'size',0): cells.append((trimmed,True))
+            try:
+                padded=cv2.copyMakeBorder(base,10,10,20,20,cv2.BORDER_CONSTANT,value=(255,255,255))
+                cells.append((padded,True))
+            except Exception:
+                pass
+            observations=[]
+            for cell,fast in cells:
+                for value in _ocr_asset_candidates(cell,fast_plain=fast,asset_format=asset_format):
+                    if value not in observations: observations.append(value)
+                try:
+                    gray=cv2.cvtColor(cell,cv2.COLOR_RGB2GRAY)
+                    for psm in (8,13):
+                        raw=cached_ocr_string(gray,config=f'--psm {psm} -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+                        for value in _printed_asset_tokens(raw,asset_format):
+                            if value not in observations: observations.append(value)
+                except Exception:
+                    pass
+            if not observations: continue
+            item,status=_resolve_full_asset(observations,known)
+            if item is None and status!='NEW MANHOLE': continue
+            sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
+            key=item['asset_key'] if item else asset_key(sid)
+            if not key or key in seen: continue
+            seen.add(key)
+            date_img=img[y1:y2,int(left+.74*tw):right]
+            rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
+                 'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
+            rec['_field_previews']={
+                'asset':base.copy() if getattr(base,'size',0) else None,
+                'date':date_img.copy() if getattr(date_img,'size',0) else None}
+            if item is None: rec['skip_update']=True
+            rows.append(rec)
+    return rows
+
 
 def master_workbook_lock_reason(path):
     """Return a user-friendly reason when the master workbook cannot be safely edited.
@@ -6045,7 +6160,7 @@ class App(tk.Tk):
             # Stage 2: every work order is now confirmed. Process spreadsheet pages
             # sequentially and attach them to the most recent confirmed work order.
             self.status.set('All work orders confirmed. Processing spreadsheet pages...'); self.pump_analysis_ui()
-            ignored_pages=[]; validation_reports=[]; total_sources={}; manhole_rows_by_wo={}
+            ignored_pages=[]; validation_reports=[]; total_sources={}; manhole_rows_by_wo={}; manhole_retry_pages={}
             for item in page_info:
                 pi=item['index']; page=item['page']; txt=item['text']; kind=item.get('effective_kind',item['kind'])
                 if kind=='workorder':
@@ -6128,6 +6243,72 @@ class App(tk.Tk):
                 if kind=='manholes':
                     wo_key=str(current_wo.get('wo',''))
                     manhole_rows_by_wo[wo_key]=manhole_rows_by_wo.get(wo_key,0)+int(report.get('rows') or 0)
+                    manhole_retry_pages.setdefault(wo_key,[]).append({
+                        'page':page,'item':item,'txt':txt,'current_wo':dict(current_wo),
+                        'use_date':use_date,'page_number':pi+1,'data':list(data),'report':report})
+
+            # The confirmed expected count is an active recovery trigger. If the
+            # normal pass misses it, reread every Manhole page in that work order
+            # with slower Manhole-only OCR before showing the final count result.
+            for wo_info in confirmed_by_page.values():
+                expected=wo_info.get('expected_manhole_count')
+                if expected is None: continue
+                wo_key=str(wo_info.get('wo','')); expected=int(expected)
+                actual=int(manhole_rows_by_wo.get(wo_key,0))
+                if actual==expected: continue
+                contexts=manhole_retry_pages.get(wo_key,[])
+                if not contexts: continue
+                self.status.set(f'Manhole count {actual}/{expected} for W/O {wo_key} — retrying OCR...')
+                self.pump_analysis_ui()
+                existing_keys={asset_key(rec.get('asset')) for rec in self.records
+                               if rec.get('kind')=='Manhole' and str(rec.get('wo',''))==wo_key}
+                recovered=[]; recovered_keys=set()
+                for ctx in contexts:
+                    item=ctx['item']; page=ctx['page']; txt=ctx['txt']
+                    try:
+                        if idx.get('profile') in ('year15','phase2_year1'):
+                            retry_rows=_retry_year15_manhole_rows(
+                                page,idx,self.pump_analysis_ui,item.get('effective_deg'))
+                        else:
+                            retry_rows=_retry_manhole_list_rows(page,idx,txt,self.pump_analysis_ui)
+                    except AnalysisCancelled:
+                        raise
+                    except Exception:
+                        retry_rows=[]
+                    page_extras=[]
+                    for rec in retry_rows:
+                        key=asset_key(rec.get('asset'))
+                        if not key or key in existing_keys or key in recovered_keys: continue
+                        recovered_keys.add(key); recovered.append((ctx,rec,key)); page_extras.append(rec)
+                    ctx['_mh_retry_extras']=page_extras
+
+                candidate_total=actual+len(recovered)
+                # Never choose an arbitrary subset or delete a first-pass row merely
+                # to force the number. Add all independently observed recovery rows
+                # only when doing so cannot exceed the user's confirmed count.
+                if actual<expected and recovered and candidate_total<=expected:
+                    for ctx in contexts:
+                        extras=ctx.get('_mh_retry_extras') or []
+                        if not extras: continue
+                        merged=list(ctx.get('data') or [])+[dict(rec) for rec in extras]
+                        refreshed=validate_page_rows(merged,'manholes',ctx['txt'],ctx['page_number'],
+                                                     ctx['item'].get('pair_layout'),idx.get('profile'))
+                        ctx['report'].clear(); ctx['report'].update(refreshed); ctx['data']=merged
+                    for ctx,rec,key in recovered:
+                        self.commit_extracted_record(
+                            rec,ctx['current_wo'],ctx['use_date'],idx,ctx['page_number'],processed)
+                    actual=candidate_total; manhole_rows_by_wo[wo_key]=actual
+                elif actual<expected and candidate_total>expected:
+                    self.status.set(
+                        f'Manhole OCR retry found {len(recovered)} additional plausible row(s) for W/O {wo_key}, '
+                        f'which would exceed confirmed count {expected}; automatic add skipped for review.')
+                    self.pump_analysis_ui()
+
+                if actual==expected:
+                    self.status.set(f'Manhole OCR retry matched confirmed count {expected} for W/O {wo_key}.')
+                elif not (actual<expected and candidate_total>expected):
+                    self.status.set(f'Manhole OCR retry finished at {actual}/{expected} for W/O {wo_key}; review still required.')
+                self.pump_analysis_ui()
 
             self.manhole_count_validations=[]
             for wo_info in confirmed_by_page.values():

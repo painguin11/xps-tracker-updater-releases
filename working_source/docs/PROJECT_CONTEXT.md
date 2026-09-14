@@ -419,6 +419,16 @@ count against the parsed Manhole rows.
 This is a user-confirmed count safeguard, separate from pair-table printed total
 length validation.
 
+The confirmed count is also an OCR recovery trigger. After the normal Manhole
+pass finishes, any work order whose parsed count does not equal the user-confirmed
+count automatically rereads all of that work order's Manhole pages with slower
+Manhole-only alternate row/crop/segmentation passes. Newly recovered rows are
+accepted only when their IDs are actually observed in the PDF and pass the existing
+strict matching/new-suffix safeguards. The expected count never fabricates an ID,
+deletes a first-pass row, or chooses an arbitrary subset merely to make the number
+match. If recovery would exceed the confirmed count, automatic addition is skipped
+and review remains required.
+
 ## Split Pipe / MSA behavior
 
 If exactly two Pipe rows in one work order represent the same Pipe as separate

@@ -4254,9 +4254,10 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
     asset_format=master_index.get('asset_format')
     img=_year15_oriented(page,'manholes',preferred_deg=orientation_deg); h,w=img.shape[:2]
     known=master_index['manholes']
-    # This portrait report OCRs reliably as positioned words even when scan skew
-    # prevents horizontal-line detection. Read every ID-like token in the left
-    # portion first and resolve it against the master IDs.
+    # This portrait report OCRs reliably as positioned words on many scans, but a
+    # ruled grid can also make whole-page Tesseract skip most rows. Keep the
+    # positioned-token path, then compare it with the physical row-grid path and
+    # use whichever preserves more distinct printed Manhole rows.
     token_rows=[]; token_dates=[]
     for psm in (6,11):
         if on_progress: on_progress()
@@ -4273,6 +4274,8 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             if not formatted: continue
             item,status=_resolve_full_asset(formatted,known)
             token_rows.append((y+hh//2,item,status,formatted[0]))
+
+    token_out=[]
     if token_rows:
         token_rows.sort(key=lambda x:x[0]); clustered=[]
         for row in token_rows:
@@ -4280,7 +4283,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 # Prefer a matched reading over an ambiguous reading of the same row.
                 if clustered[-1][1] is None and row[1] is not None: clustered[-1]=row
             else: clustered.append(row)
-        seen=set(); out=[]
+        seen=set()
         for yc,item,status,raw in clustered:
             if on_progress: on_progress()
             sid=item['asset'] if item else (_best_observed_asset_id([raw],known) or canonical_asset_id(raw))
@@ -4298,31 +4301,47 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 'asset':asset_preview.copy() if getattr(asset_preview,'size',0) else None,
                 'date':date_preview.copy() if getattr(date_preview,'size',0) else None}
             if item is None: rec['skip_update']=True
-            seen.add(unique_key); out.append(rec)
-            if on_row: on_row(rec)
-        return out
+            seen.add(unique_key); token_out.append(rec)
+
+    grid_out=[]
     bands,table=_table_row_bands(img,.04,.72)
-    if not bands:return []
-    left,right=table; tw=max(1,right-left); rows=[]; seen=set()
-    for y1,y2 in bands:
-        if on_progress: on_progress()
-        id_img=img[y1:y2,left:min(w,int(left+.27*tw))]
-        observations=_ocr_asset_candidates(id_img,asset_format=asset_format); item,status=_resolve_full_asset(observations,known)
-        if not observations: continue
-        sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
-        date_img=img[y1:y2,int(left+.74*tw):right]
-        rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
-             'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
-        rec['_field_previews']={
-            'asset':id_img.copy() if getattr(id_img,'size',0) else None,
-            'date':date_img.copy() if getattr(date_img,'size',0) else None}
-        if item is None: rec['skip_update']=True
-        if rec['asset'] in seen: continue
-        seen.add(rec['asset']); rows.append(rec)
+    if bands and table:
+        left,right=table; tw=max(1,right-left); seen=set()
+        for y1,y2 in bands:
+            if on_progress: on_progress()
+            id_img=img[y1:y2,left:min(w,int(left+.27*tw))]
+            observations=_ocr_asset_candidates(id_img,asset_format=asset_format)
+            if not observations:
+                # Some B&C scans put the first ID glyph directly against the left
+                # vertical rule. Tight-cell OCR can then attach that rule as a
+                # leading I/J/L-like character, which makes the otherwise-complete
+                # ID fail the strict project-format token check. Retry only this
+                # Manhole ID cell with a few pixels of left-rule trim and slightly
+                # less right-side street bleed; do not loosen the global ID parser.
+                left_trim=max(2,min(8,int(round(tw*.004))))
+                retry_left=max(0,left+left_trim)
+                retry_right=min(w,int(left+.245*tw))
+                if retry_right>retry_left:
+                    retry_img=img[y1:y2,retry_left:retry_right]
+                    observations=_ocr_asset_candidates(
+                        retry_img,fast_plain=True,asset_format=asset_format)
+            if not observations: continue
+            item,status=_resolve_full_asset(observations,known)
+            sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
+            date_img=img[y1:y2,int(left+.74*tw):right]
+            rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
+                 'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
+            rec['_field_previews']={
+                'asset':id_img.copy() if getattr(id_img,'size',0) else None,
+                'date':date_img.copy() if getattr(date_img,'size',0) else None}
+            if item is None: rec['skip_update']=True
+            if rec['asset'] in seen: continue
+            seen.add(rec['asset']); grid_out.append(rec)
+
+    out=grid_out if len(grid_out)>len(token_out) else token_out
+    for rec in out:
         if on_row: on_row(rec)
-    return rows
-
-
+    return out
 
 def master_workbook_lock_reason(path):
     """Return a user-friendly reason when the master workbook cannot be safely edited.

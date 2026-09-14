@@ -535,6 +535,25 @@ must remain private and must not be committed or packaged.
   Resolved, and No Action Needed.
 - Keep the green workbook header and edit-field PDF previews.
 
+## Pending after v102 — Manhole partial-token recovery
+
+- A supplied B&C Small Diameter Phase 2 Year 1 Manhole scan contains 21 printed
+  rows, but whole-page positioned-token OCR can see only a small subset because
+  the ruled table interferes with Tesseract segmentation.
+- The Manhole parser now keeps the positioned-token result and also evaluates the
+  existing physical row-grid path, then returns whichever preserves more distinct
+  printed Manhole rows. This is Manhole-only and does not change Pipe/Cleaning
+  matching or global asset-ID rules.
+- When a ruled Manhole row produces no valid ID, one narrow retry trims a few
+  pixels of the left grid rule and reduces right-side street bleed before using
+  the existing strict asset parser. This recovers complete IDs without weakening
+  prefix/dash/suffix safeguards.
+- The supplied private PDF was used locally for diagnosis and recovered all
+  21/21 printed Manhole IDs with this row-grid/narrow-cell path. The customer PDF
+  remains private and uncommitted.
+- Permanent synthetic regression:
+  `working_source/tests/regression_post_v102_manhole_partial_tokens.py`.
+
 ## Released in v95
 
 1. **Faint/dashed compact-table row detection**

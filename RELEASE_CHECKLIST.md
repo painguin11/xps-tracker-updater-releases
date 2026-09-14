@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v102 Manhole partial-token/grid-row recovery regression;
 - post-v97 Cleaning clipped-digit recovery regression;
 - post-v96 editable MSA field / 8-26 OCR regression;
 - post-v95 new-packet OCR/direction/total/layout regression;
@@ -66,6 +67,7 @@ The active baseline includes, at minimum:
 
 The following post-version-named regressions are already released and remain required:
 
+- `working_source/tests/regression_post_v102_manhole_partial_tokens.py`
 - `working_source/tests/regression_post_v100_trouble_cells.py`
 - `working_source/tests/regression_post_v100_826_trouble_geometry.py`
 - `working_source/tests/regression_post_v99_faint_vertical_grid.py`

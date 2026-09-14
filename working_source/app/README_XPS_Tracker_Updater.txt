@@ -1,13 +1,13 @@
-XPS Tracker Updater v102
+XPS Tracker Updater v103
 ========================
 
-Current status (September 11, 2026)
+Current status (September 14, 2026)
 ----------------------------------
-Production release: v102. Development: v95-work / working_source.
+Production release: v103. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v102 adds selective whole-work-order discard, an Update Master option to ignore
-problem work orders and continue with clean work orders, and a larger Manhole
-count confirmation preview.
+v103 improves Manhole recovery: partial/clipped B&C rows get a guarded ruled-row
+reread, and a user-confirmed expected Manhole count now triggers a slower OCR
+retry whenever the first pass does not match that count.
 
 Purpose
 -------
@@ -699,3 +699,18 @@ Version 102 selective work-order review controls
 - Enlarges the Manhole expected-count Description of Work preview for easier
   reading of small handwriting.
 - Core OCR/table parsing behavior remains unchanged from v101.
+
+Version 103 Manhole OCR count recovery
+--------------------------------------
+- Compares positioned-token Manhole results with physical ruled-row parsing so
+  partially read B&C reports can recover rows missed by whole-page token OCR.
+- If the user-confirmed expected Manhole count does not match the first pass,
+  automatically rereads every Manhole page in that work order using slower
+  alternate row, crop, padding, and OCR segmentation passes.
+- Count-driven recovery accepts only IDs actually observed in the PDF and still
+  subject to the existing strict matching/new-suffix safeguards.
+- The expected count never fabricates IDs, deletes first-pass rows, or chooses an
+  arbitrary subset merely to force the count to match; unsafe over-recovery stays
+  in review.
+- Preserves the full v102 work-order review controls and all earlier OCR, matching,
+  continuation, MSA, Trouble Ticket, total, and master-write safeguards.

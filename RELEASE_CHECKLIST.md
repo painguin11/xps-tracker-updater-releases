@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v104 production baseline**, the retained
+This checklist applies to the current **v105 production baseline**, the retained
 `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -159,6 +159,10 @@ it. Resolve the behavior intentionally.
   work order before the final mismatch is presented. The retry may use only
   PDF-observed IDs that still pass the established matching/new-suffix safeguards;
   it must never invent, delete, or arbitrarily select rows solely to hit the count.
+- If one B&C Manhole cell produces both the existing base ID and a one-letter
+  suffixed ID across OCR variants, the suffix may override the base only when it
+  survives the existing independent multi-crop suffix confirmation. A confirmed
+  suffix must remain `NEW MANHOLE` in both the normal parse and expected-count retry.
 
 ### Split Pipes / MSA
 
@@ -301,7 +305,18 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v104 is the current production release:
+v105 is the current production release:
+
+- Release commit: `4cc9eea175701d4920713603aa8ad644fe642426`
+- Asset: `XPS_Tracker_Updater_v105.zip`
+- Size: `320440` bytes
+- SHA-256: `5be6a19ed7422e9277a43f13c15cc56750b5907d5e07051f925f7934d1abf73b`
+- Public manifest version/URL/SHA were re-read and verified after release asset re-download.
+- 53/53 active Linux regression scripts passed on the versioned release source. Private fixture OCR and Windows Excel COM/live Tk GUI checks remain platform/fixture limitations rather than release-job coverage.
+
+Previous verified production reference follows for history.
+
+v104 was the previous production release:
 
 - Release commit: `1a3fa169e17b9ba9f65d4c7f4ed86b9b70a6d2e8`
 - Asset: `XPS_Tracker_Updater_v104.zip`

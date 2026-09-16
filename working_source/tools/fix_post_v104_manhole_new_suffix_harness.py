@@ -14,12 +14,19 @@ def patch_reordered():
     elif 'def bitwise_not(image):' not in text:
         raise SystemExit('reordered regression CV2 anchor not found')
 
+    old_count="assert len(rows)==37,rows\n"
+    new_count="assert len(rows)==37, f'expected 37 physical rows including NEW DN-1788A; got {len(rows)} rows: {[row[\"asset\"] for row in rows]}'\n"
+    if old_count in text:
+        text=text.replace(old_count,new_count,1)
+    elif 'expected 37 physical rows including NEW DN-1788A' not in text:
+        raise SystemExit('reordered regression row-count assertion anchor not found')
+
     old_assert="assert [row['asset'] for row in rows]==IDS,[row['asset'] for row in rows]\n"
-    new_assert="assert [row['asset'] for row in rows]==IDS, f'expected 37 physical rows including NEW DN-1788A; got assets: {[row[\"asset\"] for row in rows]}'\n"
+    new_assert="assert [row['asset'] for row in rows]==IDS, f'expected exact 37-row asset order including NEW DN-1788A; got assets: {[row[\"asset\"] for row in rows]}'\n"
     if old_assert in text:
         text=text.replace(old_assert,new_assert,1)
-    elif 'expected 37 physical rows including NEW DN-1788A' not in text:
-        raise SystemExit('reordered regression assertion anchor not found')
+    elif 'expected exact 37-row asset order including NEW DN-1788A' not in text:
+        raise SystemExit('reordered regression asset-order assertion anchor not found')
 
     if "assert 'grid_has_confirmed_new' in text" not in text:
         marker="retry_node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_retry_year15_manhole_rows')\n"

@@ -40,7 +40,10 @@ jobs:
           fi
           grep -q 'expected 37 physical rows including NEW DN-1788A' /tmp/red.log
           echo 'Confirmed red state: v104 collapses mixed DN-1788 / DN-1788A evidence instead of retaining the confirmed new suffix.'
-          git checkout -- working_source/tests/regression_post_v103_manhole_reordered_columns.py working_source/tests/regression_post_v102_manhole_expected_count_retry.py
+          git checkout -- \
+            working_source/tests/regression_post_v103_manhole_reordered_columns.py \
+            working_source/tests/regression_post_v102_manhole_expected_count_retry.py \
+            working_source/tests/regression_post_v102_manhole_partial_tokens.py
 
       - name: Apply source, regression, compatibility, and documentation fix
         run: |
@@ -55,6 +58,7 @@ jobs:
           set -euo pipefail
           python working_source/tests/regression_post_v103_manhole_reordered_columns.py
           python working_source/tests/regression_post_v102_manhole_expected_count_retry.py
+          python working_source/tests/regression_post_v102_manhole_partial_tokens.py
 
       - name: Run full active regression suite
         run: |
@@ -141,6 +145,7 @@ jobs:
           git add working_source/app/reno_scan_updater.py
           git add working_source/tests/regression_post_v103_manhole_reordered_columns.py
           git add working_source/tests/regression_post_v102_manhole_expected_count_retry.py
+          git add working_source/tests/regression_post_v102_manhole_partial_tokens.py
           git add PROJECT_CONTEXT.md RELEASE_CHECKLIST.md
           git add working_source/docs/PROJECT_CONTEXT.md working_source/docs/RELEASE_CHECKLIST.md
           git diff --cached --check

@@ -1,0 +1,22 @@
+name: Check post-v103 reordered Manhole columns
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_post_v103_manhole_reordered_columns_red'
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+      - name: Install test dependency
+        run: python -m pip install --quiet numpy
+      - name: Run reordered-column regression
+        run: python working_source/tests/regression_post_v103_manhole_reordered_columns.py

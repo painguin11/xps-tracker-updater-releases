@@ -1,0 +1,259 @@
+name: Apply post-v103 reordered Manhole columns
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_post_v103_manhole_reordered_columns'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Apply Manhole column-order fix
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path=Path('working_source/app/reno_scan_updater.py')
+          text=path.read_text(encoding='utf-8')
+
+          marker='def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, orientation_deg=None):\n'
+          helper='''def _year15_manhole_column_boxes(img,bands,table):
+    """Locate Manhole Number and Date cells from the printed header order.
+
+    B&C Manhole sheets exist in at least two four-column layouts: the released
+    layout starts with Manhole Number and ends with Date, while another layout
+    starts with Date and places Manhole Number second.  Header token positions
+    select the physical cells without weakening asset-ID matching.  If header OCR
+    is unusable, preserve the established v103 first-ID / last-Date fallback.
+    """
+    fallback={'asset':(0.0,.27),'date':(.74,1.0),'source':'legacy'}
+    if not bands or not table:
+        return fallback
+    left,right=map(int,table); tw=max(1,right-left); h,w=img.shape[:2]
+    for y1,y2 in list(bands)[:4]:
+        crop=img[max(0,int(y1)):min(h,int(y2)),max(0,left):min(w,right)]
+        if not getattr(crop,'size',0):
+            continue
+        scale=max(3,round(120/max(1,crop.shape[0])))
+        enlarged=cv2.resize(crop,None,fx=scale,fy=scale,interpolation=cv2.INTER_CUBIC)
+        gray=cv2.cvtColor(enlarged,cv2.COLOR_RGB2GRAY)
+        try:
+            data=pytesseract.image_to_data(gray,config='--psm 7',output_type=pytesseract.Output.DICT)
+        except Exception:
+            continue
+        starts={}; width=max(1,enlarged.shape[1])
+        for i,raw in enumerate(data.get('text',[])):
+            token=re.sub(r'[^a-z]','',str(raw or '').lower())
+            if not token:
+                continue
+            rel=max(0.0,min(1.0,float(data['left'][i])/width))
+            if 'manhole' in token and 'asset' not in starts:
+                starts['asset']=rel
+            elif 'street' in token and 'street' not in starts:
+                starts['street']=rel
+            elif 'drainage' in token and 'drainage' not in starts:
+                starts['drainage']=rel
+            elif (token=='date' or (token.endswith('ate') and token[:1] in ('d','v','o'))) and 'date' not in starts:
+                starts['date']=rel
+        if 'asset' not in starts or 'date' not in starts or len(starts)<3:
+            continue
+        ordered=sorted((position,role) for role,position in starts.items())
+        role_index={role:index for index,(_,role) in enumerate(ordered)}
+        margin=.004
+        def role_box(role):
+            index=role_index[role]
+            start=max(0.0,ordered[index][0]-margin)
+            if index==0 and start<.03:
+                start=0.0
+            end=1.0 if index==len(ordered)-1 else max(start+.04,ordered[index+1][0]-margin)
+            return (start,min(1.0,end))
+        asset_box=role_box('asset'); date_box=role_box('date')
+        if asset_box[1]-asset_box[0]<.10 or date_box[1]-date_box[0]<.08:
+            continue
+        return {'asset':asset_box,'date':date_box,'source':'header'}
+    return fallback
+
+
+'''
+          if '_year15_manhole_column_boxes' not in text:
+              if marker not in text:
+                  raise SystemExit('parse_year15_manholes marker not found')
+              text=text.replace(marker,helper+marker,1)
+
+          start=text.index(marker)
+          end=text.index('\ndef _retry_year15_manhole_rows',start)
+          func=text[start:end]
+          replacements=[
+              ('bands,table=_table_row_bands(img,.04,.72)',
+               'bands,table=_table_row_bands(img,.04,.90)'),
+              ('left,right=table; tw=max(1,right-left); seen=set()',
+               "left,right=table; tw=max(1,right-left); seen=set()\n        column_boxes=_year15_manhole_column_boxes(img,bands,table)\n        asset_box=column_boxes['asset']; date_box=column_boxes['date']\n        asset_left=max(0,int(left+asset_box[0]*tw)); asset_right=min(w,int(left+asset_box[1]*tw))\n        date_left=max(0,int(left+date_box[0]*tw)); date_right=min(w,int(left+date_box[1]*tw))"),
+              ('id_img=img[y1:y2,left:min(w,int(left+.27*tw))]',
+               'id_img=img[y1:y2,asset_left:asset_right]'),
+              ('retry_left=max(0,left+left_trim)\n                retry_right=min(w,int(left+.245*tw))',
+               "retry_left=max(0,asset_left+left_trim)\n                right_trim=max(2,int(round(max(1,asset_right-asset_left)*.08)))\n                retry_right=max(retry_left+1,asset_right-right_trim)"),
+              ('date_img=img[y1:y2,int(left+.74*tw):right]',
+               'date_img=img[y1:y2,date_left:date_right]'),
+          ]
+          for old,new in replacements:
+              if old not in func:
+                  raise SystemExit(f'parse_year15_manholes patch target missing: {old!r}')
+              func=func.replace(old,new,1)
+          text=text[:start]+func+text[end:]
+
+          retry_marker='def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation_deg=None):\n'
+          rstart=text.index(retry_marker)
+          rend=text.index('\ndef master_workbook_lock_reason',rstart)
+          retry=text[rstart:rend]
+          replacements=[
+              ('bands,table=_table_row_bands(img,.04,.72)',
+               'bands,table=_table_row_bands(img,.04,.90)'),
+              ('left,right=retry_table; tw=max(1,right-left)\n        for y1,y2 in retry_bands:',
+               "left,right=retry_table; tw=max(1,right-left)\n        column_boxes=_year15_manhole_column_boxes(img,retry_bands,retry_table)\n        asset_box=column_boxes['asset']; date_box=column_boxes['date']\n        asset_left=max(0,int(left+asset_box[0]*tw)); asset_right=min(w,int(left+asset_box[1]*tw))\n        date_left=max(0,int(left+date_box[0]*tw)); date_right=min(w,int(left+date_box[1]*tw))\n        for y1,y2 in retry_bands:"),
+              ('base=img[y1:y2,left:min(w,int(left+.30*tw))]',
+               'base=img[y1:y2,asset_left:asset_right]'),
+              ('trimmed=img[y1:y2,max(0,left+trim):min(w,int(left+.255*tw))]',
+               "right_trim=max(2,int(round(max(1,asset_right-asset_left)*.07)))\n            trimmed=img[y1:y2,max(0,asset_left+trim):max(asset_left+trim+1,asset_right-right_trim)]"),
+              ('date_img=img[y1:y2,int(left+.74*tw):right]',
+               'date_img=img[y1:y2,date_left:date_right]'),
+          ]
+          for old,new in replacements:
+              if old not in retry:
+                  raise SystemExit(f'_retry_year15_manhole_rows patch target missing: {old!r}')
+              retry=retry.replace(old,new,1)
+          text=text[:rstart]+retry+text[rend:]
+          path.write_text(text,encoding='utf-8')
+          PY
+          python -m py_compile working_source/app/reno_scan_updater.py
+          git diff --check
+
+      - name: Run reordered-column regression
+        run: python working_source/tests/regression_post_v103_manhole_reordered_columns.py
+
+      - name: Run full active regression suite
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess,sys
+          tests=[
+            'regression_post_v103_manhole_reordered_columns.py',
+            'regression_post_v102_manhole_expected_count_retry.py',
+            'regression_post_v102_manhole_partial_tokens.py',
+            'regression_post_v100_826_trouble_geometry.py',
+            'regression_post_v100_trouble_cells.py',
+            'regression_trouble_workbook.py',
+            'regression_post_v99_faint_vertical_grid.py',
+            'regression_post_v98_short_wide_compact_table.py',
+            'regression_post_v97_cleaning_clipped_digits.py',
+            'regression_post_v96_msa_editable_fields.py',
+            'regression_post_v95_new_packet_ocr.py',
+            'regression_post_v95_padded_endpoint_ids.py',
+            'regression_post_v95_msa_suffix_review.py',
+            'regression_v95_faint_compact_rows.py',
+            'regression_v95_exact_endpoint_priority.py',
+            'regression_v94_stacked_endpoint_digits.py',
+            'regression_v93_workorder_low_confidence_blank.py',
+            'regression_v93_new_asset_notes.py',
+            'regression_v92_workorder_4_or_5_digits.py',
+            'regression_v91_workorder_color_ocr.py',
+            'regression_v91_new_asset_preview_and_endpoint_recovery.py',
+            'regression_v90_review_ui.py',
+            'regression_v89_review_workflow.py',
+            'regression_v89_printed_pair_identity.py',
+            'regression_v89_manhole_count_and_final_total.py',
+            'regression_v88_continuations.py',
+            'regression_v87_total_summary_separator.py',
+            'regression_v86_assets_and_edit.py',
+            'regression_v85_edit_row_previews.py',
+            'regression_v85_mandatory_rows_and_length_votes.py',
+            'regression_v84_real_packet_length_logic.py',
+            'regression_v83_length_recovery.py',
+            'regression_v83_exact_pdf_numbers.py',
+            'regression_v83_total_preview_group_errors.py',
+            'regression_v82_pair_video_lengths.py',
+            'regression_v82_master_asset_format.py',
+            'regression_v82_suffix_guard.py',
+            'regression_v82_cleaning_header_noise.py',
+            'regression_v82_layout_threshold.py',
+            'regression_v81_header_outline.py',
+            'regression_v80_ocr_total_ui.py',
+            'regression_v79_layout_speed.py',
+            'regression_v78_rollback.py',
+            'regression_v75_811_ocr.py',
+            'regression_v74_row_filtering.py',
+            'regression_v73_total_dates.py',
+            'regression_compact_table_fallback.py',
+            'regression_length_totals.py',
+            'regression_split_pipes.py',
+            'regression_new_assets.py',
+            'regression_master_insert.py',
+            'regression_r2_endpoint_ocr.py',
+            'regression_v102_review_wrapper.py',
+          ]
+          root=Path('working_source/tests')
+          for name in tests:
+              path=root/name
+              if not path.exists(): raise SystemExit(f'Missing active regression: {path}')
+              print(f'===== {path} =====',flush=True)
+              subprocess.run([sys.executable,str(path)],check=True)
+          print(f'FULL ACTIVE REGRESSION SUITE: {len(tests)}/{len(tests)} passed')
+          PY
+          git diff --check
+
+      - name: Update docs and commit fix
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          context=Path('PROJECT_CONTEXT.md')
+          text=context.read_text(encoding='utf-8')
+          section='''\n## Pending after v103 - reordered Manhole table columns\n\n- A supplied private five-page B&C packet has a 37-row Manhole table on page 2 with `Date` first and `Manhole Number` second. The work-order page confirms 37 Manholes.\n- v103 still assumed the older Manhole grid order (`Manhole Number` first, `Date` last) in its ruled-row and count-retry crops. Whole-page OCR saw only two IDs on this scan, so the fuller grid path could not recover the table.\n- The Manhole parser now reads the printed header positions to locate the Manhole Number and Date cells, while retaining the v103 fixed-column fallback if header OCR is unusable. It also extends Manhole row-band detection from 72% to 90% of page height so long tables keep their final physical row.\n- The count-mismatch retry uses the same detected Manhole/Date cells. Global asset-ID syntax and matching safeguards are unchanged.\n- Permanent synthetic regression: `working_source/tests/regression_post_v103_manhole_reordered_columns.py`.\n- The supplied customer PDF remains private and is not committed or packaged.\n'''
+          if '## Pending after v103 - reordered Manhole table columns' not in text:
+              insert=text.find('\n## Released in v103')
+              if insert<0: insert=text.find('\n## Released in v102')
+              if insert<0: insert=len(text)
+              text=text[:insert]+section+text[insert:]
+              context.write_text(text,encoding='utf-8')
+
+          checklist=Path('RELEASE_CHECKLIST.md')
+          text=checklist.read_text(encoding='utf-8')
+          bullet='- post-v103 reordered Manhole Date/Manhole-Number column regression;\n'
+          marker='The active baseline includes, at minimum:\n\n'
+          if bullet not in text:
+              text=text.replace(marker,marker+bullet,1)
+          named='- `working_source/tests/regression_post_v103_manhole_reordered_columns.py`\n'
+          marker2='The following post-version-named regressions are already released and remain required:\n\n'
+          if named not in text:
+              text=text.replace(marker2,marker2+named,1)
+          checklist.write_text(text,encoding='utf-8')
+
+          docs=Path('working_source/docs')
+          (docs/'PROJECT_CONTEXT.md').write_text(context.read_text(encoding='utf-8'),encoding='utf-8')
+          (docs/'RELEASE_CHECKLIST.md').write_text(checklist.read_text(encoding='utf-8'),encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/check-post-v103-manhole-reordered-columns.yml .trigger_post_v103_manhole_reordered_columns_red .trigger_post_v103_manhole_reordered_columns
+          git add working_source/app/reno_scan_updater.py working_source/tests/regression_post_v103_manhole_reordered_columns.py PROJECT_CONTEXT.md RELEASE_CHECKLIST.md working_source/docs/PROJECT_CONTEXT.md working_source/docs/RELEASE_CHECKLIST.md
+          git commit -m 'Handle reordered B&C Manhole columns'
+          git push origin HEAD:v95-work

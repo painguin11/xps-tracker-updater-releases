@@ -1,13 +1,13 @@
-XPS Tracker Updater v103
+XPS Tracker Updater v104
 ========================
 
-Current status (September 14, 2026)
+Current status (September 16, 2026)
 ----------------------------------
-Production release: v103. Development: v95-work / working_source.
+Production release: v104. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v103 improves Manhole recovery: partial/clipped B&C rows get a guarded ruled-row
-reread, and a user-confirmed expected Manhole count now triggers a slower OCR
-retry whenever the first pass does not match that count.
+v104 supports reordered B&C Manhole tables whose printed columns place Date
+before Manhole Number, and extends long-table row detection so the final
+physical Manhole row is not lost near the bottom of the page.
 
 Purpose
 -------
@@ -714,3 +714,16 @@ Version 103 Manhole OCR count recovery
   in review.
 - Preserves the full v102 work-order review controls and all earlier OCR, matching,
   continuation, MSA, Trouble Ticket, total, and master-write safeguards.
+
+Version 104 reordered Manhole table support
+------------------------------------------
+- Reads the printed Manhole table header to locate Manhole Number and Date cells
+  instead of assuming Manhole Number is always first and Date is always last.
+- Supports the B&C layout Date | Manhole Number | Street | Drainage Area while
+  preserving the established v103 Manhole Number-first layout as a safe fallback.
+- Extends Manhole ruled-row detection far enough down the page to retain long
+  tables whose final row appears below the old 72-percent scan limit.
+- Uses the same detected Manhole/Date cells during expected-count retry.
+- Preserves strict asset-ID matching, expected-count safeguards, and all v103 and
+  earlier OCR, review, continuation, MSA, Trouble Ticket, total, and master-write
+  behavior.

@@ -6,23 +6,22 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v103
+## Current production release: v105
 
-- Release: [XPS Tracker Updater v103](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v103)
-- Release commit: `97254c534e2d6beb92fcce81bf00a9ed66db071d`
-- Asset: `XPS_Tracker_Updater_v103.zip`
-- Size: `318805` bytes
-- SHA-256: `0235204171d6ff172eb6f8cb56ace5480e2056efaa6798817222fcb3d59e02a7`
+- Release: [XPS Tracker Updater v105](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v105)
+- Release commit: `4cc9eea175701d4920713603aa8ad644fe642426`
+- Asset: `XPS_Tracker_Updater_v105.zip`
+- Size: `320440` bytes
+- SHA-256: `5be6a19ed7422e9277a43f13c15cc56750b5907d5e07051f925f7934d1abf73b`
 
 The production updater reads `update_manifest.json` on `main`, which points to
-this verified v103 asset. Development remains on `v95-work`, under `working_source/`.
+this verified v105 asset. Development remains on `v95-work`, under `working_source/`.
 Old source bundles and release notes are historical; fetch the latest development
 head and read its project instructions before editing.
 
-v103 improves Manhole OCR recovery for partially read ruled B&C tables and
-automatically performs a slower Manhole-only reread when the parsed row count does
-not match the user-confirmed expected count. Count-driven recovery remains grounded
-in PDF-observed IDs and never fabricates or trims rows just to force the count.
+v105 preserves independently confirmed one-letter NEW MANHOLE suffixes when a
+competing OCR observation matches an existing base ID. The suffix must survive
+independent multi-crop confirmation before it is treated as NEW MANHOLE.
 
 ## v85
 
@@ -132,6 +131,14 @@ in PDF-observed IDs and never fabricates or trims rows just to force the count.
 - Keeps recovery conservative: only PDF-observed IDs that pass existing matching/new-suffix safeguards may be added; rows are never fabricated, deleted, or arbitrarily selected to force the count.
 - Preserves all v102 review controls plus earlier Pipe, Cleaning, Manhole, Trouble Ticket, MSA, continuation, total, and master-write safeguards.
 - Passed all **52 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.
+
+## v105
+
+- Preserves independently confirmed one-letter NEW MANHOLE suffixes instead of collapsing them to an existing base Manhole.
+- Applies the same confirmation rule during expected-count retry.
+- Prefers tied ruled-row OCR when it carries an independently confirmed new suffix.
+- Keeps generic unmatched IDs and unconfirmed suffixes conservative and review-only.
+- Passed all **53 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.
 
 ## Development baseline
 

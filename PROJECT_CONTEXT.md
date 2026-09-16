@@ -4,25 +4,37 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v104**.
+Current production version: **v105**.
 
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the full released v104 baseline and its documented safeguards. Do **not** publish another
+`v95-work`. Start future work from that branch and preserve the full released v105 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
 
 ## State audit — September 16, 2026
 
-- Current production release: **v104** at release source commit `1a3fa169e17b9ba9f65d4c7f4ed86b9b70a6d2e8`.
-- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 104.
-- The production updater reads `main/update_manifest.json`, which points to the verified v104 public asset and SHA-256 below.
-- The v104 Linux release job compiled the app, passed the full 53/53 active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, verified exact size/SHA-256, and only then advanced the manifest.
+- Current production release: **v105** at release source commit `4cc9eea175701d4920713603aa8ad644fe642426`.
+- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 105.
+- The production updater reads `main/update_manifest.json`, which points to the verified v105 public asset and SHA-256 below.
+- The v105 Linux release job compiled the app, passed the full 53/53 active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, verified exact size/SHA-256, and only then advanced the manifest.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
-- Temporary v104 publishing/documentation machinery is removed after this sync.
+- Temporary v105 publishing/documentation machinery is removed after this sync.
 
-## Pending after v104 — preserve independently confirmed new Manhole suffixes
+## Released in v105 — preserve independently confirmed new Manhole suffixes
+
+Public v105 release:
+
+- Tag: `v105`
+- Release title: `XPS Tracker Updater v105`
+- Release commit: `4cc9eea175701d4920713603aa8ad644fe642426`
+- Asset: `XPS_Tracker_Updater_v105.zip`
+- Asset size: `320440` bytes
+- SHA-256: `5be6a19ed7422e9277a43f13c15cc56750b5907d5e07051f925f7934d1abf73b`
+- Public updater manifest on `main` points to `https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v105/XPS_Tracker_Updater_v105.zip` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.
+- Full active Linux CI suite: **53/53 regression scripts passed** on the v105-versioned source. Private customer fixture OCR and Windows Excel COM/live Tk GUI paths were not run by this Linux release job.
+
 
 - A long Date-first B&C Manhole table exposed a second failure mode after the v104 column fix: the PDF can clearly print a one-letter suffixed Manhole that is absent from the master while another OCR variant reads the same cell as its existing unsuffixed base.
 - The B&C Manhole row parser and expected-count retry now independently reread the physical Manhole cell before resolving mixed base/suffix evidence. A suffix must survive the existing multi-crop confirmation helper before it can override an observed base ID and become `NEW MANHOLE`.

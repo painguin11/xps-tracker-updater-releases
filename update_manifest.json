@@ -1,11 +1,11 @@
 {
-  "version": "103",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v103/XPS_Tracker_Updater_v103.zip",
-  "sha256": "0235204171d6ff172eb6f8cb56ace5480e2056efaa6798817222fcb3d59e02a7",
+  "version": "104",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v104/XPS_Tracker_Updater_v104.zip",
+  "sha256": "7647fab37a7d5842b6d5b59deb5a6202d9aa8a763576488126a72a1280bccc4a",
   "release_notes": [
-    "Recover Manhole rows missed when whole-page token OCR sees only part of a ruled B&C table",
-    "Automatically retry Manhole OCR when the parsed count differs from the user-confirmed expected count",
-    "Use slower alternate row, crop, padding, and OCR segmentation passes only after a count mismatch",
-    "Keep count recovery conservative: only PDF-observed IDs are accepted and rows are never fabricated or trimmed just to hit the count"
+    "Support B&C Manhole tables where Date appears before Manhole Number",
+    "Detect Manhole Number and Date cells from the printed table header instead of fixed column positions",
+    "Extend long Manhole table row detection so final rows near the bottom of the page are retained",
+    "Use the same detected columns during expected-count retry while preserving strict asset-ID safeguards"
   ]
 }

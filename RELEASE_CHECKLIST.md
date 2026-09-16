@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v103 production baseline**, the retained
+This checklist applies to the current **v104 production baseline**, the retained
 `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v103 reordered Manhole Date/Manhole-Number column regression;
 - post-v102 Manhole expected-count retry regression;
 - post-v102 Manhole partial-token/grid-row recovery regression;
 - post-v97 Cleaning clipped-digit recovery regression;
@@ -68,6 +69,7 @@ The active baseline includes, at minimum:
 
 The following post-version-named regressions are already released and remain required:
 
+- `working_source/tests/regression_post_v103_manhole_reordered_columns.py`
 - `working_source/tests/regression_post_v102_manhole_expected_count_retry.py`
 - `working_source/tests/regression_post_v102_manhole_partial_tokens.py`
 - `working_source/tests/regression_post_v100_trouble_cells.py`
@@ -299,7 +301,18 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v103 is the current production release:
+v104 is the current production release:
+
+- Release commit: `1a3fa169e17b9ba9f65d4c7f4ed86b9b70a6d2e8`
+- Asset: `XPS_Tracker_Updater_v104.zip`
+- Size: `319878` bytes
+- SHA-256: `7647fab37a7d5842b6d5b59deb5a6202d9aa8a763576488126a72a1280bccc4a`
+- Public manifest version/URL/SHA were re-read and verified after release asset re-download.
+- 53/53 active Linux regression scripts passed on the versioned release source. Private fixture OCR and Windows Excel COM/live Tk GUI checks remain platform/fixture limitations rather than release-job coverage.
+
+Previous verified production reference follows for history.
+
+v103 was the previous production release:
 
 - Release commit: `97254c534e2d6beb92fcce81bf00a9ed66db071d`
 - Asset: `XPS_Tracker_Updater_v103.zip`
@@ -307,8 +320,6 @@ v103 is the current production release:
 - SHA-256: `0235204171d6ff172eb6f8cb56ace5480e2056efaa6798817222fcb3d59e02a7`
 - Public manifest version/URL/SHA were re-read and verified after release asset re-download.
 - 52/52 active Linux regression scripts passed on the versioned release source. Private fixture OCR and Windows Excel COM/live Tk GUI checks remain platform/fixture limitations rather than release-job coverage.
-
-Previous verified production reference follows for history.
 
 v102 was the previous production release:
 

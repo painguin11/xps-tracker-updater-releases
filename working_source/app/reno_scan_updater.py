@@ -4297,6 +4297,61 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
     return rows
 
 
+def _year15_manhole_column_boxes(img,bands,table):
+    """Locate Manhole Number and Date cells from the printed header order.
+
+    B&C Manhole sheets exist in at least two four-column layouts: the released
+    layout starts with Manhole Number and ends with Date, while another layout
+    starts with Date and places Manhole Number second. Header token positions
+    select the physical cells without weakening asset-ID matching. If header OCR
+    is unusable, preserve the established v103 first-ID / last-Date fallback.
+    """
+    fallback={'asset':(0.0,.27),'date':(.74,1.0),'source':'legacy'}
+    if not bands or not table:
+        return fallback
+    left,right=map(int,table); tw=max(1,right-left); h,w=img.shape[:2]
+    for y1,y2 in list(bands)[:4]:
+        crop=img[max(0,int(y1)):min(h,int(y2)),max(0,left):min(w,right)]
+        if not getattr(crop,'size',0):
+            continue
+        gray=cv2.cvtColor(crop,cv2.COLOR_RGB2GRAY)
+        try:
+            data=pytesseract.image_to_data(gray,config='--psm 7',output_type=pytesseract.Output.DICT)
+        except Exception:
+            continue
+        starts={}; width=max(1,crop.shape[1])
+        for i,raw in enumerate(data.get('text',[])):
+            token=re.sub(r'[^a-z]','',str(raw or '').lower())
+            if not token:
+                continue
+            rel=max(0.0,min(1.0,float(data['left'][i])/width))
+            if 'manhole' in token and 'asset' not in starts:
+                starts['asset']=rel
+            elif 'street' in token and 'street' not in starts:
+                starts['street']=rel
+            elif 'drainage' in token and 'drainage' not in starts:
+                starts['drainage']=rel
+            elif (token=='date' or (token.endswith('ate') and token[:1] in ('d','v','o'))) and 'date' not in starts:
+                starts['date']=rel
+        if 'asset' not in starts or 'date' not in starts or len(starts)<3:
+            continue
+        ordered=sorted((position,role) for role,position in starts.items())
+        role_index={role:index for index,(_,role) in enumerate(ordered)}
+        margin=.004
+        def role_box(role):
+            index=role_index[role]
+            start=max(0.0,ordered[index][0]-margin)
+            if index==0 and start<.03:
+                start=0.0
+            end=1.0 if index==len(ordered)-1 else max(start+.04,ordered[index+1][0]-margin)
+            return (start,min(1.0,end))
+        asset_box=role_box('asset'); date_box=role_box('date')
+        if asset_box[1]-asset_box[0]<.10 or date_box[1]-date_box[0]<.08:
+            continue
+        return {'asset':asset_box,'date':date_box,'source':'header'}
+    return fallback
+
+
 def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, orientation_deg=None):
     asset_format=master_index.get('asset_format')
     img=_year15_oriented(page,'manholes',preferred_deg=orientation_deg); h,w=img.shape[:2]
@@ -4351,12 +4406,16 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             seen.add(unique_key); token_out.append(rec)
 
     grid_out=[]
-    bands,table=_table_row_bands(img,.04,.72)
+    bands,table=_table_row_bands(img,.04,.90)
     if bands and table:
         left,right=table; tw=max(1,right-left); seen=set()
+        column_boxes=_year15_manhole_column_boxes(img,bands,table)
+        asset_box=column_boxes['asset']; date_box=column_boxes['date']
+        asset_left=max(0,int(left+asset_box[0]*tw)); asset_right=min(w,int(left+asset_box[1]*tw))
+        date_left=max(0,int(left+date_box[0]*tw)); date_right=min(w,int(left+date_box[1]*tw))
         for y1,y2 in bands:
             if on_progress: on_progress()
-            id_img=img[y1:y2,left:min(w,int(left+.27*tw))]
+            id_img=img[y1:y2,asset_left:asset_right]
             observations=_ocr_asset_candidates(id_img,asset_format=asset_format)
             if not observations:
                 # Some B&C scans put the first ID glyph directly against the left
@@ -4366,8 +4425,9 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 # Manhole ID cell with a few pixels of left-rule trim and slightly
                 # less right-side street bleed; do not loosen the global ID parser.
                 left_trim=max(2,min(8,int(round(tw*.004))))
-                retry_left=max(0,left+left_trim)
-                retry_right=min(w,int(left+.245*tw))
+                retry_left=max(0,asset_left+left_trim)
+                right_trim=max(2,int(round(max(1,asset_right-asset_left)*.08)))
+                retry_right=max(retry_left+1,asset_right-right_trim)
                 if retry_right>retry_left:
                     retry_img=img[y1:y2,retry_left:retry_right]
                     observations=_ocr_asset_candidates(
@@ -4375,7 +4435,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             if not observations: continue
             item,status=_resolve_full_asset(observations,known)
             sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
-            date_img=img[y1:y2,int(left+.74*tw):right]
+            date_img=img[y1:y2,date_left:date_right]
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
                  'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
             rec['_field_previews']={
@@ -4401,7 +4461,7 @@ def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation
     asset_format=master_index.get('asset_format')
     img=_year15_oriented(page,'manholes',preferred_deg=orientation_deg); h,w=img.shape[:2]
     known=master_index['manholes']; retry_layouts=[]
-    bands,table=_table_row_bands(img,.04,.72)
+    bands,table=_table_row_bands(img,.04,.90)
     if bands and table: retry_layouts.append((bands,table))
     try:
         alt_bands,alt_table=_year15_all_row_bands(img,.02,.90)
@@ -4415,13 +4475,18 @@ def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation
     rows=[]; seen=set()
     for retry_bands,retry_table in retry_layouts:
         left,right=retry_table; tw=max(1,right-left)
+        column_boxes=_year15_manhole_column_boxes(img,retry_bands,retry_table)
+        asset_box=column_boxes['asset']; date_box=column_boxes['date']
+        asset_left=max(0,int(left+asset_box[0]*tw)); asset_right=min(w,int(left+asset_box[1]*tw))
+        date_left=max(0,int(left+date_box[0]*tw)); date_right=min(w,int(left+date_box[1]*tw))
         for y1,y2 in retry_bands:
             if on_progress: on_progress()
-            base=img[y1:y2,left:min(w,int(left+.30*tw))]
+            base=img[y1:y2,asset_left:asset_right]
             if not getattr(base,'size',0): continue
             cells=[(base,False)]
             trim=max(2,min(10,int(round(tw*.005))))
-            trimmed=img[y1:y2,max(0,left+trim):min(w,int(left+.255*tw))]
+            right_trim=max(2,int(round(max(1,asset_right-asset_left)*.07)))
+            trimmed=img[y1:y2,max(0,asset_left+trim):max(asset_left+trim+1,asset_right-right_trim)]
             if getattr(trimmed,'size',0): cells.append((trimmed,True))
             try:
                 padded=cv2.copyMakeBorder(base,10,10,20,20,cv2.BORDER_CONSTANT,value=(255,255,255))
@@ -4447,7 +4512,7 @@ def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation
             key=item['asset_key'] if item else asset_key(sid)
             if not key or key in seen: continue
             seen.add(key)
-            date_img=img[y1:y2,int(left+.74*tw):right]
+            date_img=img[y1:y2,date_left:date_right]
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
                  'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
             rec['_field_previews']={

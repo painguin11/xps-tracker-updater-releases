@@ -22,6 +22,15 @@ version until the user explicitly says `PUBLISH`.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
 - Temporary v103 publishing/documentation machinery is removed after this sync.
 
+## Pending after v103 - reordered Manhole table columns
+
+- A supplied private five-page B&C packet has a 37-row Manhole table on page 2 with `Date` first and `Manhole Number` second. The work-order page confirms 37 Manholes.
+- v103 still assumed the older Manhole grid order (`Manhole Number` first, `Date` last) in its ruled-row and count-retry crops. Whole-page OCR saw only two IDs on this scan, so the fuller grid path could not recover the table.
+- The Manhole parser now reads the printed header positions to locate the Manhole Number and Date cells, while retaining the v103 fixed-column fallback if header OCR is unusable. It also extends Manhole row-band detection from 72% to 90% of page height so long tables keep their final physical row.
+- The count-mismatch retry uses the same detected Manhole/Date cells. Global asset-ID syntax and matching safeguards are unchanged.
+- Permanent synthetic regression: `working_source/tests/regression_post_v103_manhole_reordered_columns.py`.
+- The supplied customer PDF remains private and is not committed or packaged.
+
 ## Released in v103 — Manhole OCR count recovery
 
 Public v103 release:

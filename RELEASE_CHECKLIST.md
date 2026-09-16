@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v103 reordered Manhole Date/Manhole-Number column regression;
 - post-v102 Manhole expected-count retry regression;
 - post-v102 Manhole partial-token/grid-row recovery regression;
 - post-v97 Cleaning clipped-digit recovery regression;
@@ -68,6 +69,7 @@ The active baseline includes, at minimum:
 
 The following post-version-named regressions are already released and remain required:
 
+- `working_source/tests/regression_post_v103_manhole_reordered_columns.py`
 - `working_source/tests/regression_post_v102_manhole_expected_count_retry.py`
 - `working_source/tests/regression_post_v102_manhole_partial_tokens.py`
 - `working_source/tests/regression_post_v100_trouble_cells.py`

@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 REORDERED=ROOT/'working_source/tests/regression_post_v103_manhole_reordered_columns.py'
 EXPECTED=ROOT/'working_source/tests/regression_post_v102_manhole_expected_count_retry.py'
+PARTIAL=ROOT/'working_source/tests/regression_post_v102_manhole_partial_tokens.py'
 
 
 def patch_reordered():
@@ -46,7 +47,26 @@ def patch_expected():
     EXPECTED.write_text(text,encoding='utf-8')
 
 
+def patch_partial():
+    text=PARTIAL.read_text(encoding='utf-8')
+    old="    'out=grid_out if len(grid_out)>len(token_out) else token_out',\n"
+    new="    'grid_has_confirmed_new=any(rec.get(\\'_mh_suffix_confirmed\\') for rec in grid_out)',\n"
+    if old in text:
+        text=text.replace(old,new,1)
+    elif 'grid_has_confirmed_new=any' not in text:
+        raise SystemExit('partial-token selection assertion anchor not found')
+
+    needle="    '_ocr_asset_candidates':_ocr_asset_candidates,\n"
+    addition=needle+"    '_confirmed_suffix_asset_candidates':lambda cell,known_items,asset_format=None: [],\n"
+    if "'_confirmed_suffix_asset_candidates':" not in text:
+        if needle not in text:
+            raise SystemExit('partial-token namespace anchor not found')
+        text=text.replace(needle,addition,1)
+    PARTIAL.write_text(text,encoding='utf-8')
+
+
 if __name__=='__main__':
     patch_reordered()
     patch_expected()
+    patch_partial()
     print('Fixed post-v104 NEW MANHOLE regression harnesses')

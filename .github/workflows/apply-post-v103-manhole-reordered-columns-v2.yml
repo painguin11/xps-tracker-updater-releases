@@ -1,0 +1,64 @@
+name: Apply post-v103 reordered Manhole columns v2
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_post_v103_manhole_reordered_columns_v2'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Apply source patch
+        run: |
+          set -euo pipefail
+          python working_source/tools/apply_post_v103_manhole_reordered_columns.py
+          python -m py_compile working_source/app/reno_scan_updater.py
+          git diff --check
+
+      - name: Run targeted regression
+        run: python working_source/tests/regression_post_v103_manhole_reordered_columns.py
+
+      - name: Run full active regression suite
+        run: |
+          set -euo pipefail
+          python working_source/tools/run_post_v103_manhole_reordered_suite.py
+          git diff --check
+
+      - name: Update documentation and commit fix
+        run: |
+          set -euo pipefail
+          python working_source/tools/document_post_v103_manhole_reordered_columns.py
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/check-post-v103-manhole-reordered-columns.yml
+          git rm -f .github/workflows/apply-post-v103-manhole-reordered-columns.yml
+          git rm -f .github/workflows/apply-post-v103-manhole-reordered-columns-v2.yml
+          git rm -f .trigger_post_v103_manhole_reordered_columns_red
+          git rm -f .trigger_post_v103_manhole_reordered_columns
+          git rm -f .trigger_post_v103_manhole_reordered_columns_v2
+          git rm -f working_source/tools/apply_post_v103_manhole_reordered_columns.py
+          git rm -f working_source/tools/document_post_v103_manhole_reordered_columns.py
+          git rm -f working_source/tools/run_post_v103_manhole_reordered_suite.py
+          git add working_source/app/reno_scan_updater.py
+          git add working_source/tests/regression_post_v103_manhole_reordered_columns.py
+          git add PROJECT_CONTEXT.md RELEASE_CHECKLIST.md
+          git add working_source/docs/PROJECT_CONTEXT.md working_source/docs/RELEASE_CHECKLIST.md
+          git commit -m 'Handle reordered B&C Manhole columns'
+          git push origin HEAD:v95-work

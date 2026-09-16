@@ -1,0 +1,90 @@
+name: Verify XPS Tracker Updater v104
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_verify_v104'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Verify release, tag, asset, manifest, versions, and cleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: 1a3fa169e17b9ba9f65d4c7f4ed86b9b70a6d2e8
+          EXPECTED_SHA: 7647fab37a7d5842b6d5b59deb5a6202d9aa8a763576488126a72a1280bccc4a
+          EXPECTED_SIZE: '319878'
+        run: |
+          set -euo pipefail
+          git fetch origin main v95-work
+          git fetch origin refs/tags/v104:refs/tags/v104
+          TAG_SHA=$(git rev-list -n 1 refs/tags/v104)
+          test "$TAG_SHA" = "$EXPECTED_COMMIT"
+
+          gh release view v104 --json tagName,name,targetCommitish,assets > /tmp/release.json
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('/tmp/release.json').read_text(encoding='utf-8'))
+          assert data['tagName']=='v104',data
+          assert data['name']=='XPS Tracker Updater v104',data
+          assert data['targetCommitish']==os.environ['EXPECTED_COMMIT'],data
+          assets=data.get('assets') or []
+          assert len(assets)==1,assets
+          asset=assets[0]
+          assert asset['name']=='XPS_Tracker_Updater_v104.zip',asset
+          assert int(asset['size'])==int(os.environ['EXPECTED_SIZE']),asset
+          digest=str(asset.get('digest') or '')
+          assert digest==f"sha256:{os.environ['EXPECTED_SHA']}",asset
+          print('Release metadata verified')
+          PY
+
+          rm -rf /tmp/v104-public && mkdir /tmp/v104-public
+          gh release download v104 --pattern 'XPS_Tracker_Updater_v104.zip' --dir /tmp/v104-public
+          ACTUAL_SHA=$(sha256sum /tmp/v104-public/XPS_Tracker_Updater_v104.zip | awk '{print $1}')
+          ACTUAL_SIZE=$(stat -c%s /tmp/v104-public/XPS_Tracker_Updater_v104.zip)
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          test "$ACTUAL_SIZE" = "$EXPECTED_SIZE"
+          unzip -t /tmp/v104-public/XPS_Tracker_Updater_v104.zip >/dev/null
+
+          git show origin/main:update_manifest.json > /tmp/update_manifest_v104.json
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          data=json.loads(Path('/tmp/update_manifest_v104.json').read_text(encoding='utf-8'))
+          assert data['version']=='104',data
+          assert data['download_url']=='https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v104/XPS_Tracker_Updater_v104.zip',data
+          assert data['sha256']==os.environ['EXPECTED_SHA'],data
+          print('Manifest verified')
+          PY
+
+          grep -q "APP_VERSION = '104'" <(git show origin/v95-work:working_source/app/reno_scan_updater.py)
+          grep -q 'CURRENT_VERSION = "104"' <(git show origin/v95-work:working_source/app/xps_update.py)
+          grep -q 'XPS Tracker Updater v104' <(git show origin/v95-work:working_source/app/README_XPS_Tracker_Updater.txt)
+          test -z "$(git ls-tree -r --name-only origin/v95-work | grep -E '(^|/)publish-v104\.yml$|^\.trigger_publish_v104$' || true)"
+          if git ls-tree -r --name-only origin/v95-work | grep -Ei '\.(pdf|xlsx|xls|xlsm)$'; then
+            echo 'Private/customer document type is tracked in v95-work.' >&2
+            exit 1
+          fi
+          echo "VERIFIED_V104_SHA=$ACTUAL_SHA"
+          echo "VERIFIED_V104_SIZE=$ACTUAL_SIZE"
+          echo "VERIFIED_V104_COMMIT=$TAG_SHA"
+
+      - name: Remove temporary verification machinery
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/verify-v104.yml .trigger_verify_v104
+          git commit -m 'Clean v104 verification machinery'
+          git push origin HEAD:v95-work

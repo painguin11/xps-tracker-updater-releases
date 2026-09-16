@@ -14,8 +14,9 @@ for required in (
     'token_out=[]',
     'grid_out=[]',
     'out=grid_out if len(grid_out)>len(token_out) else token_out',
+    'column_boxes=_year15_manhole_column_boxes(img,bands,table)',
     'left_trim=max(2,min(8,int(round(tw*.004))))',
-    'retry_right=min(w,int(left+.245*tw))',
+    'retry_right=max(retry_left+1,asset_right-right_trim)',
     'fast_plain=True',
 ):
     assert required in func_text,required
@@ -94,6 +95,7 @@ ns={
     '_best_observed_asset_id':lambda values,known_items: values[0] if values else '',
     'canonical_asset_id':lambda value: str(value).strip().upper(),
     '_table_row_bands':lambda image,min_y,max_y:(bands,table),
+    '_year15_manhole_column_boxes':lambda image,row_bands,row_table:{'asset':(0.0,.27),'date':(.74,1.0),'source':'test'},
     '_ocr_asset_candidates':_ocr_asset_candidates,
     '_parse_sheet_date':lambda cell: None,
 }

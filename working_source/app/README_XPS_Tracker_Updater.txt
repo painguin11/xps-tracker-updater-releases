@@ -1,13 +1,13 @@
-XPS Tracker Updater v104
+XPS Tracker Updater v105
 ========================
 
 Current status (September 16, 2026)
 ----------------------------------
-Production release: v104. Development: v95-work / working_source.
+Production release: v105. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v104 supports reordered B&C Manhole tables whose printed columns place Date
-before Manhole Number, and extends long-table row detection so the final
-physical Manhole row is not lost near the bottom of the page.
+v105 preserves independently confirmed one-letter NEW MANHOLE suffixes even
+when another OCR pass reads the same physical cell as an existing base ID.
+The stricter confirmation safeguard remains in place to avoid false suffixes.
 
 Purpose
 -------
@@ -727,3 +727,16 @@ Version 104 reordered Manhole table support
 - Preserves strict asset-ID matching, expected-count safeguards, and all v103 and
   earlier OCR, review, continuation, MSA, Trouble Ticket, total, and master-write
   behavior.
+
+Version 105 confirmed NEW MANHOLE suffix preservation
+-----------------------------------------------------
+- When a B&C Manhole cell yields both an existing base ID and a one-letter
+  suffixed ID, the suffix is retained only if it survives independent physical
+  cell rereads using the established multi-crop confirmation safeguard.
+- A confirmed suffix remains NEW MANHOLE instead of being collapsed to the base
+  asset, including during user-confirmed expected-count retry.
+- On equal row counts, ruled-row OCR wins over whole-page token OCR when it
+  contains an independently confirmed new suffix.
+- Generic unmatched IDs and unconfirmed suffixes remain conservative review cases.
+- Preserves all v104 and earlier OCR, review, continuation, MSA, Trouble Ticket,
+  total, and master-write behavior.

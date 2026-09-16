@@ -159,6 +159,10 @@ it. Resolve the behavior intentionally.
   work order before the final mismatch is presented. The retry may use only
   PDF-observed IDs that still pass the established matching/new-suffix safeguards;
   it must never invent, delete, or arbitrarily select rows solely to hit the count.
+- If one B&C Manhole cell produces both the existing base ID and a one-letter
+  suffixed ID across OCR variants, the suffix may override the base only when it
+  survives the existing independent multi-crop suffix confirmation. A confirmed
+  suffix must remain `NEW MANHOLE` in both the normal parse and expected-count retry.
 
 ### Split Pipes / MSA
 

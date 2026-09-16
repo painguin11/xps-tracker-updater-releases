@@ -22,6 +22,15 @@ version until the user explicitly says `PUBLISH`.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
 - Temporary v104 publishing/documentation machinery is removed after this sync.
 
+## Pending after v104 — preserve independently confirmed new Manhole suffixes
+
+- A long Date-first B&C Manhole table exposed a second failure mode after the v104 column fix: the PDF can clearly print a one-letter suffixed Manhole that is absent from the master while another OCR variant reads the same cell as its existing unsuffixed base.
+- The B&C Manhole row parser and expected-count retry now independently reread the physical Manhole cell before resolving mixed base/suffix evidence. A suffix must survive the existing multi-crop confirmation helper before it can override an observed base ID and become `NEW MANHOLE`.
+- This keeps the conservative false-suffix safeguard while ensuring a genuinely confirmed new Manhole reaches the existing approval/add-to-master workflow instead of being silently collapsed to its base asset.
+- When token OCR and ruled-row OCR have the same row count, an independently confirmed new suffix makes the ruled-row result authoritative for that tie.
+- Permanent regression coverage remains in `working_source/tests/regression_post_v103_manhole_reordered_columns.py`, now modeling a master that contains the base Manhole but not the printed suffixed Manhole and exercising both normal and count-retry paths.
+- The supplied customer PDF and workbook remain private and are not committed or packaged.
+
 ## Released in v104 — reordered Manhole table columns
 
 Public v104 release:

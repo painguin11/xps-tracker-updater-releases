@@ -52,6 +52,7 @@ ns={
     '_year15_all_row_bands':lambda image,a,b:(bands,table),
     '_year15_manhole_column_boxes':lambda image,row_bands,row_table:{'asset':(0.0,.30),'date':(.74,1.0),'source':'test'},
     '_ocr_asset_candidates':ocr_assets,
+    '_confirmed_suffix_asset_candidates':lambda cell,known_items,asset_format=None: [],
     'cached_ocr_string':lambda image,config='':'',
     '_printed_asset_tokens':lambda value,asset_format:[],
     '_resolve_full_asset':resolve,

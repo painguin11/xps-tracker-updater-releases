@@ -4433,11 +4433,22 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                     observations=_ocr_asset_candidates(
                         retry_img,fast_plain=True,asset_format=asset_format)
             if not observations: continue
-            item,status=_resolve_full_asset(observations,known)
-            sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
+            # A real one-letter NEW MANHOLE may be read both with and without its
+            # final suffix across OCR variants. Exact-first matching would otherwise
+            # collapse that mixed evidence back to the existing base manhole. Require
+            # the suffix to survive independent physical-cell crops before it can
+            # override an observed base ID.
+            confirmed_suffixes=list(dict.fromkeys(_confirmed_suffix_asset_candidates(
+                id_img,known,asset_format=asset_format)))
+            if len(confirmed_suffixes)==1:
+                item=None; status='NEW MANHOLE'; sid=confirmed_suffixes[0]
+            else:
+                item,status=_resolve_full_asset(observations,known)
+                sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
             date_img=img[y1:y2,date_left:date_right]
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
                  'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
+            if len(confirmed_suffixes)==1: rec['_mh_suffix_confirmed']=True
             rec['_field_previews']={
                 'asset':id_img.copy() if getattr(id_img,'size',0) else None,
                 'date':date_img.copy() if getattr(date_img,'size',0) else None}
@@ -4445,7 +4456,12 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             if rec['asset'] in seen: continue
             seen.add(rec['asset']); grid_out.append(rec)
 
-    out=grid_out if len(grid_out)>len(token_out) else token_out
+    # Prefer the physical ruled-row result on a row-count tie when it carries an
+    # independently confirmed NEW MANHOLE suffix. This prevents a whole-page OCR
+    # read that dropped the final letter from overriding stronger cell evidence.
+    grid_has_confirmed_new=any(rec.get('_mh_suffix_confirmed') for rec in grid_out)
+    out=grid_out if (len(grid_out)>len(token_out) or
+                     (len(grid_out)==len(token_out) and grid_has_confirmed_new)) else token_out
     for rec in out:
         if on_row: on_row(rec)
     return out
@@ -4506,15 +4522,21 @@ def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation
                 except Exception:
                     pass
             if not observations: continue
-            item,status=_resolve_full_asset(observations,known)
+            confirmed_suffixes=list(dict.fromkeys(_confirmed_suffix_asset_candidates(
+                base,known,asset_format=asset_format)))
+            if len(confirmed_suffixes)==1:
+                item=None; status='NEW MANHOLE'; sid=confirmed_suffixes[0]
+            else:
+                item,status=_resolve_full_asset(observations,known)
+                sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
             if item is None and status!='NEW MANHOLE': continue
-            sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
             key=item['asset_key'] if item else asset_key(sid)
             if not key or key in seen: continue
             seen.add(key)
             date_img=img[y1:y2,date_left:date_right]
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
                  'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
+            if len(confirmed_suffixes)==1: rec['_mh_suffix_confirmed']=True
             rec['_field_previews']={
                 'asset':base.copy() if getattr(base,'size',0) else None,
                 'date':date_img.copy() if getattr(date_img,'size',0) else None}

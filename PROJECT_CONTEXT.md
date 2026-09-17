@@ -22,12 +22,15 @@ version until the user explicitly says `PUBLISH`.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
 - Temporary v105 publishing/documentation machinery is removed after this sync.
 
-## Pending after v105 — rotated Pipe classification and physical Manhole-row recovery
+## Pending after v105 — rotated Pipe classification and never-discard physical rows
 
 - A September 16 Phase 2 packet exposed two independent scan-orientation/OCR failures while production remains v105.
-- A rotated Pipe table can have `Length Surveyed`, `Upstream MH`, and `Downstream MH` clearly printed while the lightweight PSM-11 classification pass reads only body rows. If the fast pass remains `other`, classification now performs one 2.5x PSM-6 structured-header retry across the supported orientations before pair-layout fallback; explicit `Length Surveyed` evidence therefore selects Pipe instead of an order-dependent Cleaning tie.
-- A ruled Manhole table can contain a real physical row whose DN-/R2- prefix is damaged by the left grid rule even though its numeric body is repeatedly readable. The Manhole parser now retains that row only when the same exact numeric body survives at least two independently framed reads and maps to exactly one existing master Manhole. Ambiguous numeric bodies fail closed, and NEW/suffixed Manholes still require the established full-ID/suffix safeguards.
-- Permanent regression: `working_source/tests/regression_post_v105_rotated_pipe_and_manhole_row.py`.
+- A rotated Pipe table can have `Length Surveyed`, `Upstream MH`, and `Downstream MH` clearly printed while the lightweight PSM-11 classification pass reads only body rows. If the fast pass remains `other`, classification performs one 2.5x PSM-6 structured-header retry across the supported orientations; explicit `Length Surveyed` evidence selects Pipe instead of an order-dependent Cleaning tie.
+- More importantly, table geometry now owns **row existence** while OCR/master matching owns only **automatic update eligibility**. Once a Pipe, Cleaning, or Manhole data row is structurally established, failed ID OCR or a failed master match may not silently remove it from Live Summary.
+- Unmatched physical rows remain visible and review-only with the available PDF field previews and any safe OCR hint (`?` when identity is unreadable). `Edit Selected` uses the existing `apply_manual_asset_edit` path, so correcting a Manhole asset or Pipe/Cleaning endpoints immediately reruns matching and makes the row updateable when it resolves.
+- Numeric-only Manhole OCR may be shown as an edit hint, but the program no longer supplies a missing `DN-`/`R2-` prefix from the master merely to create a match. A repeated OCR identity is likewise retained as a separate physical row and marked `DUPLICATE IN PDF` for review instead of being deleted.
+- A confirmed printed header establishes the first data band for B&C Pipe/Cleaning tables even when the printed total cannot be read; a positively identified total band is still excluded. Header/title/known-total bands remain structural metadata, not summary rows.
+- Permanent regressions: `working_source/tests/regression_post_v105_rotated_pipe_and_manhole_row.py` and `working_source/tests/regression_post_v105_physical_rows_never_discarded.py`.
 - The supplied customer PDF/master were used only for private diagnosis and remain uncommitted/unpackaged.
 
 ## Released in v105 — preserve independently confirmed new Manhole suffixes

@@ -34,7 +34,8 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
-- post-v105 rotated Pipe classification and physical Manhole-row recovery regression;
+- post-v105 physical Pipe/Cleaning/Manhole row-retention + manual re-match regression;
+- post-v105 rotated Pipe classification and visible Manhole-row regression;
 - post-v103 reordered Manhole Date/Manhole-Number column regression;
 - post-v102 Manhole expected-count retry regression;
 - post-v102 Manhole partial-token/grid-row recovery regression;
@@ -153,7 +154,8 @@ it. Resolve the behavior intentionally.
 
 ### Manholes
 
-- A physical B&C Manhole row whose full prefix is unreadable may use exact digit-body recovery only when that same numeric body is observed in at least two independently framed reads and identifies exactly one existing master Manhole; ambiguous numeric bodies remain unresolved.
+- Once B&C table structure establishes a physical Manhole data row, failed asset OCR or a failed master match must never delete that row from Live Summary. Keep it review-only with the available PDF preview and any OCR hint, and let `Edit Selected` rerun matching after the user corrects the Asset.
+- Numeric-only Manhole OCR is an edit hint only; the master must not supply a missing prefix/identity to turn that partial observation into an automatic match. Repeated OCR identities remain separate physical rows and are marked `DUPLICATE IN PDF` for review.
 - Manhole work orders request a user-confirmed expected count using the
   Description of Work crop.
 - Parsed Manhole row count is checked against that expected count.
@@ -190,7 +192,7 @@ it. Resolve the behavior intentionally.
 - Difference threshold remains 4.5 ft.
 - Over-threshold differences are highlighted red and produce an uppercase note.
 - Header/title/printed-total rows never enter Live Summary or the master.
-- Confirmed physical rows remain represented even when a field needs review.
+- Confirmed physical rows remain represented even when a field needs review. Matching failure changes the row to review-only; it never authorizes silently removing a Pipe, Cleaning, or Manhole row from the summary.
 - OCR/total recovery must not manufacture or round a PDF value to match master
   data.
 - Cleaning disagreement handling retains competing batch/independent OCR as

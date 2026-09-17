@@ -4049,13 +4049,16 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
     total_band_index=printed_total_info.get('band_index')
     header_band_index=prepared.get('header_band_index')
     mandatory_data_bands=set()
-    if (header_band_index is not None and total_band_index is not None and
-            int(total_band_index)>int(header_band_index)):
-        # Once both structural anchors are known, every physical grid band between
-        # the printed header and total is a real table row. OCR failure may make the
-        # row review-only, but it must never make the row disappear from the summary
-        # or from total-length arithmetic.
-        mandatory_data_bands=set(range(int(header_band_index)+1,int(total_band_index)))
+    if header_band_index is not None:
+        # The confirmed printed header is enough to establish the start of the
+        # physical data table. A printed total, when positively identified, still
+        # terminates it. Matching/OCR success is never allowed to decide whether an
+        # otherwise-confirmed physical Pipe/Cleaning row exists in Live Summary.
+        start_band=int(header_band_index)+1
+        stop_band=(int(total_band_index)
+                   if total_band_index is not None and int(total_band_index)>int(header_band_index)
+                   else len(bands))
+        mandatory_data_bands=set(range(start_band,stop_band))
     batch_cleaning_values=(
         _batch_cleaning_length_candidates(img,bands,table,val_box,total_band_index)
         if kind=='cleaning' else {})
@@ -4346,11 +4349,11 @@ def _year15_manhole_column_boxes(img,bands,table):
     select the physical cells without weakening asset-ID matching. If header OCR
     is unusable, preserve the established v103 first-ID / last-Date fallback.
     """
-    fallback={'asset':(0.0,.27),'date':(.74,1.0),'source':'legacy'}
+    fallback={'asset':(0.0,.27),'date':(.74,1.0),'source':'legacy','header_band_index':None}
     if not bands or not table:
         return fallback
     left,right=map(int,table); tw=max(1,right-left); h,w=img.shape[:2]
-    for y1,y2 in list(bands)[:4]:
+    for header_band_index,(y1,y2) in enumerate(list(bands)[:4]):
         crop=img[max(0,int(y1)):min(h,int(y2)),max(0,left):min(w,right)]
         if not getattr(crop,'size',0):
             continue
@@ -4388,7 +4391,7 @@ def _year15_manhole_column_boxes(img,bands,table):
         asset_box=role_box('asset'); date_box=role_box('date')
         if asset_box[1]-asset_box[0]<.10 or date_box[1]-date_box[0]<.08:
             continue
-        return {'asset':asset_box,'date':date_box,'source':'header'}
+        return {'asset':asset_box,'date':date_box,'source':'header','header_band_index':header_band_index}
     return fallback
 
 
@@ -4469,7 +4472,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             if on_progress: on_progress()
             sid=item['asset'] if item else (_best_observed_asset_id([raw],known) or canonical_asset_id(raw))
             unique_key=item['asset_key'] if item else f'row-{yc}'
-            if unique_key in seen: continue
+            duplicate_identity=unique_key in seen
             row_date=None
             near=[x for x in token_dates if abs(x[0]-yc)<h*.025]
             if near: row_date=min(near,key=lambda x:abs(x[0]-yc))[1]
@@ -4482,6 +4485,10 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 'asset':asset_preview.copy() if getattr(asset_preview,'size',0) else None,
                 'date':date_preview.copy() if getattr(date_preview,'size',0) else None}
             if item is None: rec['skip_update']=True
+            if duplicate_identity:
+                rec.setdefault('validation_warnings',[]).append('DUPLICATE IN PDF')
+                rec['skip_update']=True
+            rec['_physical_row_center']=int(yc)
             seen.add(unique_key); token_out.append(rec)
 
     grid_out=[]
@@ -4490,9 +4497,12 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
         left,right=table; tw=max(1,right-left); seen=set()
         column_boxes=_year15_manhole_column_boxes(img,bands,table)
         asset_box=column_boxes['asset']; date_box=column_boxes['date']
+        header_band_index=column_boxes.get('header_band_index')
         asset_left=max(0,int(left+asset_box[0]*tw)); asset_right=min(w,int(left+asset_box[1]*tw))
         date_left=max(0,int(left+date_box[0]*tw)); date_right=min(w,int(left+date_box[1]*tw))
-        for y1,y2 in bands:
+        for band_index,(y1,y2) in enumerate(bands):
+            if header_band_index is not None and band_index<=int(header_band_index):
+                continue
             if on_progress: on_progress()
             id_img=img[y1:y2,asset_left:asset_right]
             observations=_ocr_asset_candidates(id_img,asset_format=asset_format)
@@ -4511,16 +4521,20 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                     retry_img=img[y1:y2,retry_left:retry_right]
                     observations=_ocr_asset_candidates(
                         retry_img,fast_plain=True,asset_format=asset_format)
-            digit_item=None
+            date_img=img[y1:y2,date_left:date_right]
+            row_date=_parse_sheet_date(date_img)
+            numeric_hints=[]
             if not observations:
-                # A physical Manhole row must not disappear merely because grid
-                # contact damages DN-/R2- while its printed numeric body remains
-                # independently readable. Recover only an exact numeric body that
-                # uniquely identifies one existing master Manhole.
-                digit_item=_unique_manhole_digit_match(id_img,master_index)
-                if digit_item:
-                    observations=[digit_item.get('asset') or '']
-            if not observations: continue
+                # Keep numeric-only OCR as a visible edit hint. It is PDF evidence
+                # that a row exists, but it is NOT permission to borrow a missing
+                # prefix/identity from the master and silently declare a match.
+                for raw in _ocr_digits(id_img,False,fast_plain=True):
+                    token=re.sub(r'\D','',str(raw or ''))
+                    if token and token not in numeric_hints:
+                        numeric_hints.append(token)
+            physical_data_band=(header_band_index is not None and band_index>int(header_band_index))
+            if not observations and not numeric_hints and row_date is None and not physical_data_band:
+                continue
             # A real one-letter NEW MANHOLE may be read both with and without its
             # final suffix across OCR variants. Exact-first matching would otherwise
             # collapse that mixed evidence back to the existing base manhole. Require
@@ -4530,21 +4544,31 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 id_img,known,asset_format=asset_format)))
             if len(confirmed_suffixes)==1:
                 item=None; status='NEW MANHOLE'; sid=confirmed_suffixes[0]
-            elif digit_item is not None:
-                item=digit_item; status='Matched'; sid=item['asset']
             else:
-                item,status=_resolve_full_asset(observations,known)
-                sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
-            date_img=img[y1:y2,date_left:date_right]
+                item,status=(_resolve_full_asset(observations,known)
+                             if observations else (None,'NOT MATCHED'))
+                if item:
+                    sid=item['asset']
+                elif observations:
+                    sid=_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0])
+                elif numeric_hints:
+                    sid=numeric_hints[0]
+                else:
+                    sid='?'
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
-                 'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
+                 'video_length':None,'row_date':row_date,'status':status}
             if len(confirmed_suffixes)==1: rec['_mh_suffix_confirmed']=True
             rec['_field_previews']={
                 'asset':id_img.copy() if getattr(id_img,'size',0) else None,
                 'date':date_img.copy() if getattr(date_img,'size',0) else None}
             if item is None: rec['skip_update']=True
-            if rec['asset'] in seen: continue
-            seen.add(rec['asset']); grid_out.append(rec)
+            rec['_physical_row_center']=int((int(y1)+int(y2))//2)
+            duplicate_key=asset_key(rec.get('asset'))
+            if duplicate_key and duplicate_key in seen:
+                rec.setdefault('validation_warnings',[]).append('DUPLICATE IN PDF')
+                rec['skip_update']=True
+            if duplicate_key: seen.add(duplicate_key)
+            grid_out.append(rec)
 
     # Prefer the physical ruled-row result on a row-count tie when it carries an
     # independently confirmed NEW MANHOLE suffix. This prevents a whole-page OCR
@@ -4611,25 +4635,14 @@ def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation
                             if value not in observations: observations.append(value)
                 except Exception:
                     pass
-            digit_item=None
-            if not observations:
-                digit_item=_unique_manhole_digit_match(base,master_index)
-                if digit_item:
-                    observations=[digit_item.get('asset') or '']
             if not observations: continue
             confirmed_suffixes=list(dict.fromkeys(_confirmed_suffix_asset_candidates(
                 base,known,asset_format=asset_format)))
             if len(confirmed_suffixes)==1:
                 item=None; status='NEW MANHOLE'; sid=confirmed_suffixes[0]
-            elif digit_item is not None:
-                item=digit_item; status='Matched'; sid=item['asset']
             else:
                 item,status=_resolve_full_asset(observations,known)
                 sid=item['asset'] if item else (_best_observed_asset_id(observations,known) or canonical_asset_id(observations[0]))
-            if item is None and status!='NEW MANHOLE':
-                digit_item=_unique_manhole_digit_match(base,master_index)
-                if digit_item:
-                    item=digit_item; status='Matched'; sid=item['asset']
             if item is None and status!='NEW MANHOLE': continue
             key=item['asset_key'] if item else asset_key(sid)
             if not key or key in seen: continue

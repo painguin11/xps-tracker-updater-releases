@@ -10,12 +10,15 @@ assert "unresolved_dn=_best_observed_asset_id(dn_obs,endpoint_items)" in src
 
 # The structural gate must still happen before inferred dominant-date repair;
 # otherwise an actual header can inherit the real rows' date and survive as fake
-# data. v85 only bypasses the gate for a structurally confirmed physical data band
-# between the detected header and detected printed-total rows.
+# data. Header/title bands remain excluded. Once the printed header establishes
+# the start of a table, later physical bands are retained through the printed
+# total when one is detected, otherwise through the detected table end.
 parser=src[src.index('def parse_year15_pair_list'):src.index('def parse_year15_manholes')]
 assert parser.index('_keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,asset_format=asset_format)') < parser.index('if dominant_date is not None')
 assert 'if (not mandatory_data_band and' in parser
-assert 'mandatory_data_bands=set(range(int(header_band_index)+1,int(total_band_index)))' in parser
+assert 'start_band=int(header_band_index)+1' in parser
+assert 'else len(bands))' in parser
+assert 'mandatory_data_bands=set(range(start_band,stop_band))' in parser
 
 tree=ast.parse(src)
 names={'asset_key','_asset_id_parts','_asset_format_rule','_asset_value_matches_profile','_keep_unresolved_pair_row'}

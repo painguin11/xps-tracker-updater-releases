@@ -15,7 +15,6 @@ def node(name):
 
 classify_node=node('classify_for_profile')
 parse_node=node('parse_year15_manholes')
-digit_node=node('_unique_manhole_digit_match')
 assert classify_node is not None
 assert parse_node is not None
 
@@ -47,7 +46,10 @@ _oriented,deg,_text,kind=classify_ns['classify_for_profile'](object(),'phase2_ye
 assert kind=='pipes',f'expected weak rotated Length Surveyed page to classify as pipes; got {kind!r} at {deg}°'
 assert deg==270,f'expected high-resolution header retry to recover 270° orientation; got {deg}°'
 
-# Page 4 failure class: a physical Manhole row has clean digits but damaged prefix glyphs.
+# Page 4 failure class: a physical Manhole row has clean digits but damaged prefix
+# glyphs. Row existence comes from the table grid, not from successful matching.
+# The program must show the row as review-only instead of silently filling DN-
+# from the master or deleting the row.
 H,W=320,600
 LEFT,RIGHT=100,500
 HEADER=(45,65)
@@ -70,26 +72,18 @@ class _Pytesseract:
         return {'text':[],'left':[],'top':[],'height':[]}
 
 def row_code(cell):
-    if not getattr(cell,'size',0):
-        return -1
+    if not getattr(cell,'size',0): return -1
     return int(round(float(np.median(cell[:,:,1]))))
 
 def ocr_assets(cell,fast_plain=False,asset_format=None):
     code=row_code(cell)
-    if code==1:
-        return ['DN-1014']
-    if code==2:
-        return []
-    return []
+    return ['DN-1014'] if code==1 else []
 
 def ocr_digits(cell,decimal=False,fast_plain=False):
     return ['1015'] if row_code(cell)==2 else []
 
 def asset_key(value):
     return re.sub(r'[^A-Z0-9]','',str(value or '').upper())
-
-def asset_number(value):
-    return ''.join(re.findall(r'\d',asset_key(value)))
 
 item14={'asset':'DN-1014','asset_key':'DN1014'}
 item15={'asset':'DN-1015','asset_key':'DN1015'}
@@ -103,8 +97,7 @@ master={
 def resolve(values,known_items):
     exact=[known_items[asset_key(v)] for v in values if asset_key(v) in known_items]
     exact=list({item['asset_key']:item for item in exact}.values())
-    if len(exact)==1:
-        return exact[0],'Matched'
+    if len(exact)==1: return exact[0],'Matched'
     return None,'NOT MATCHED'
 
 parse_ns={
@@ -115,32 +108,22 @@ parse_ns={
     '_resolve_full_asset':resolve,
     '_best_observed_asset_id':lambda values,known_items:values[0] if values else '',
     'canonical_asset_id':lambda value:str(value).strip().upper(),
-    'asset_key':asset_key,'asset_number':asset_number,
+    'asset_key':asset_key,
     '_table_row_bands':lambda img,min_y,max_y:(BANDS,(LEFT,RIGHT)),
-    '_year15_manhole_column_boxes':lambda img,bands,table:{'asset':(0.0,.40),'date':(.75,1.0),'source':'test'},
+    '_year15_manhole_column_boxes':lambda img,bands,table:{'asset':(0.0,.40),'date':(.75,1.0),'source':'test','header_band_index':0},
     '_ocr_asset_candidates':ocr_assets,
     '_ocr_digits':ocr_digits,
     '_confirmed_suffix_asset_candidates':lambda *args,**kwargs:[],
     '_parse_sheet_date':lambda cell:datetime(2026,9,15),
     'cached_ocr_string':lambda image,config='':'',
 }
-if digit_node is not None:
-    exec(compile(ast.Module(body=[digit_node],type_ignores=[]),str(SOURCE),'exec'),parse_ns)
 exec(compile(ast.Module(body=[parse_node],type_ignores=[]),str(SOURCE),'exec'),parse_ns)
 
 rows=parse_ns['parse_year15_manholes'](object(),master)
-assert [row['asset'] for row in rows]==['DN-1014','DN-1015'],(
-    f'expected both physical Manhole rows including digit-recovered DN-1015; got {[row["asset"] for row in rows]}')
-assert rows[1]['status']=='Matched' and not rows[1].get('skip_update'),rows[1]
+assert len(rows)==2,f'expected both physical Manhole rows; got {rows}'
+assert rows[0]['asset']=='DN-1014' and rows[0]['status']=='Matched',rows[0]
+assert rows[1]['asset']=='1015',rows[1]
+assert rows[1]['status']=='NOT MATCHED' and rows[1].get('skip_update') is True,rows[1]
+assert rows[1].get('_field_previews',{}).get('asset') is not None,rows[1]
 
-helper=parse_ns.get('_unique_manhole_digit_match')
-assert helper is not None,'expected conservative unique Manhole digit-body recovery helper'
-ambiguous=dict(master)
-ambiguous['manholes_by_number']={
-    **master['manholes_by_number'],
-    '1015':[item15,{'asset':'R2-1015','asset_key':'R21015'}],
-}
-assert helper(image[ROW2[0]:ROW2[1],LEFT:LEFT+160],ambiguous) is None,(
-    'digit-only Manhole recovery must fail closed when the numeric body is not unique in the master')
-
-print('post-v105 rotated Pipe classification + Manhole physical-row recovery regression passed')
+print('post-v105 rotated Pipe classification + visible Manhole physical-row regression passed')

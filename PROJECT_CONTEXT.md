@@ -22,6 +22,14 @@ version until the user explicitly says `PUBLISH`.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
 - Temporary v105 publishing/documentation machinery is removed after this sync.
 
+## Pending after v105 — rotated Pipe classification and physical Manhole-row recovery
+
+- A September 16 Phase 2 packet exposed two independent scan-orientation/OCR failures while production remains v105.
+- A rotated Pipe table can have `Length Surveyed`, `Upstream MH`, and `Downstream MH` clearly printed while the lightweight PSM-11 classification pass reads only body rows. If the fast pass remains `other`, classification now performs one 2.5x PSM-6 structured-header retry across the supported orientations before pair-layout fallback; explicit `Length Surveyed` evidence therefore selects Pipe instead of an order-dependent Cleaning tie.
+- A ruled Manhole table can contain a real physical row whose DN-/R2- prefix is damaged by the left grid rule even though its numeric body is repeatedly readable. The Manhole parser now retains that row only when the same exact numeric body survives at least two independently framed reads and maps to exactly one existing master Manhole. Ambiguous numeric bodies fail closed, and NEW/suffixed Manholes still require the established full-ID/suffix safeguards.
+- Permanent regression: `working_source/tests/regression_post_v105_rotated_pipe_and_manhole_row.py`.
+- The supplied customer PDF/master were used only for private diagnosis and remain uncommitted/unpackaged.
+
 ## Released in v105 — preserve independently confirmed new Manhole suffixes
 
 Public v105 release:

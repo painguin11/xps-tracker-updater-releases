@@ -98,6 +98,7 @@ ns={
     '_year15_manhole_column_boxes':lambda image,row_bands,row_table:{'asset':(0.0,.27),'date':(.74,1.0),'source':'test'},
     '_ocr_asset_candidates':_ocr_asset_candidates,
     '_confirmed_suffix_asset_candidates':lambda cell,known_items,asset_format=None: [],
+    '_unique_manhole_digit_match':lambda cell,master_index: None,
     '_parse_sheet_date':lambda cell: None,
 }
 exec(compile(ast.Module(body=[node],type_ignores=[]),str(SOURCE),'exec'),ns)

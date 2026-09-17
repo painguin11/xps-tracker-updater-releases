@@ -168,6 +168,7 @@ ns={
     '_year15_all_row_bands':all_row_bands,
     '_ocr_asset_candidates':ocr_assets,
     '_confirmed_suffix_asset_candidates':confirmed_suffixes,
+    '_unique_manhole_digit_match':lambda cell,master_index: None,
     '_parse_sheet_date':parse_sheet_date,
     'cached_ocr_string':lambda image,config='':'',
 }

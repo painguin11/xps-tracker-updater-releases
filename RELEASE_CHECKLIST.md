@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v105 rotated Pipe classification and physical Manhole-row recovery regression;
 - post-v103 reordered Manhole Date/Manhole-Number column regression;
 - post-v102 Manhole expected-count retry regression;
 - post-v102 Manhole partial-token/grid-row recovery regression;
@@ -152,6 +153,7 @@ it. Resolve the behavior intentionally.
 
 ### Manholes
 
+- A physical B&C Manhole row whose full prefix is unreadable may use exact digit-body recovery only when that same numeric body is observed in at least two independently framed reads and identifies exactly one existing master Manhole; ambiguous numeric bodies remain unresolved.
 - Manhole work orders request a user-confirmed expected count using the
   Description of Work crop.
 - Parsed Manhole row count is checked against that expected count.

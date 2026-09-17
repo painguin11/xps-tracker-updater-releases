@@ -2,7 +2,12 @@ from pathlib import Path
 import ast
 
 src=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
-assert 'mandatory_data_bands=set(range(int(header_band_index)+1,int(total_band_index)))' in src
+# A confirmed header is sufficient to establish physical data rows. A positively
+# detected printed total still bounds the table when available; OCR/master match
+# success must not decide whether a row exists in Live Summary.
+assert 'start_band=int(header_band_index)+1' in src
+assert 'else len(bands))' in src
+assert 'mandatory_data_bands=set(range(start_band,stop_band))' in src
 assert 'mandatory_data_band=band_index in mandatory_data_bands' in src
 assert 'if not mandatory_data_band and not match and not endpoint_signal:' in src
 assert 'if d is None and not mandatory_data_band:' in src

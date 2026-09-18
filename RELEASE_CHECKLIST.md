@@ -35,6 +35,7 @@ new test for the current fix.
 The active baseline includes, at minimum:
 
 - post-v105 physical Pipe/Cleaning/Manhole row-retention + manual re-match regression;
+- post-v105 single-row removal + validation-recalculation regression;
 - post-v105 rotated Pipe classification and visible Manhole-row regression;
 - post-v103 reordered Manhole Date/Manhole-Number column regression;
 - post-v102 Manhole expected-count retry regression;
@@ -193,6 +194,8 @@ it. Resolve the behavior intentionally.
 - Over-threshold differences are highlighted red and produce an uppercase note.
 - Header/title/printed-total rows never enter Live Summary or the master.
 - Confirmed physical rows remain represented even when a field needs review. Matching failure changes the row to review-only; it never authorizes silently removing a Pipe, Cleaning, or Manhole row from the summary.
+- A false extra row may be removed only by an explicit reviewer action using `Remove Selected Row` after analysis. That action removes exactly the selected extracted Pipe/Cleaning/Manhole record, preserves every other row and work-order item, and recalculates affected Manhole counts, Pipe/Cleaning totals, and duplicate/MSA review state.
+- Row-level removal must not invoke whole-work-order discard or automatically merge/delete another row as a side effect. Validation/separator/page-warning/Trouble Ticket rows are not eligible for this control.
 - OCR/total recovery must not manufacture or round a PDF value to match master
   data.
 - Cleaning disagreement handling retains competing batch/independent OCR as

@@ -55,24 +55,23 @@ jobs:
                'and adds explicit single-row removal for reviewer-confirmed false extra rows.\n')
           assert old in text
           text=text.replace(old,new,1)
-          section='''\nVersion 106 physical-row review and single-row removal
-------------------------------------------------------
-- Once table geometry establishes a Pipe, Cleaning, or Manhole data row, failed
-  ID OCR or failed master matching cannot silently delete it from Live Summary.
-- Unmatched rows remain review-only with PDF previews and can be corrected with
-  Edit Selected, which immediately rechecks matching.
-- Rotated Pipe tables get a structured-header retry when the fast OCR pass misses
-  Length Surveyed / Upstream MH / Downstream MH, preventing false Cleaning
-  classification from an orientation-sensitive first pass.
-- Remove Selected Row lets the reviewer explicitly remove one false extra
-  extracted Pipe, Cleaning, or Manhole row after analysis without discarding the
-  rest of the work order.
-- Single-row removal requires confirmation, preserves all other rows and Trouble
-  Tickets, and recalculates Manhole expected counts, Pipe/Cleaning total checks,
-  and duplicate/MSA review state. It does not auto-merge or delete another row.
-- Preserves the v105 NEW MANHOLE suffix safeguards and all earlier OCR, review,
-  continuation, MSA, Trouble Ticket, total, and master-write behavior.
-'''
+          section=('\nVersion 106 physical-row review and single-row removal\n'
+                   '------------------------------------------------------\n'
+                   '- Once table geometry establishes a Pipe, Cleaning, or Manhole data row, failed\n'
+                   '  ID OCR or failed master matching cannot silently delete it from Live Summary.\n'
+                   '- Unmatched rows remain review-only with PDF previews and can be corrected with\n'
+                   '  Edit Selected, which immediately rechecks matching.\n'
+                   '- Rotated Pipe tables get a structured-header retry when the fast OCR pass misses\n'
+                   '  Length Surveyed / Upstream MH / Downstream MH, preventing false Cleaning\n'
+                   '  classification from an orientation-sensitive first pass.\n'
+                   '- Remove Selected Row lets the reviewer explicitly remove one false extra\n'
+                   '  extracted Pipe, Cleaning, or Manhole row after analysis without discarding the\n'
+                   '  rest of the work order.\n'
+                   '- Single-row removal requires confirmation, preserves all other rows and Trouble\n'
+                   '  Tickets, and recalculates Manhole expected counts, Pipe/Cleaning total checks,\n'
+                   '  and duplicate/MSA review state. It does not auto-merge or delete another row.\n'
+                   '- Preserves the v105 NEW MANHOLE suffix safeguards and all earlier OCR, review,\n'
+                   '  continuation, MSA, Trouble Ticket, total, and master-write behavior.\n')
           if 'Version 106 physical-row review and single-row removal' not in text:
               text += section
           readme.write_text(text,encoding='utf-8')
@@ -334,15 +333,12 @@ jobs:
                    f'single-row removal for reviewer-confirmed false extra rows.\n\n')
           text=text[:start]+current+text[end:]
           if '## v106\n' not in text:
-              insert='''## v106
-
-- Keeps structurally detected Pipe, Cleaning, and Manhole rows visible when OCR/master matching fails.
-- Adds a structured-header retry for rotated Pipe tables whose fast orientation OCR misses the Pipe headers.
-- Adds **Remove Selected Row** so a reviewer can remove one false extra extracted row without discarding the rest of the work order.
-- Recalculates Manhole counts, Pipe/Cleaning totals, and duplicate/MSA review state after explicit row removal without auto-removing another row.
-- Passed all **56 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.
-
-'''
+              insert=('## v106\n\n'
+                      '- Keeps structurally detected Pipe, Cleaning, and Manhole rows visible when OCR/master matching fails.\n'
+                      '- Adds a structured-header retry for rotated Pipe tables whose fast orientation OCR misses the Pipe headers.\n'
+                      '- Adds **Remove Selected Row** so a reviewer can remove one false extra extracted row without discarding the rest of the work order.\n'
+                      '- Recalculates Manhole counts, Pipe/Cleaning totals, and duplicate/MSA review state after explicit row removal without auto-removing another row.\n'
+                      '- Passed all **56 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.\n\n')
               text=text.replace('## Development baseline\n',insert+'## Development baseline\n',1)
           p.write_text(text,encoding='utf-8')
 

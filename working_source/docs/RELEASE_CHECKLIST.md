@@ -72,6 +72,9 @@ The active baseline includes, at minimum:
 
 The following post-version-named regressions are already released and remain required:
 
+- `working_source/tests/regression_post_v105_single_row_removal.py`
+- `working_source/tests/regression_post_v105_physical_rows_never_discarded.py`
+- `working_source/tests/regression_post_v105_rotated_pipe_and_manhole_row.py`
 - `working_source/tests/regression_post_v103_manhole_reordered_columns.py`
 - `working_source/tests/regression_post_v102_manhole_expected_count_retry.py`
 - `working_source/tests/regression_post_v102_manhole_partial_tokens.py`

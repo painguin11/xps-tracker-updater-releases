@@ -15,14 +15,15 @@ def _remove_pending_record(records,index,manhole_count_validations):
     if index<0 or index>=len(records):
         raise IndexError('Selected row no longer exists')
     removed=records.pop(index)
-    for check in manhole_count_validations or []:
-        if str(check.get('kind') or '')!='Manhole':
-            continue
-        wo=str(check.get('wo') or '').strip()
-        actual=sum(1 for record in records
-                   if record.get('kind')=='Manhole' and str(record.get('wo') or '').strip()==wo)
-        check['actual']=actual
-        check['passed']=actual==int(check.get('expected') or 0)
+    removed_wo=str(removed.get('wo') or '').strip()
+    if removed.get('kind')=='Manhole':
+        for check in manhole_count_validations or []:
+            if str(check.get('kind') or '')!='Manhole' or str(check.get('wo') or '').strip()!=removed_wo:
+                continue
+            actual=sum(1 for record in records
+                       if record.get('kind')=='Manhole' and str(record.get('wo') or '').strip()==removed_wo)
+            check['actual']=actual
+            check['passed']=actual==int(check.get('expected') or 0)
     return removed
 
 

@@ -11,7 +11,7 @@ for token in (
     "def remove_selected_row(self):",
     "if not str(iid).startswith('record:'):",
     "_remove_pending_record(self.records,index,self.manhole_count_validations)",
-    "self.resolve_pipe_duplicate_groups(prompt=False,update_mode=False)",
+    "self._refresh_pipe_duplicate_review_state()",
     "self.refresh_total_check(check,redraw=False)",
     "self._rebuild_review_tree()",
 ):
@@ -22,6 +22,7 @@ method=method[:method.index('\n    def ',1)]
 assert "self.trouble_tickets" not in method
 assert "self.groups=" not in method
 assert "_discard_work_order_set" not in method
+assert "resolve_pipe_duplicate_groups" not in method
 assert "askyesno" in method
 assert "_analysis_running" in method
 

@@ -9,6 +9,23 @@ messagebox=base.messagebox
 Image=base.Image
 ImageTk=base.ImageTk
 
+def _remove_pending_record(records,index,manhole_count_validations):
+    """Remove exactly one reviewer-selected extracted row and refresh MH counts."""
+    index=int(index)
+    if index<0 or index>=len(records):
+        raise IndexError('Selected row no longer exists')
+    removed=records.pop(index)
+    for check in manhole_count_validations or []:
+        if str(check.get('kind') or '')!='Manhole':
+            continue
+        wo=str(check.get('wo') or '').strip()
+        actual=sum(1 for record in records
+                   if record.get('kind')=='Manhole' and str(record.get('wo') or '').strip()==wo)
+        check['actual']=actual
+        check['passed']=actual==int(check.get('expected') or 0)
+    return removed
+
+
 
 class EnhancedConfirmDialog(tk.Toplevel):
     """v101 work-order confirmation with a larger Manhole-count source image."""
@@ -194,11 +211,16 @@ class App(base.App):
                     update_button=child; break
             except Exception:
                 pass
+        self.remove_row_button=ttk.Button(
+            controls,text='Remove Selected Row',command=self.remove_selected_row)
+        remove_pack={'side':'left','padx':8}
+        if update_button is not None: remove_pack['before']=update_button
+        self.remove_row_button.pack(**remove_pack)
         self.discard_workorders_button=ttk.Button(
             controls,text='Discard Work Order(s)',command=self.discard_work_orders)
-        pack_args={'side':'left','padx':8}
-        if update_button is not None: pack_args['before']=update_button
-        self.discard_workorders_button.pack(**pack_args)
+        discard_pack={'side':'left','padx':8}
+        if update_button is not None: discard_pack['before']=update_button
+        self.discard_workorders_button.pack(**discard_pack)
 
     def _work_order_choices(self):
         order=[]; seen=set()
@@ -286,6 +308,79 @@ class App(base.App):
         except Exception:
             pass
         self._schedule_total_outlines()
+
+    def _refresh_pipe_duplicate_review_state(self):
+        """Refresh duplicate/MSA warnings after manual deletion without merging rows."""
+        groups=self._pipe_duplicate_groups()
+        duplicate_members={index for indices in groups.values() if len(indices)>1 for index in indices}
+        for index,record in enumerate(self.records):
+            if record.get('kind')!='Pipe':
+                continue
+            record['warnings']=[w for w in record.get('warnings',[]) if w!=base.DUPLICATE_PIPE_REVIEW]
+            record.pop('_duplicate_pipe_block',None); record.pop('_msa_pending',None)
+            if index not in duplicate_members:
+                record.pop('_msa_rejected',None)
+        for indices in groups.values():
+            if len(indices)<2:
+                continue
+            records=[self.records[index] for index in indices]
+            reviewable=(len(indices)==2 and base.pipe_group_physical_count(records)==2 and
+                        base.pipe_msa_difference(records[0],records[1]) is not None)
+            for record in records:
+                record.setdefault('warnings',[]).append(base.DUPLICATE_PIPE_REVIEW)
+                if reviewable:
+                    record['_msa_pending']=True
+                    record.pop('_duplicate_pipe_block',None)
+                else:
+                    record['_duplicate_pipe_block']=True
+                    record.pop('_msa_rejected',None)
+
+    def remove_selected_row(self):
+        if getattr(self,'_analysis_running',False):
+            messagebox.showinfo('Analysis In Progress',
+                                'Finish or cancel the current analysis before removing an extracted row.',parent=self)
+            return
+        selected=self.tree.selection()
+        if not selected:
+            messagebox.showinfo('Remove Selected Row','Select an extracted Pipe, Cleaning, or Manhole row first.',parent=self)
+            return
+        iid=selected[0]
+        if not str(iid).startswith('record:'):
+            messagebox.showinfo(
+                'Remove Selected Row',
+                'Select an individual Pipe, Cleaning, or Manhole row. Validation, page-warning, total, and Trouble Ticket rows are not removed by this control.',
+                parent=self)
+            return
+        try:
+            index=int(str(iid).split(':',1)[1])
+            record=self.records[index]
+        except Exception:
+            messagebox.showinfo('Remove Selected Row','The selected row is no longer available. Refresh the review and try again.',parent=self)
+            return
+        kind=str(record.get('kind') or 'row')
+        wo=str(record.get('wo') or '').strip() or 'UNKNOWN'
+        asset=str(record.get('display_asset') or record.get('asset') or '').strip()
+        if not asset and kind in ('Pipe','Cleaning'):
+            asset=f"{record.get('up','')} -> {record.get('down','')}".strip()
+        if not asset: asset='unreadable asset'
+        physical_count=max(1,int(record.get('part_count') or 1))
+        combined_note=(f'\n\nThis summary row represents {physical_count} combined physical Pipe rows.'
+                       if physical_count>1 else '')
+        if not messagebox.askyesno(
+                'Remove Selected Row',
+                f'Remove only this {kind} row from W/O {wo}?\n\n{asset}{combined_note}'
+                '\n\nNo other extracted rows, Trouble Tickets, or work-order data will be removed. '
+                'The master spreadsheet is not changed until Update Master is clicked.',
+                parent=self):
+            return
+        removed=_remove_pending_record(self.records,index,self.manhole_count_validations)
+        self._refresh_pipe_duplicate_review_state()
+        for check in self.total_validations:
+            self.refresh_total_check(check,redraw=False)
+        self._rebuild_review_tree()
+        self.status.set(
+            f'Removed one {removed.get("kind","extracted")} row from W/O {wo}: {asset}. '
+            'All other rows in the work order remain in review; validations were recalculated.')
 
     def discard_work_orders(self):
         if getattr(self,'_analysis_running',False):

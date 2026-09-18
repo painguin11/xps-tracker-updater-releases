@@ -1,13 +1,13 @@
-XPS Tracker Updater v105
+XPS Tracker Updater v106
 ========================
 
-Current status (September 16, 2026)
+Current status (September 17, 2026)
 ----------------------------------
-Production release: v105. Development: v95-work / working_source.
+Production release: v106. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v105 preserves independently confirmed one-letter NEW MANHOLE suffixes even
-when another OCR pass reads the same physical cell as an existing base ID.
-The stricter confirmation safeguard remains in place to avoid false suffixes.
+v106 keeps every structurally detected Pipe, Cleaning, and Manhole row visible
+when OCR or master matching fails, improves rotated Pipe-table classification,
+and adds explicit single-row removal for reviewer-confirmed false extra rows.
 
 Purpose
 -------
@@ -740,3 +740,21 @@ Version 105 confirmed NEW MANHOLE suffix preservation
 - Generic unmatched IDs and unconfirmed suffixes remain conservative review cases.
 - Preserves all v104 and earlier OCR, review, continuation, MSA, Trouble Ticket,
   total, and master-write behavior.
+
+Version 106 physical-row review and single-row removal
+------------------------------------------------------
+- Once table geometry establishes a Pipe, Cleaning, or Manhole data row, failed
+  ID OCR or failed master matching cannot silently delete it from Live Summary.
+- Unmatched rows remain review-only with PDF previews and can be corrected with
+  Edit Selected, which immediately rechecks matching.
+- Rotated Pipe tables get a structured-header retry when the fast OCR pass misses
+  Length Surveyed / Upstream MH / Downstream MH, preventing false Cleaning
+  classification from an orientation-sensitive first pass.
+- Remove Selected Row lets the reviewer explicitly remove one false extra
+  extracted Pipe, Cleaning, or Manhole row after analysis without discarding the
+  rest of the work order.
+- Single-row removal requires confirmation, preserves all other rows and Trouble
+  Tickets, and recalculates Manhole expected counts, Pipe/Cleaning total checks,
+  and duplicate/MSA review state. It does not auto-merge or delete another row.
+- Preserves the v105 NEW MANHOLE suffix safeguards and all earlier OCR, review,
+  continuation, MSA, Trouble Ticket, total, and master-write behavior.

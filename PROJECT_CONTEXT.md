@@ -4,27 +4,39 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v105**.
+Current production version: **v106**.
 
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the full released v105 baseline and its documented safeguards. Do **not** publish another
+`v95-work`. Start future work from that branch and preserve the full released v106 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
 
-## State audit — September 16, 2026
+## State audit — September 17, 2026
 
-- Current production release: **v105** at release source commit `4cc9eea175701d4920713603aa8ad644fe642426`.
-- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 105.
-- The production updater reads `main/update_manifest.json`, which points to the verified v105 public asset and SHA-256 below.
-- The v105 Linux release job compiled the app, passed the full 53/53 active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, verified exact size/SHA-256, and only then advanced the manifest.
+- Current production release: **v106** at release source commit `b4458ba170f62c88e41a65bd62a0fca18225bc47`.
+- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 106.
+- The production updater reads `main/update_manifest.json`, which points to the verified v106 public asset and SHA-256 below.
+- The v106 Linux release job compiled the app, passed the full 56/56 active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, verified exact size/SHA-256, and only then advanced the manifest.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
-- Temporary v105 publishing/documentation machinery is removed after this sync.
+- Temporary v106 publishing/documentation machinery is removed after this sync.
 
-## Pending after v105 — rotated Pipe classification and never-discard physical rows
+## Released in v106 — rotated Pipe classification, never-discard rows, and single-row review removal
 
-- A September 16 Phase 2 packet exposed two independent scan-orientation/OCR failures while production remains v105.
+Public v106 release:
+
+- Tag: `v106`
+- Release title: `XPS Tracker Updater v106`
+- Release commit: `b4458ba170f62c88e41a65bd62a0fca18225bc47`
+- Asset: `XPS_Tracker_Updater_v106.zip`
+- Asset size: `323424` bytes
+- SHA-256: `bf51c915b8f9e78dc661b977f6f7b6bb07204fc5464752e88f5b80e804bbc63e`
+- Public updater manifest on `main` points to `https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v106/XPS_Tracker_Updater_v106.zip` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.
+- Full active Linux CI suite: **56/56 regression scripts passed** on the v106-versioned source. Private customer fixture OCR and Windows Excel COM/live Tk GUI paths were not run by this Linux release job.
+
+
+- A September 16 Phase 2 packet exposed two independent scan-orientation/OCR failures and is included in v106.
 - A rotated Pipe table can have `Length Surveyed`, `Upstream MH`, and `Downstream MH` clearly printed while the lightweight PSM-11 classification pass reads only body rows. If the fast pass remains `other`, classification performs one 2.5x PSM-6 structured-header retry across the supported orientations; explicit `Length Surveyed` evidence selects Pipe instead of an order-dependent Cleaning tie.
 - More importantly, table geometry now owns **row existence** while OCR/master matching owns only **automatic update eligibility**. Once a Pipe, Cleaning, or Manhole data row is structurally established, failed ID OCR or a failed master match may not silently remove it from Live Summary.
 - Unmatched physical rows remain visible and review-only with the available PDF field previews and any safe OCR hint (`?` when identity is unreadable). `Edit Selected` uses the existing `apply_manual_asset_edit` path, so correcting a Manhole asset or Pipe/Cleaning endpoints immediately reruns matching and makes the row updateable when it resolves.

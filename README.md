@@ -6,22 +6,22 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v105
+## Current production release: v106
 
-- Release: [XPS Tracker Updater v105](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v105)
-- Release commit: `4cc9eea175701d4920713603aa8ad644fe642426`
-- Asset: `XPS_Tracker_Updater_v105.zip`
-- Size: `320440` bytes
-- SHA-256: `5be6a19ed7422e9277a43f13c15cc56750b5907d5e07051f925f7934d1abf73b`
+- Release: [XPS Tracker Updater v106](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v106)
+- Release commit: `b4458ba170f62c88e41a65bd62a0fca18225bc47`
+- Asset: `XPS_Tracker_Updater_v106.zip`
+- Size: `323424` bytes
+- SHA-256: `bf51c915b8f9e78dc661b977f6f7b6bb07204fc5464752e88f5b80e804bbc63e`
 
 The production updater reads `update_manifest.json` on `main`, which points to
-this verified v105 asset. Development remains on `v95-work`, under `working_source/`.
+this verified v106 asset. Development remains on `v95-work`, under `working_source/`.
 Old source bundles and release notes are historical; fetch the latest development
 head and read its project instructions before editing.
 
-v105 preserves independently confirmed one-letter NEW MANHOLE suffixes when a
-competing OCR observation matches an existing base ID. The suffix must survive
-independent multi-crop confirmation before it is treated as NEW MANHOLE.
+v106 keeps physical Pipe/Cleaning/Manhole rows visible for review when OCR or
+master matching fails, improves rotated Pipe classification, and adds explicit
+single-row removal for reviewer-confirmed false extra rows.
 
 ## v85
 
@@ -139,6 +139,14 @@ independent multi-crop confirmation before it is treated as NEW MANHOLE.
 - Prefers tied ruled-row OCR when it carries an independently confirmed new suffix.
 - Keeps generic unmatched IDs and unconfirmed suffixes conservative and review-only.
 - Passed all **53 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.
+
+## v106
+
+- Keeps structurally detected Pipe, Cleaning, and Manhole rows visible when OCR/master matching fails.
+- Adds a structured-header retry for rotated Pipe tables whose fast orientation OCR misses the Pipe headers.
+- Adds **Remove Selected Row** so a reviewer can remove one false extra extracted row without discarding the rest of the work order.
+- Recalculates Manhole counts, Pipe/Cleaning totals, and duplicate/MSA review state after explicit row removal without auto-removing another row.
+- Passed all **56 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.
 
 ## Development baseline
 

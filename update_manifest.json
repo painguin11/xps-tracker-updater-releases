@@ -1,11 +1,11 @@
 {
-  "version": "105",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v105/XPS_Tracker_Updater_v105.zip",
-  "sha256": "5be6a19ed7422e9277a43f13c15cc56750b5907d5e07051f925f7934d1abf73b",
+  "version": "106",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v106/XPS_Tracker_Updater_v106.zip",
+  "sha256": "bf51c915b8f9e78dc661b977f6f7b6bb07204fc5464752e88f5b80e804bbc63e",
   "release_notes": [
-    "Preserve independently confirmed one-letter NEW MANHOLE suffixes when another OCR pass sees an existing base ID",
-    "Require independent multi-crop suffix confirmation before a suffix can override the base Manhole",
-    "Apply the same safeguard during user-confirmed expected-count retry",
-    "Prefer tied ruled-row Manhole OCR when it contains an independently confirmed new suffix"
+    "Keep structurally detected Pipe, Cleaning, and Manhole rows visible when OCR or master matching fails",
+    "Add Remove Selected Row for reviewer-confirmed false extra extracted rows without discarding the work order",
+    "Recalculate Manhole counts, Pipe/Cleaning totals, and duplicate/MSA review state after explicit row removal",
+    "Retry rotated Pipe headers at higher resolution when the fast orientation pass misses the table identity"
   ]
 }

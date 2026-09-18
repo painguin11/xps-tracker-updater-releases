@@ -1,6 +1,6 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v105 production baseline**, the retained
+This checklist applies to the current **v106 production baseline**, the retained
 `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
@@ -34,6 +34,9 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v105 physical Pipe/Cleaning/Manhole row-retention + manual re-match regression;
+- post-v105 single-row removal + validation-recalculation regression;
+- post-v105 rotated Pipe classification and visible Manhole-row regression;
 - post-v103 reordered Manhole Date/Manhole-Number column regression;
 - post-v102 Manhole expected-count retry regression;
 - post-v102 Manhole partial-token/grid-row recovery regression;
@@ -69,6 +72,9 @@ The active baseline includes, at minimum:
 
 The following post-version-named regressions are already released and remain required:
 
+- `working_source/tests/regression_post_v105_single_row_removal.py`
+- `working_source/tests/regression_post_v105_physical_rows_never_discarded.py`
+- `working_source/tests/regression_post_v105_rotated_pipe_and_manhole_row.py`
 - `working_source/tests/regression_post_v103_manhole_reordered_columns.py`
 - `working_source/tests/regression_post_v102_manhole_expected_count_retry.py`
 - `working_source/tests/regression_post_v102_manhole_partial_tokens.py`
@@ -152,6 +158,8 @@ it. Resolve the behavior intentionally.
 
 ### Manholes
 
+- Once B&C table structure establishes a physical Manhole data row, failed asset OCR or a failed master match must never delete that row from Live Summary. Keep it review-only with the available PDF preview and any OCR hint, and let `Edit Selected` rerun matching after the user corrects the Asset.
+- Numeric-only Manhole OCR is an edit hint only; the master must not supply a missing prefix/identity to turn that partial observation into an automatic match. Repeated OCR identities remain separate physical rows and are marked `DUPLICATE IN PDF` for review.
 - Manhole work orders request a user-confirmed expected count using the
   Description of Work crop.
 - Parsed Manhole row count is checked against that expected count.
@@ -188,7 +196,9 @@ it. Resolve the behavior intentionally.
 - Difference threshold remains 4.5 ft.
 - Over-threshold differences are highlighted red and produce an uppercase note.
 - Header/title/printed-total rows never enter Live Summary or the master.
-- Confirmed physical rows remain represented even when a field needs review.
+- Confirmed physical rows remain represented even when a field needs review. Matching failure changes the row to review-only; it never authorizes silently removing a Pipe, Cleaning, or Manhole row from the summary.
+- A false extra row may be removed only by an explicit reviewer action using `Remove Selected Row` after analysis. That action removes exactly the selected extracted Pipe/Cleaning/Manhole record, preserves every other row and work-order item, and recalculates affected Manhole counts, Pipe/Cleaning totals, and duplicate/MSA review state.
+- Row-level removal must not invoke whole-work-order discard or automatically merge/delete another row as a side effect. Validation/separator/page-warning/Trouble Ticket rows are not eligible for this control.
 - OCR/total recovery must not manufacture or round a PDF value to match master
   data.
 - Cleaning disagreement handling retains competing batch/independent OCR as
@@ -305,7 +315,18 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v105 is the current production release:
+v106 is the current production release:
+
+- Release commit: `b4458ba170f62c88e41a65bd62a0fca18225bc47`
+- Asset: `XPS_Tracker_Updater_v106.zip`
+- Size: `323424` bytes
+- SHA-256: `bf51c915b8f9e78dc661b977f6f7b6bb07204fc5464752e88f5b80e804bbc63e`
+- Public manifest version/URL/SHA were re-read and verified after release asset re-download.
+- 56/56 active Linux regression scripts passed on the versioned release source. Private fixture OCR and Windows Excel COM/live Tk GUI checks remain platform/fixture limitations rather than release-job coverage.
+
+Previous verified production reference follows for history.
+
+v105 was the previous production release:
 
 - Release commit: `4cc9eea175701d4920713603aa8ad644fe642426`
 - Asset: `XPS_Tracker_Updater_v105.zip`

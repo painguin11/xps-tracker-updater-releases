@@ -1,1 +1,1 @@
-publish v107 release-only retry
+publish v107 workflow-clean snapshot

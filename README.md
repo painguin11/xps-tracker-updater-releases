@@ -6,22 +6,30 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v106
+## Current production release: v107
 
-- Release: [XPS Tracker Updater v106](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v106)
-- Release commit: `b4458ba170f62c88e41a65bd62a0fca18225bc47`
-- Asset: `XPS_Tracker_Updater_v106.zip`
-- Size: `323424` bytes
-- SHA-256: `bf51c915b8f9e78dc661b977f6f7b6bb07204fc5464752e88f5b80e804bbc63e`
+- Release: [XPS Tracker Updater v107](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v107)
+- Release commit: `942fc1b83770b3138fc6b3d9e967adec7fdfb5cf`
+- Asset: `XPS_Tracker_Updater_v107.zip`
+- Size: `324216` bytes
+- SHA-256: `722288753a159a226575aea17c01dd2b0e5645b07d799d22ce1b75cb9ea64b35`
 
 The production updater reads `update_manifest.json` on `main`, which points to
-this verified v106 asset. Development remains on `v95-work`, under `working_source/`.
+this verified v107 asset. Development remains on `v95-work`, under `working_source/`.
 Old source bundles and release notes are historical; fetch the latest development
 head and read its project instructions before editing.
 
-v106 keeps physical Pipe/Cleaning/Manhole rows visible for review when OCR or
-master matching fails, improves rotated Pipe classification, and adds explicit
-single-row removal for reviewer-confirmed false extra rows.
+v107 keeps the fast classifier for clear pages and adds a high-resolution,
+line-suppressed OCR fallback only for ambiguous ruled B&C table headers. The
+original ruled image remains untouched for table geometry.
+
+## v107
+
+- Keeps the normal fast classification path for clear/high-confidence pages.
+- Uses the existing 2.5x structured-header retry only for ambiguous B&C table pages.
+- If that header is still inconclusive, OCRs a copy with long table rules suppressed while retaining the original ruled image for geometry.
+- Keeps Pipe classification tolerant only when `Surveyed`, endpoint evidence, and normal table context agree.
+- Passed all **57 active Linux regression scripts** before publishing; the public ZIP was re-downloaded and its exact size/SHA-256 verified before the auto-update manifest advanced.
 
 ## v85
 

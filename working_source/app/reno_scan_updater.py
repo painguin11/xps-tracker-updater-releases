@@ -897,11 +897,21 @@ def classify_for_profile(page, profile):
             ('wheel' in norm and 'walk' in norm) or
             ('cleaning' in norm and 'date' in norm)
         )
+        # A ruled/rotated B&C Pipe header can lose the first letter of
+        # "Length" (for example "Tength Surveyed") while still preserving
+        # "Surveyed", one endpoint header, and normal table context such as
+        # Street/Date. Treat that structured evidence as Pipe without relaxing
+        # endpoint matching or accepting a bare "surveyed" body word.
+        pipe_header=(
+            'length surveyed' in norm or 'surveyed length' in norm or
+            ('surveyed' in norm and score and
+             any(token in norm for token in ('street','date','section','drainage')))
+        )
         if cleaning_header and ('project yea' in norm or 'field crew' in norm or score): kind='cleaning'; s=25+score
         elif 'manhole number' in norm: kind='manholes'; s=20
-        elif ('length surveyed' in norm or 'surveyed length' in norm) and score: kind='pipes'; s=20+score
+        elif pipe_header and score: kind='pipes'; s=20+score
         elif (('drainage area' in norm and 'street' in norm and 'date' in norm) and
-              not ('length surveyed' in norm or 'surveyed length' in norm)): kind='manholes'; s=20
+              not pipe_header): kind='manholes'; s=20
         else: kind='other'; s=sum(x in l for x in ('up mh','dn mh','wheel walk','manhole number','length surveyed'))
         candidates.append((s,arr,deg,txt,kind))
     best=max(candidates,key=lambda x:x[0])
@@ -927,14 +937,19 @@ def classify_for_profile(page, profile):
                 ('wheel' in retry_norm and 'walk' in retry_norm) or
                 ('cleaning' in retry_norm and 'date' in retry_norm)
             )
+            retry_pipe_header=(
+                'length surveyed' in retry_norm or 'surveyed length' in retry_norm or
+                ('surveyed' in retry_norm and endpoint_score and
+                 any(token in retry_norm for token in ('street','date','section','drainage')))
+            )
             if cleaning_header and ('project yea' in retry_norm or 'field crew' in retry_norm or endpoint_score):
                 retry_kind='cleaning'; retry_score=25+endpoint_score
             elif 'manhole number' in retry_norm:
                 retry_kind='manholes'; retry_score=20
-            elif ('length surveyed' in retry_norm or 'surveyed length' in retry_norm) and endpoint_score:
+            elif retry_pipe_header and endpoint_score:
                 retry_kind='pipes'; retry_score=20+endpoint_score
             elif (('drainage area' in retry_norm and 'street' in retry_norm and 'date' in retry_norm) and
-                  not ('length surveyed' in retry_norm or 'surveyed length' in retry_norm)):
+                  not retry_pipe_header):
                 retry_kind='manholes'; retry_score=20
             else:
                 retry_kind='other'; retry_score=0

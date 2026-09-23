@@ -1,0 +1,65 @@
+import ast
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+
+SOURCE=Path('working_source/app/reno_scan_updater.py')
+tree=ast.parse(SOURCE.read_text(encoding='utf-8'))
+wanted={'_pdf_decimal','_choose_printed_total','_resolve_printed_total_sources','_length_total_result'}
+nodes=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in wanted]
+module=ast.Module(body=nodes,type_ignores=[]); ast.fix_missing_locations(module)
+ns={'Decimal':Decimal,'InvalidOperation':InvalidOperation}; exec(compile(module,str(SOURCE),'exec'),ns)
+
+value,confident=ns['_choose_printed_total']([5690,5690,5690,5690])
+assert value==5690 and confident
+value,confident=ns['_choose_printed_total']([5690,5680])
+assert value is None and not confident
+
+single=ns['_resolve_printed_total_sources']([
+    {'page':4,'info':{'found':True,'value':5690,'confident':True}}
+])
+assert single['available'] and single['value']==5690 and single['confident']
+
+pages=ns['_resolve_printed_total_sources']([
+    {'page':2,'info':{'found':True,'value':2000,'confident':True}},
+    {'page':3,'info':{'found':True,'value':3690,'confident':True}},
+])
+assert pages['value']==3690 and pages['confident'] and pages['pages']==[3]
+
+partial=ns['_resolve_printed_total_sources']([
+    {'page':2,'info':{'found':True,'value':2000,'confident':True}},
+    {'page':3,'info':{'found':False,'value':None,'confident':False}},
+    {'page':4,'info':{'found':True,'value':3690,'confident':True}},
+])
+assert partial['value']==3690 and partial['confident'] and partial['pages']==[4]
+
+final_unreadable=ns['_resolve_printed_total_sources']([
+    {'page':10,'info':{'found':True,'value':4232,'confident':True}},
+    {'page':11,'info':{'found':False,'value':None,'confident':False}},
+])
+assert final_unreadable['available'] and final_unreadable['value'] is None
+assert final_unreadable['pages']==[11] and not final_unreadable['confident']
+
+lengths=[56,163,190,165,190,60,35,206,296,171,47,262,114,101,105,140,299,299,296,258,300,299,317,305,301,319,396]
+records=[{'video_length':value} for value in lengths]
+result=ns['_length_total_result'](records,5690)
+assert result['summary_total']==5690 and result['matches'] and result['missing']==0
+bad=[dict(r) for r in records]; bad[12]['video_length']=None
+result=ns['_length_total_result'](bad,5690)
+assert result['summary_total']==5576 and not result['matches'] and result['missing']==1
+bad[12]['video_length']=104
+result=ns['_length_total_result'](bad,5690)
+assert result['summary_total']==5680 and result['difference']==-10 and not result['matches']
+
+# Decimal measurements remain exact rather than being rounded before comparison.
+records=[{'video_length':'399.02'},{'video_length':'333.89'}]
+result=ns['_length_total_result'](records,'732.91')
+assert result['summary_total']==732.91 and result['matches']
+result=ns['_length_total_result'](records,'732.90')
+assert not result['matches'] and result['difference']==0.01
+
+source=SOURCE.read_text(encoding='utf-8')
+assert 'needs_consensus=(not value_candidates or value is None or len(distinct)>1' in source
+assert "printed_total_info=_read_pair_table_printed_total" in source
+assert "prepared['printed_total_info']=printed_total_info" in source
+assert 'TOTAL LENGTH VALIDATION FAILURE(S) — UPDATE MASTER BLOCKED' in source
+print('Length-total exact reconciliation and invalid-first-pass OCR safeguards passed.')

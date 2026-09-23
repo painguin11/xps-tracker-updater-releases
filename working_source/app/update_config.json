@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "manifest_url": "https://raw.githubusercontent.com/painguin11/xps-tracker-updater-releases/main/update_manifest.json",
+  "request_timeout_seconds": 5,
+  "download_timeout_seconds": 120
+}

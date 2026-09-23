@@ -4,44 +4,58 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v106**.
+Current production version: **v107**.
 
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the full released v106 baseline and its documented safeguards. Do **not** publish another
+`v95-work`. Start future work from that branch and preserve the full released v107 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
 
-## State audit — September 17, 2026
+## State audit — September 23, 2026
 
-- Current production release: **v106** at release source commit `b4458ba170f62c88e41a65bd62a0fca18225bc47`.
-- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 106.
-- The production updater reads `main/update_manifest.json`, which points to the verified v106 public asset and SHA-256 below.
-- The v106 Linux release job compiled the app, passed the full 56/56 active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, verified exact size/SHA-256, and only then advanced the manifest.
+- Current production release: **v107** at release source commit `942fc1b83770b3138fc6b3d9e967adec7fdfb5cf`.
+- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 107.
+- The production updater reads `main/update_manifest.json`, which points to the verified v107 public asset and SHA-256 below.
+- The v107 Linux release job compiled the app, passed the full 57/57 active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, verified exact size/SHA-256, and only then advanced the manifest.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
-- Temporary v106 publishing/documentation machinery is removed after this sync.
+- Temporary v107 publishing/documentation machinery is removed after this sync.
 
-## Pending after v106 — tolerant rotated Pipe header OCR
+## Released in v107 — high-resolution ruled-header OCR fallback
 
-- A rotated B&C Pipe scan can preserve the table structure while Tesseract damages
-  the printed header, for example reading `Length Surveyed` as
-  `Tength Surveyed` and `Upstream MH` as `Upstrean WH`.
-- The previous classifier required the exact `Length Surveyed` phrase, so that
-  page could remain `other` even though `Surveyed`, a valid endpoint header,
-  and normal table context such as Street/Date were all visible.
-- Pipe classification now accepts that narrowly structured partial-header evidence:
-  `Surveyed` must be present together with endpoint evidence and at least one
-  normal table-context signal (Street, Date, Section, or Drainage). A bare body
-  occurrence of `surveyed` is not enough.
-- This changes only activity/orientation classification. Endpoint matching,
-  suffix/new-asset safeguards, row retention, total validation, and master writes
-  are unchanged.
-- Local diagnosis on the supplied private PDF confirms the affected table is
-  selected as Pipe at 90° after this change. The customer PDF remains private and
-  is not committed.
-- Permanent synthetic regression:
-  `working_source/tests/regression_post_v106_rotated_pipe_header_ocr.py`.
+Public v107 release:
+
+- Tag: `v107`
+- Release title: `XPS Tracker Updater v107`
+- Release commit: `942fc1b83770b3138fc6b3d9e967adec7fdfb5cf`
+- Asset: `XPS_Tracker_Updater_v107.zip`
+- Asset size: `324216` bytes
+- SHA-256: `722288753a159a226575aea17c01dd2b0e5645b07d799d22ce1b75cb9ea64b35`
+- Public updater manifest on `main` points to `https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v107/XPS_Tracker_Updater_v107.zip` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.
+- Full active Linux CI suite: **57/57 regression scripts passed** on the v107-versioned source. The private R2 fixture remained unavailable to CI, so its structural safeguards passed while exact fixture OCR was skipped. Windows Excel COM/live Tk GUI paths were not run by Linux CI.
+- The supplied September 22 customer PDF was used privately for diagnosis and direct page-classification validation; it remains uncommitted and unpackaged.
+
+A rotated B&C Pipe scan can preserve a clear ruled table while OCR damages header
+letters, for example reading `Length Surveyed` as `Tength Surveyed` and
+`Upstream MH` as `Upstrean WH`. v107 keeps the normal fast classifier for
+clear pages. Only ambiguous pages enter the existing 2.5x structured-header
+retry, and only a still-inconclusive high-resolution header receives a second
+OCR-only view with long horizontal and vertical table rules suppressed.
+
+The original ruled render remains untouched and authoritative for table geometry.
+The OCR-only cleanup uses kernels deliberately longer than ordinary glyph strokes
+and combines its text evidence with the untouched header rather than replacing
+it. Pipe classification may tolerate a damaged `Length` word only when
+`Surveyed`, endpoint evidence, and normal table context such as Street, Date,
+Section, or Drainage agree. Endpoint matching, suffix/new-asset handling,
+physical-row retention, total validation, MSA behavior, and master writes remain
+under the existing strict safeguards.
+
+On the supplied private PDF, page 2 is correctly classified as a Pipe table at
+90 degrees; it contains 19 physical rows and the printed surveyed-length total is
+5185.97. Permanent regression:
+`working_source/tests/regression_post_v106_rotated_pipe_header_ocr.py`.
 
 ## Released in v106 — rotated Pipe classification, never-discard rows, and single-row review removal
 

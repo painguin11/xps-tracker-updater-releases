@@ -1,11 +1,11 @@
 {
-  "version": "106",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v106/XPS_Tracker_Updater_v106.zip",
-  "sha256": "bf51c915b8f9e78dc661b977f6f7b6bb07204fc5464752e88f5b80e804bbc63e",
+  "version": "107",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v107/XPS_Tracker_Updater_v107.zip",
+  "sha256": "722288753a159a226575aea17c01dd2b0e5645b07d799d22ce1b75cb9ea64b35",
   "release_notes": [
-    "Keep structurally detected Pipe, Cleaning, and Manhole rows visible when OCR or master matching fails",
-    "Add Remove Selected Row for reviewer-confirmed false extra extracted rows without discarding the work order",
-    "Recalculate Manhole counts, Pipe/Cleaning totals, and duplicate/MSA review state after explicit row removal",
-    "Retry rotated Pipe headers at higher resolution when the fast orientation pass misses the table identity"
+    "Keep the normal fast classifier for clear pages",
+    "Use a high-resolution structured-header retry only for ambiguous Brown & Caldwell table pages",
+    "Suppress long table rules only in an OCR copy when the high-resolution header remains inconclusive",
+    "Preserve the original ruled image for table geometry and all existing matching safeguards"
   ]
 }

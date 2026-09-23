@@ -1,0 +1,413 @@
+name: Publish XPS Tracker Updater v107
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_publish_v107'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+
+      - name: Prepare release environment
+        run: |
+          set -euo pipefail
+          command -v python
+          command -v tesseract
+          command -v gh
+          python -m venv .release-venv
+          .release-venv/bin/python -m pip install --upgrade --quiet pip
+          .release-venv/bin/python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Prepare v107 source
+        run: |
+          set -euo pipefail
+          .release-venv/bin/python - <<'PY'
+          from pathlib import Path
+
+          app=Path('working_source/app/reno_scan_updater.py')
+          text=app.read_text(encoding='utf-8')
+          assert text.count("APP_VERSION = '106'")==1, 'unexpected APP_VERSION baseline'
+          app.write_text(text.replace("APP_VERSION = '106'","APP_VERSION = '107'",1),encoding='utf-8')
+
+          updater=Path('working_source/app/xps_update.py')
+          text=updater.read_text(encoding='utf-8')
+          assert text.count('CURRENT_VERSION = "106"')==1, 'unexpected CURRENT_VERSION baseline'
+          updater.write_text(text.replace('CURRENT_VERSION = "106"','CURRENT_VERSION = "107"',1),encoding='utf-8')
+
+          readme=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          text=readme.read_text(encoding='utf-8')
+          assert text.startswith('XPS Tracker Updater v106\n')
+          text=text.replace('XPS Tracker Updater v106\n','XPS Tracker Updater v107\n',1)
+          text=text.replace('Current status (September 17, 2026)','Current status (September 23, 2026)',1)
+          text=text.replace('Production release: v106. Development: v95-work / working_source.',
+                            'Production release: v107. Development: v95-work / working_source.',1)
+          old=('v106 keeps every structurally detected Pipe, Cleaning, and Manhole row visible\n'
+               'when OCR or master matching fails, improves rotated Pipe-table classification,\n'
+               'and adds explicit single-row removal for reviewer-confirmed false extra rows.\n')
+          new=('v107 improves ambiguous rotated B&C Pipe-table classification by using a\n'
+               'high-resolution OCR fallback that suppresses long table rules only in the OCR\n'
+               'copy while preserving the original ruled image for table geometry.\n')
+          assert old in text
+          text=text.replace(old,new,1)
+          section=('\nVersion 107 ruled-header OCR fallback\n'
+                   '---------------------------------------\n'
+                   '- The normal fast page classifier remains unchanged for clear/high-confidence pages.\n'
+                   '- Only ambiguous B&C table pages pay for the existing 2.5x structured-header retry.\n'
+                   '- If the normal high-resolution header OCR is still inconclusive, a second OCR-only\n'
+                   '  copy suppresses long horizontal/vertical table rules before rereading the header.\n'
+                   '- The original rendered page is never line-stripped for row/column geometry.\n'
+                   '- Damaged header text may identify Pipe only when Surveyed appears with endpoint\n'
+                   '  evidence and normal table context; endpoint/master matching remains strict.\n'
+                   '- Preserves all v106 row-retention, review, MSA, continuation, Trouble Ticket,\n'
+                   '  total-validation, and master-write safeguards.\n')
+          if 'Version 107 ruled-header OCR fallback' not in text:
+              text += section
+          readme.write_text(text,encoding='utf-8')
+          PY
+
+          .release-venv/bin/python -m py_compile             working_source/app/reno_scan_updater.py             working_source/app/xps_review_controls.py             working_source/app/xps_update.py
+          git diff --check
+
+      - name: Run full active regression suite
+        run: |
+          set -euo pipefail
+          .release-venv/bin/python - <<'PY'
+          from pathlib import Path
+          import subprocess,sys
+          tests=[
+            'regression_post_v106_rotated_pipe_header_ocr.py',
+            'regression_post_v105_single_row_removal.py',
+            'regression_post_v105_physical_rows_never_discarded.py',
+            'regression_post_v105_rotated_pipe_and_manhole_row.py',
+            'regression_post_v103_manhole_reordered_columns.py',
+            'regression_post_v102_manhole_expected_count_retry.py',
+            'regression_post_v102_manhole_partial_tokens.py',
+            'regression_post_v100_826_trouble_geometry.py',
+            'regression_post_v100_trouble_cells.py',
+            'regression_trouble_workbook.py',
+            'regression_post_v99_faint_vertical_grid.py',
+            'regression_post_v98_short_wide_compact_table.py',
+            'regression_post_v97_cleaning_clipped_digits.py',
+            'regression_post_v96_msa_editable_fields.py',
+            'regression_post_v95_new_packet_ocr.py',
+            'regression_post_v95_padded_endpoint_ids.py',
+            'regression_post_v95_msa_suffix_review.py',
+            'regression_v95_faint_compact_rows.py',
+            'regression_v95_exact_endpoint_priority.py',
+            'regression_v94_stacked_endpoint_digits.py',
+            'regression_v93_workorder_low_confidence_blank.py',
+            'regression_v93_new_asset_notes.py',
+            'regression_v92_workorder_4_or_5_digits.py',
+            'regression_v91_workorder_color_ocr.py',
+            'regression_v91_new_asset_preview_and_endpoint_recovery.py',
+            'regression_v90_review_ui.py',
+            'regression_v89_review_workflow.py',
+            'regression_v89_printed_pair_identity.py',
+            'regression_v89_manhole_count_and_final_total.py',
+            'regression_v88_continuations.py',
+            'regression_v87_total_summary_separator.py',
+            'regression_v86_assets_and_edit.py',
+            'regression_v85_edit_row_previews.py',
+            'regression_v85_mandatory_rows_and_length_votes.py',
+            'regression_v84_real_packet_length_logic.py',
+            'regression_v83_length_recovery.py',
+            'regression_v83_exact_pdf_numbers.py',
+            'regression_v83_total_preview_group_errors.py',
+            'regression_v82_pair_video_lengths.py',
+            'regression_v82_master_asset_format.py',
+            'regression_v82_suffix_guard.py',
+            'regression_v82_cleaning_header_noise.py',
+            'regression_v82_layout_threshold.py',
+            'regression_v81_header_outline.py',
+            'regression_v80_ocr_total_ui.py',
+            'regression_v79_layout_speed.py',
+            'regression_v78_rollback.py',
+            'regression_v75_811_ocr.py',
+            'regression_v74_row_filtering.py',
+            'regression_v73_total_dates.py',
+            'regression_compact_table_fallback.py',
+            'regression_length_totals.py',
+            'regression_split_pipes.py',
+            'regression_new_assets.py',
+            'regression_master_insert.py',
+            'regression_r2_endpoint_ocr.py',
+            'regression_v102_review_wrapper.py',
+          ]
+          root=Path('working_source/tests')
+          for name in tests:
+              path=root/name
+              if not path.exists():
+                  raise SystemExit(f'Missing active regression: {path}')
+              print(f'===== {path} =====',flush=True)
+              subprocess.run([sys.executable,str(path)],check=True)
+          print(f'FULL ACTIVE REGRESSION SUITE: {len(tests)}/{len(tests)} passed')
+          PY
+          git diff --check
+
+      - name: Audit release scope
+        run: |
+          set -euo pipefail
+          if git diff --name-only b4458ba170f62c88e41a65bd62a0fca18225bc47...HEAD | grep -Ei '\.(pdf|xlsx|xls|xlsm)$' ; then
+            echo 'Private/customer document type was committed after v106; refusing release.' >&2
+            exit 1
+          fi
+          if git ls-files | grep -Ei '\.(pdf|xlsx|xls|xlsm)$' ; then
+            echo 'Private/customer document type is tracked in Git; refusing release.' >&2
+            exit 1
+          fi
+          grep -q "APP_VERSION = '107'" working_source/app/reno_scan_updater.py
+          grep -q 'CURRENT_VERSION = "107"' working_source/app/xps_update.py
+          grep -q 'XPS Tracker Updater v107' working_source/app/README_XPS_Tracker_Updater.txt
+          grep -q 'def _line_suppressed_table_header_image' working_source/app/reno_scan_updater.py
+          grep -q 'regression_post_v106_rotated_pipe_header_ocr' RELEASE_CHECKLIST.md
+
+      - name: Commit release source
+        id: source
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          git commit -m 'Prepare XPS Tracker Updater v107'
+          git push origin HEAD:v95-work
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and validate package
+        id: package
+        run: |
+          set -euo pipefail
+          .release-venv/bin/python - <<'PY'
+          from pathlib import Path
+          import hashlib,os,shutil,zipfile
+
+          root=Path('dist')
+          if root.exists():
+              shutil.rmtree(root)
+          out=Path('XPS_Tracker_Updater_v107.zip')
+          if out.exists():
+              out.unlink()
+          target=root/'XPS_Tracker_Updater'
+          shutil.copytree(
+              Path('working_source/app'),target,
+              ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
+          forbidden={'.pdf','.xlsx','.xls','.xlsm'}
+          bad=[p for p in target.rglob('*') if p.is_file() and p.suffix.lower() in forbidden]
+          if bad:
+              raise SystemExit(f'Private/customer document type found in package: {bad}')
+          required=['reno_scan_updater.py','xps_review_controls.py','xps_update.py',
+                    'run_xps_tracker.bat','setup_and_run.bat']
+          for name in required:
+              assert (target/name).is_file(),name
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(target.rglob('*')):
+                  if p.is_file():
+                      z.write(p,p.relative_to(root))
+          with zipfile.ZipFile(out) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              assert names and all(name.split('/',1)[0]=='XPS_Tracker_Updater' for name in names)
+          data=out.read_bytes()
+          sha=hashlib.sha256(data).hexdigest()
+          size=len(data)
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f:
+              f.write(f'sha={sha}\nsize={size}\n')
+          print(f'Built {out} size={size} sha256={sha}')
+          PY
+
+      - name: Create v107 release and verify public asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL_SHA: ${{ steps.source.outputs.sha }}
+          EXPECTED_SHA: ${{ steps.package.outputs.sha }}
+          EXPECTED_SIZE: ${{ steps.package.outputs.size }}
+        run: |
+          set -euo pipefail
+          if gh release view v107 >/dev/null 2>&1; then
+            echo 'v107 already exists; refusing to overwrite.' >&2
+            exit 1
+          fi
+          if git ls-remote --tags origin refs/tags/v107 | grep -q .; then
+            echo 'v107 tag already exists; refusing to overwrite.' >&2
+            exit 1
+          fi
+          gh release create v107 XPS_Tracker_Updater_v107.zip             --target "$REL_SHA"             --title 'XPS Tracker Updater v107'             --notes 'Improves ambiguous rotated Brown & Caldwell Pipe-table classification. The normal fast path is unchanged; only unresolved pages use the high-resolution structured-header fallback, and only still-ambiguous headers get an OCR-only copy with long table rules suppressed. The original ruled image remains authoritative for table geometry, and all v106 matching, row-retention, MSA, continuation, Trouble Ticket, total-validation, and master-write safeguards are preserved.'
+          rm -rf verify-public && mkdir verify-public
+          gh release download v107 --pattern 'XPS_Tracker_Updater_v107.zip' --dir verify-public
+          ACTUAL_SHA=$(sha256sum verify-public/XPS_Tracker_Updater_v107.zip | awk '{print $1}')
+          ACTUAL_SIZE=$(stat -c%s verify-public/XPS_Tracker_Updater_v107.zip)
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          test "$ACTUAL_SIZE" = "$EXPECTED_SIZE"
+          echo "Verified public asset size=$ACTUAL_SIZE sha256=$ACTUAL_SHA"
+
+      - name: Advance manifest, sync release docs, and clean temporary machinery
+        env:
+          REL_SHA: ${{ steps.source.outputs.sha }}
+          VERIFIED_SHA: ${{ steps.package.outputs.sha }}
+          VERIFIED_SIZE: ${{ steps.package.outputs.size }}
+        run: |
+          set -euo pipefail
+          git worktree add /tmp/xps-main-v107 origin/main
+          .release-venv/bin/python - <<'PY'
+          from pathlib import Path
+          import json,os,re,shutil
+
+          rel_sha=os.environ['REL_SHA']
+          sha=os.environ['VERIFIED_SHA']
+          size=os.environ['VERIFIED_SIZE']
+
+          p=Path('AGENTS.md'); text=p.read_text(encoding='utf-8')
+          assert '- Production version: **v106**.' in text
+          text=text.replace('- Production version: **v106**.','- Production version: **v107**.',1)
+          text=text.replace('Preserve all documented behavior through v106 unless the user explicitly asks',
+                            'Preserve all documented behavior through v107 unless the user explicitly asks',1)
+          p.write_text(text,encoding='utf-8')
+
+          p=Path('PROJECT_CONTEXT.md'); text=p.read_text(encoding='utf-8')
+          assert 'Current production version: **v106**.' in text
+          text=text.replace('Current production version: **v106**.','Current production version: **v107**.',1)
+          text=text.replace('preserve the full released v106 baseline','preserve the full released v107 baseline',1)
+          text=text.replace('## State audit — September 17, 2026','## State audit — September 23, 2026',1)
+          text=re.sub(r'- Current production release: \*\*v106\*\* at release source commit `[^`]+`.',
+                      f'- Current production release: **v107** at release source commit `{rel_sha}`.',text,count=1)
+          text=text.replace('- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 106.',
+                            '- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 107.',1)
+          text=text.replace('which points to the verified v106 public asset and SHA-256 below.',
+                            'which points to the verified v107 public asset and SHA-256 below.',1)
+          text=text.replace('The v106 Linux release job compiled the app, passed the full 56/56 active regression matrix',
+                            'The v107 Linux release job compiled the app, passed the full 57/57 active regression matrix',1)
+          text=text.replace('Temporary v106 publishing/documentation machinery is removed after this sync.',
+                            'Temporary v107 publishing/documentation machinery is removed after this sync.',1)
+          header='## Pending after v106 — tolerant rotated Pipe header OCR\n'
+          assert header in text
+          released=(f'## Released in v107 — high-resolution line-suppressed rotated Pipe header OCR\n\n'
+                    f'Public v107 release:\n\n'
+                    f'- Tag: `v107`\n'
+                    f'- Release title: `XPS Tracker Updater v107`\n'
+                    f'- Release commit: `{rel_sha}`\n'
+                    f'- Asset: `XPS_Tracker_Updater_v107.zip`\n'
+                    f'- Asset size: `{size}` bytes\n'
+                    f'- SHA-256: `{sha}`\n'
+                    f'- Public updater manifest on `main` points to `https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v107/XPS_Tracker_Updater_v107.zip` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.\n'
+                    f'- Full active Linux CI suite: **57/57 regression scripts passed** on the v107-versioned source. The supplied private PDF was validated in-session for page classification but was not committed or available to the public release job; Windows Excel COM/live Tk GUI paths were not run by this Linux release job.\n\n')
+          text=text.replace(header,released,1)
+          p.write_text(text,encoding='utf-8')
+
+          p=Path('RELEASE_CHECKLIST.md'); text=p.read_text(encoding='utf-8')
+          assert 'current **v106 production baseline**' in text
+          text=text.replace('current **v106 production baseline**','current **v107 production baseline**',1)
+          marker='v106 is the current production release:\n'
+          assert marker in text
+          block=(f'v107 is the current production release:\n\n'
+                 f'- Release commit: `{rel_sha}`\n'
+                 f'- Asset: `XPS_Tracker_Updater_v107.zip`\n'
+                 f'- Size: `{size}` bytes\n'
+                 f'- SHA-256: `{sha}`\n'
+                 f'- Public manifest version/URL/SHA were re-read and verified after release asset re-download.\n'
+                 f'- 57/57 active Linux regression scripts passed on the versioned release source. The supplied private PDF was validated in-session for page classification but was not committed or available to the public release job; Windows Excel COM/live Tk GUI checks remain platform limitations.\n\n'
+                 f'Previous verified production reference follows for history.\n\n'
+                 f'v106 was the previous production release:\n')
+          text=text.replace(marker,block,1)
+          p.write_text(text,encoding='utf-8')
+
+          p=Path('README.md'); text=p.read_text(encoding='utf-8')
+          start=text.index('## Current production release:')
+          end=text.index('## v85',start)
+          current=(f'## Current production release: v107\n\n'
+                   f'- Release: [XPS Tracker Updater v107](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v107)\n'
+                   f'- Release commit: `{rel_sha}`\n'
+                   f'- Asset: `XPS_Tracker_Updater_v107.zip`\n'
+                   f'- Size: `{size}` bytes\n'
+                   f'- SHA-256: `{sha}`\n\n'
+                   f'The production updater reads `update_manifest.json` on `main`, which points to\n'
+                   f'this verified v107 asset. Development remains on `v95-work`, under `working_source/`.\n'
+                   f'Old source bundles and release notes are historical; fetch the latest development\n'
+                   f'head and read its project instructions before editing.\n\n'
+                   f'v107 keeps the normal fast classifier for clear pages and adds a high-resolution,\n'
+                   f'line-suppressed OCR fallback only for ambiguous ruled B&C table headers. The\n'
+                   f'original page remains untouched for table geometry.\n\n')
+          text=text[:start]+current+text[end:]
+          if '## v107\n' not in text:
+              insert=('## v107\n\n'
+                      '- Keeps the normal fast classification path for clear/high-confidence pages.\n'
+                      '- Adds a 2.5x structured-header retry for ambiguous rotated B&C table pages.\n'
+                      '- If that header remains inconclusive, OCRs a copy with long table rules suppressed while leaving the original image untouched for table geometry.\n'
+                      '- Keeps Pipe classification tolerant only when Surveyed, endpoint evidence, and normal table context agree.\n'
+                      '- Passed all **57 active Linux regression scripts** before publishing; the public ZIP size/SHA-256 were verified after re-download before the auto-update manifest advanced.\n\n')
+              text=text.replace('## Development baseline\n',insert+'## Development baseline\n',1)
+          p.write_text(text,encoding='utf-8')
+
+          for name in ('PROJECT_CONTEXT.md','RELEASE_CHECKLIST.md'):
+              shutil.copyfile(name,Path('working_source/docs')/name)
+
+          manifest={
+              'version':'107',
+              'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v107/XPS_Tracker_Updater_v107.zip',
+              'sha256':sha,
+              'release_notes':[
+                  'Keep the normal fast classifier for clear pages',
+                  'Use a high-resolution structured-header retry only for ambiguous Brown & Caldwell table pages',
+                  'Suppress long table rules only in an OCR copy when the high-resolution header is still inconclusive',
+                  'Preserve the original ruled image for table geometry and all existing matching safeguards'
+              ]
+          }
+          Path('/tmp/xps-main-v107/update_manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
+          for name in ('AGENTS.md','PROJECT_CONTEXT.md','RELEASE_CHECKLIST.md','README.md'):
+              shutil.copyfile(name,Path('/tmp/xps-main-v107')/name)
+          PY
+
+          git diff --check
+
+          cd /tmp/xps-main-v107
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add update_manifest.json AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md README.md
+          git diff --cached --check
+          git commit -m 'Publish XPS Tracker Updater v107 manifest and docs'
+          git push origin HEAD:main
+          cd "$GITHUB_WORKSPACE"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/publish-v107.yml .trigger_publish_v107
+          git add AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md README.md
+          git add working_source/docs/PROJECT_CONTEXT.md working_source/docs/RELEASE_CHECKLIST.md
+          git diff --cached --check
+          git commit -m 'Document v107 release and clean publish machinery'
+          git push origin HEAD:v95-work
+
+      - name: Verify public release and manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL_SHA: ${{ steps.source.outputs.sha }}
+          VERIFIED_SHA: ${{ steps.package.outputs.sha }}
+          VERIFIED_SIZE: ${{ steps.package.outputs.size }}
+        run: |
+          set -euo pipefail
+          git fetch origin main v95-work
+          gh release view v107 --json tagName,name,targetCommitish,assets > /tmp/v107-release.json
+          .release-venv/bin/python - <<'PY'
+          import json,os,subprocess
+          release=json.load(open('/tmp/v107-release.json'))
+          assert release['tagName']=='v107'
+          assert release['name']=='XPS Tracker Updater v107'
+          asset=next(a for a in release['assets'] if a['name']=='XPS_Tracker_Updater_v107.zip')
+          assert int(asset['size'])==int(os.environ['VERIFIED_SIZE'])
+          raw=subprocess.check_output(['git','show','origin/main:update_manifest.json'],text=True)
+          manifest=json.loads(raw)
+          assert manifest['version']=='107'
+          assert manifest['download_url']=='https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v107/XPS_Tracker_Updater_v107.zip'
+          assert manifest['sha256']==os.environ['VERIFIED_SHA']
+          PY
+          test ! -e .github/workflows/publish-v107.yml
+          test ! -e .trigger_publish_v107
+          echo "v107 verified: source=$REL_SHA size=$VERIFIED_SIZE sha256=$VERIFIED_SHA"

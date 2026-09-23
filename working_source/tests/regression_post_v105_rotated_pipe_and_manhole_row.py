@@ -39,6 +39,8 @@ classify_ns={
     'render_page':synthetic_render,
     'ocr_text':synthetic_ocr,
     '_ocr_digits':lambda *args,**kwargs:[],
+    '_line_suppressed_table_header_image':lambda image,height_ratio=.35:
+        image[:max(1,int(image.shape[0]*height_ratio)),:],
     're':re,'np':np,'Image':Image,
 }
 exec(compile(ast.Module(body=[classify_node],type_ignores=[]),str(SOURCE),'exec'),classify_ns)

@@ -870,6 +870,36 @@ def orient_and_classify(page):
     return arr, 270, txt, 'other'
 
 
+def _line_suppressed_table_header_image(img, height_ratio=.35):
+    """Return a header crop with long table rules removed for OCR only.
+
+    Grid lines remain authoritative on the original rendered page for geometry.
+    This copy is used only by the high-resolution ambiguous-page classifier so
+    long horizontal/vertical rules do not merge with header letters.
+    """
+    if img is None or getattr(img,'size',0)==0:
+        return img
+    h,w=img.shape[:2]
+    header=img[:max(1,int(h*float(height_ratio))),:].copy()
+    try:
+        gray=cv2.cvtColor(header,cv2.COLOR_RGB2GRAY)
+        inv=cv2.threshold(gray,200,255,cv2.THRESH_BINARY_INV)[1]
+        # Kernels are deliberately much longer than ordinary glyph strokes.
+        # They target ruled-table geometry without erasing letters/numbers.
+        h_kernel=cv2.getStructuringElement(
+            cv2.MORPH_RECT,(max(20,int(round(header.shape[1]*.05))),1))
+        v_kernel=cv2.getStructuringElement(
+            cv2.MORPH_RECT,(1,max(12,int(round(header.shape[0]*.12)))))
+        horizontal=cv2.morphologyEx(inv,cv2.MORPH_OPEN,h_kernel)
+        vertical=cv2.morphologyEx(inv,cv2.MORPH_OPEN,v_kernel)
+        line_mask=cv2.bitwise_or(horizontal,vertical)
+        clean=header.copy()
+        clean[line_mask>0]=255
+        return clean
+    except Exception:
+        return header
+
+
 def classify_for_profile(page, profile):
     """Use the project profile to recognize both portrait and rotated list pages."""
     if profile not in ('year15', 'phase2_year1'):
@@ -927,10 +957,35 @@ def classify_for_profile(page, profile):
         for retry_deg in (0,270,90):
             retry_arr=hi if retry_deg==0 else np.array(Image.fromarray(hi).rotate(retry_deg,expand=True))
             header=retry_arr[:max(1,int(retry_arr.shape[0]*.35)),:]
-            retry_txt=ocr_text(header,6); retry_low=retry_txt.lower()
+            retry_txt=ocr_text(header,6)
+            retry_low=retry_txt.lower()
             retry_norm=re.sub(r'[^a-z0-9]+',' ',retry_low)
             endpoint_score=(max(retry_norm.count('upstream'),retry_norm.count('up mh'))+
                             max(retry_norm.count('downstream'),retry_norm.count('dn mh')))
+            exact_pipe=(('length surveyed' in retry_norm or 'surveyed length' in retry_norm) and endpoint_score)
+            exact_cleaning=(
+                ('wheel wal' in retry_norm or 'wheelwalk' in retry_norm or
+                 'cleaning date' in retry_norm or
+                 ('wheel' in retry_norm and 'walk' in retry_norm) or
+                 ('cleaning' in retry_norm and 'date' in retry_norm)) and
+                ('project yea' in retry_norm or 'field crew' in retry_norm or endpoint_score))
+            exact_manhole=(
+                'manhole number' in retry_norm or
+                (('drainage area' in retry_norm and 'street' in retry_norm and 'date' in retry_norm) and
+                 not ('length surveyed' in retry_norm or 'surveyed length' in retry_norm)))
+            if not (exact_pipe or exact_cleaning or exact_manhole):
+                # Only ambiguous pages pay for this extra OCR pass. Keep the
+                # original ruled image for geometry; suppress long rules solely
+                # in this OCR copy, then combine its evidence with the untouched
+                # header rather than replacing it.
+                clean_header=_line_suppressed_table_header_image(retry_arr,.35)
+                clean_txt=ocr_text(clean_header,6)
+                if clean_txt.strip():
+                    retry_txt=retry_txt+'\n'+clean_txt
+                    retry_low=retry_txt.lower()
+                    retry_norm=re.sub(r'[^a-z0-9]+',' ',retry_low)
+                    endpoint_score=(max(retry_norm.count('upstream'),retry_norm.count('up mh'))+
+                                    max(retry_norm.count('downstream'),retry_norm.count('dn mh')))
             cleaning_header=(
                 'wheel wal' in retry_norm or 'wheelwalk' in retry_norm or
                 'cleaning date' in retry_norm or

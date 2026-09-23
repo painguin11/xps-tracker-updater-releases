@@ -22,6 +22,27 @@ version until the user explicitly says `PUBLISH`.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
 - Temporary v106 publishing/documentation machinery is removed after this sync.
 
+## Pending after v106 — tolerant rotated Pipe header OCR
+
+- A rotated B&C Pipe scan can preserve the table structure while Tesseract damages
+  the printed header, for example reading `Length Surveyed` as
+  `Tength Surveyed` and `Upstream MH` as `Upstrean WH`.
+- The previous classifier required the exact `Length Surveyed` phrase, so that
+  page could remain `other` even though `Surveyed`, a valid endpoint header,
+  and normal table context such as Street/Date were all visible.
+- Pipe classification now accepts that narrowly structured partial-header evidence:
+  `Surveyed` must be present together with endpoint evidence and at least one
+  normal table-context signal (Street, Date, Section, or Drainage). A bare body
+  occurrence of `surveyed` is not enough.
+- This changes only activity/orientation classification. Endpoint matching,
+  suffix/new-asset safeguards, row retention, total validation, and master writes
+  are unchanged.
+- Local diagnosis on the supplied private PDF confirms the affected table is
+  selected as Pipe at 90° after this change. The customer PDF remains private and
+  is not committed.
+- Permanent synthetic regression:
+  `working_source/tests/regression_post_v106_rotated_pipe_header_ocr.py`.
+
 ## Released in v106 — rotated Pipe classification, never-discard rows, and single-row review removal
 
 Public v106 release:

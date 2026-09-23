@@ -1,13 +1,13 @@
-XPS Tracker Updater v106
+XPS Tracker Updater v107
 ========================
 
-Current status (September 17, 2026)
+Current status (September 23, 2026)
 ----------------------------------
-Production release: v106. Development: v95-work / working_source.
+Production release: v107. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v106 keeps every structurally detected Pipe, Cleaning, and Manhole row visible
-when OCR or master matching fails, improves rotated Pipe-table classification,
-and adds explicit single-row removal for reviewer-confirmed false extra rows.
+v107 improves ambiguous rotated B&C Pipe-table classification by using a
+high-resolution OCR fallback that suppresses long table rules only in the OCR
+copy while preserving the original ruled image for table geometry.
 
 Purpose
 -------
@@ -758,3 +758,15 @@ Version 106 physical-row review and single-row removal
   and duplicate/MSA review state. It does not auto-merge or delete another row.
 - Preserves the v105 NEW MANHOLE suffix safeguards and all earlier OCR, review,
   continuation, MSA, Trouble Ticket, total, and master-write behavior.
+
+Version 107 ruled-header OCR fallback
+---------------------------------------
+- The normal fast page classifier remains unchanged for clear/high-confidence pages.
+- Only ambiguous B&C table pages pay for the existing 2.5x structured-header retry.
+- If the normal high-resolution header OCR is still inconclusive, a second OCR-only
+  copy suppresses long horizontal/vertical table rules before rereading the header.
+- The original rendered page is never line-stripped for row/column geometry.
+- Damaged header text may identify Pipe only when Surveyed appears with endpoint
+  evidence and normal table context; endpoint/master matching remains strict.
+- Preserves all v106 row-retention, review, MSA, continuation, Trouble Ticket,
+  total-validation, and master-write safeguards.

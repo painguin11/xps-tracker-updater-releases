@@ -103,4 +103,32 @@ assert winner and winner['asset']=='R2-68',winner
 assert asset_ns['_corroborated_existing_asset'](
     [['R2-69'],['R2-68']],known) is None
 
+# Full-table Manhole context must likewise require agreement between PSM 6 and 11.
+class _MHTesseract:
+    Output=_Output
+    @staticmethod
+    def image_to_data(image,config='',output_type=None):
+        psm=11 if '--psm 11' in config else 6
+        values=(['R2-68','R2-509'] if psm==6 else ['R2-68','R2-510'])
+        return {
+            'text':values,
+            'left':[150,150],
+            'width':[70,70],
+            'top':[112,172],
+            'height':[20,20],
+        }
+
+mh_context_ns={'np':np,'cv2':cv2,'pytesseract':_MHTesseract,'re':re,
+               '_line_suppressed_table_header_image':lambda img,height_ratio=.35: img}
+for name in ('canonical_asset_id','asset_key','_printed_asset_tokens','_asset_id_parts',
+             '_contextual_manhole_asset_candidates'):
+    exec(compile(ast.Module(body=[node(name)],type_ignores=[]),str(SOURCE),'exec'),mh_context_ns)
+mh_values=mh_context_ns['_contextual_manhole_asset_candidates'](
+    np.full((500,1000,3),255,dtype=np.uint8),
+    [(100,150),(160,210)],(100,900),(0.0,.25),
+    {'mode':'prefixed_dash','max_digits':4,'max_prefix_len':2,'allow_suffix':True},
+    {'R268':'R2-68','R2509':'R2-509','R2510':'R2-510'})
+assert mh_values.get(0)==['R2-68'],mh_values
+assert 1 not in mh_values,mh_values
+
 print('post-v107 compact Pipe contextual OCR + Manhole corroboration regression passed')

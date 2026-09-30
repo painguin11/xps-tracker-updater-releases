@@ -6,22 +6,30 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v107
+## Current production release: v108
 
-- Release: [XPS Tracker Updater v107](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v107)
-- Release commit: `942fc1b83770b3138fc6b3d9e967adec7fdfb5cf`
-- Asset: `XPS_Tracker_Updater_v107.zip`
-- Size: `324216` bytes
-- SHA-256: `722288753a159a226575aea17c01dd2b0e5645b07d799d22ce1b75cb9ea64b35`
+- Release: [XPS Tracker Updater v108](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v108)
+- Release commit: `05049e8587ce651f59b98a8a1bdd60c789fb9858`
+- Asset: `XPS_Tracker_Updater_v108.zip`
+- Size: `326636` bytes
+- SHA-256: `7b6d06b98cb9d0bf4e763b65a5297be95d3bb14ad385378fbf19a27113da5049`
 
 The production updater reads `update_manifest.json` on `main`, which points to
-this verified v107 asset. Development remains on `v95-work`, under `working_source/`.
+this verified v108 asset. Development remains on `v95-work`, under `working_source/`.
 Old source bundles and release notes are historical; fetch the latest development
 head and read its project instructions before editing.
 
-v107 keeps the fast classifier for clear pages and adds a high-resolution,
-line-suppressed OCR fallback only for ambiguous ruled B&C table headers. The
-original ruled image remains untouched for table geometry.
+v108 hardens compact Brown & Caldwell Pipe and Manhole OCR with contextual
+whole-table corroboration while preserving the existing physical-grid,
+fail-closed matching, review, and master-write safeguards.
+
+## v108
+
+- Adds contextual whole-table numeric OCR for compact Pipe length cells only when independent OCR passes agree on the same physical row.
+- Keeps isolated-cell OCR as the fallback and never invents length values from the master or printed total.
+- Tolerates bounded grid damage around the Manhole Date header so the physical Manhole column is still located correctly.
+- Requires corroborating PDF evidence before a damaged Manhole crop can override another complete existing ID.
+- Passed all **58 active Linux regression scripts** before publishing; the public ZIP was re-downloaded and its exact size/SHA-256 verified before the auto-update manifest advanced.
 
 ## v107
 

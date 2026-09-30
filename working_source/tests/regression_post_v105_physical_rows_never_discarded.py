@@ -88,6 +88,9 @@ mh_ns={'re':re,'np':np,'cv2':CV2,'pytesseract':Pytess,'_year15_oriented':lambda 
        '_ocr_asset_candidates':mh_ocr,'_ocr_digits':mh_digits,
        '_unique_manhole_digit_match':lambda cell,master:MH2 if '1015' in mh_digits(cell) else None,
        '_confirmed_suffix_asset_candidates':lambda *a,**k:[],
+       '_batch_pair_endpoint_full_candidates':lambda *a,**k:{},
+       '_contextual_manhole_asset_candidates':lambda *a,**k:{},
+       '_corroborated_existing_asset':lambda *a,**k:None,
        '_parse_sheet_date':lambda cell:DATE if mean(cell)<200 else None,'refresh_length_status':lambda r:None}
 exec(compile(ast.Module(body=[mh_node,edit_node],type_ignores=[]),str(SOURCE),'exec'),mh_ns)
 mh_master={'asset_format':{'mode':'prefixed_dash','requires_dash':True},

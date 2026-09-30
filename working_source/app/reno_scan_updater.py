@@ -4539,13 +4539,16 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             value=(float(contextual_value) if contextual_value is not None else
                    _choose_pair_length_observation(
                        value_candidates,direct_value,expected,value_cell,expanded_cell))
-        if (kind!='cleaning' and contextual_value is None and value is not None and expected not in (None,0) and
-                abs(float(value)-float(expected))>max(100,float(expected)*1.5)):
-            # Keep the established pipe-video fallback unchanged. Cleaning values
-            # remain exactly what OCR observed, even when they differ from master.
-            expanded=_ocr_length_candidates(cut(val_box,right_bleed=True),fast_plain=False)
-            if expanded:
-                value=_choose_length(list(value_candidates)+list(expanded),expected)
+        if (kind!='cleaning' and value is not None and expected not in (None,0)):
+            if (contextual_value is None and
+                    abs(float(value)-float(expected))>max(100,float(expected)*1.5)):
+                # Keep the established pipe-video fallback unchanged. Cleaning
+                # values remain exactly what OCR observed, even when they differ
+                # from master. A two-pass contextual compact-table read does not
+                # need this destructive isolated-cell fallback.
+                expanded=_ocr_length_candidates(cut(val_box,right_bleed=True),fast_plain=False)
+                if expanded:
+                    value=_choose_length(list(value_candidates)+list(expanded),expected)
         date_evidence=date_reads.get(band_index,{'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{}})
         d=date_evidence.get('date')
         endpoint_signal=has_asset_digit_signal(up_obs) and has_asset_digit_signal(dn_obs)

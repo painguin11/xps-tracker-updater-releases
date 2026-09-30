@@ -2416,9 +2416,12 @@ def _corroborated_existing_asset(observation_sources,known_items,min_sources=2):
     known_keys=set(known_items)
     support={}
     for observations in observation_sources or []:
-        exact={asset_key(value) for value in
-               _authoritative_asset_candidates(observations or [],known_items)}
-        for key in exact & known_keys:
+        # Every source here has already passed the strict project-format OCR path.
+        # Count only complete IDs that exactly name an existing Manhole; do not
+        # fuzzy-match or let the master fill in a missing prefix/digit.
+        exact={asset_key(value) for value in (observations or [])
+               if asset_key(value) in known_keys}
+        for key in exact:
             support[key]=support.get(key,0)+1
     eligible={key:count for key,count in support.items() if count>=int(min_sources)}
     if not eligible:

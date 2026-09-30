@@ -1,0 +1,46 @@
+name: Validate post-v107 compact OCR fix
+
+on:
+  push:
+    branches: [v95-work]
+    paths:
+      - '.trigger_post_v107_compact_ocr_validation'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 1
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Compile source
+        run: |
+          python -m py_compile             working_source/app/reno_scan_updater.py             working_source/app/xps_update.py             working_source/app/xps_review_controls.py
+
+      - name: Run full active regression suite
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess, sys
+          root=Path('working_source/tests')
+          tests=sorted(root.glob('regression*.py'))
+          if not tests:
+              raise SystemExit('No regression tests found')
+          for path in tests:
+              print(f'===== {path} =====',flush=True)
+              subprocess.run([sys.executable,str(path)],check=True)
+          print(f'FULL ACTIVE REGRESSION SUITE: {len(tests)}/{len(tests)} passed')
+          PY
+          git diff --check

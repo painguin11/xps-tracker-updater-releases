@@ -116,6 +116,9 @@ parse_ns={
     '_ocr_asset_candidates':ocr_assets,
     '_ocr_digits':ocr_digits,
     '_confirmed_suffix_asset_candidates':lambda *args,**kwargs:[],
+    '_batch_pair_endpoint_full_candidates':lambda *args,**kwargs:{},
+    '_contextual_manhole_asset_candidates':lambda *args,**kwargs:{},
+    '_corroborated_existing_asset':lambda *args,**kwargs:None,
     '_parse_sheet_date':lambda cell:datetime(2026,9,15),
     'cached_ocr_string':lambda image,config='':'',
 }

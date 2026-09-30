@@ -100,6 +100,9 @@ ns={
     '_ocr_asset_candidates':_ocr_asset_candidates,
     '_ocr_digits':lambda cell,decimal=False,fast_plain=False: [],
     '_confirmed_suffix_asset_candidates':lambda cell,known_items,asset_format=None: [],
+    '_batch_pair_endpoint_full_candidates':lambda *args,**kwargs: {},
+    '_contextual_manhole_asset_candidates':lambda *args,**kwargs: {},
+    '_corroborated_existing_asset':lambda *args,**kwargs: None,
     '_unique_manhole_digit_match':lambda cell,master_index: None,
     '_parse_sheet_date':lambda cell: None,
 }

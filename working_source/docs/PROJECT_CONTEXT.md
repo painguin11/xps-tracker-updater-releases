@@ -4,14 +4,24 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v107**.
+Current production version: **v108**.
 
 Current development branch: **`v95-work`**.
 
 The editable source and active regression suite are under `working_source/` on
-`v95-work`. Start future work from that branch and preserve the full released v107 baseline and its documented safeguards. Do **not** publish another
+`v95-work`. Start future work from that branch and preserve the full released v108 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
+
+## State audit — September 30, 2026
+
+- Current production release: **v108** at release source commit `05049e8587ce651f59b98a8a1bdd60c789fb9858`.
+- `working_source/app/reno_scan_updater.py` and `working_source/app/xps_update.py` are both version 108.
+- The production updater reads `main/update_manifest.json`, which points to the verified v108 public asset and SHA-256 below.
+- GitHub Actions release run **36779542014** compiled the app, passed the full **58/58** active regression matrix, audited release scope, tested ZIP integrity, re-downloaded the public asset, and verified exact size/SHA-256 before the manifest advanced.
+- Public asset: `XPS_Tracker_Updater_v108.zip`, **326636 bytes**, SHA-256 `7b6d06b98cb9d0bf4e763b65a5297be95d3bb14ad385378fbf19a27113da5049`.
+- The private R2 fixture was unavailable to CI, so structural guards passed while exact fixture OCR was skipped. Windows Excel COM/live Tkinter paths were not exercised by the Linux release job.
+- Temporary v108 publish workflow/trigger files are removed after this sync.
 
 ## State audit — September 23, 2026
 
@@ -22,7 +32,18 @@ version until the user explicitly says `PUBLISH`.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
 - Temporary v107 publishing/documentation machinery is removed after this sync.
 
-## Pending after v107 — September 25 compact-table OCR hardening
+## Released in v108 — compact-table contextual OCR hardening
+
+Public v108 release:
+
+- Tag: `v108`
+- Release title: `XPS Tracker Updater v108`
+- Release commit: `05049e8587ce651f59b98a8a1bdd60c789fb9858`
+- Asset: `XPS_Tracker_Updater_v108.zip`
+- Asset size: `326636` bytes
+- SHA-256: `7b6d06b98cb9d0bf4e763b65a5297be95d3bb14ad385378fbf19a27113da5049`
+- Public updater manifest on `main` points to `https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v108/XPS_Tracker_Updater_v108.zip` and was advanced only after the public release asset was downloaded back and its size/SHA-256 matched exactly.
+- Full active Linux release suite: **58/58 regression scripts passed**. The private R2 fixture was unavailable to CI, so exact fixture OCR was skipped; Windows Excel COM/live Tk GUI paths were not run by Linux CI.
 
 A supplied September 25 Phase 2 packet exposed three related OCR failure modes in
 otherwise readable ruled tables. The private customer PDF was used only for local
@@ -51,11 +72,13 @@ diagnosis and remains uncommitted/unpackaged.
 Permanent regression:
 `working_source/tests/regression_post_v107_compact_contextual_ocr.py`.
 
-Validation workflow run **36741314425** completed successfully with **58/58**
+Pre-release validation workflow run **36741314425** completed successfully with **58/58**
 active regression scripts passing after the final source guard adjustment.
-The private R2 fixture was unavailable to CI, so its structural guards passed
-while exact R2 fixture OCR was skipped. Windows Excel COM/live Tkinter behavior
-was not exercised by the Linux validation job.
+Release workflow run **36779542014** repeated the full **58/58** suite, built and
+integrity-tested the ZIP, and re-downloaded the public asset to verify its exact
+size and SHA-256. The private R2 fixture was unavailable to CI, so its structural
+guards passed while exact fixture OCR was skipped. Windows Excel COM/live Tkinter
+behavior was not exercised by the Linux release job.
 
 ## Released in v107 — high-resolution ruled-header OCR fallback
 

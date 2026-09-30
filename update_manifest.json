@@ -1,11 +1,11 @@
 {
-  "version": "107",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v107/XPS_Tracker_Updater_v107.zip",
-  "sha256": "722288753a159a226575aea17c01dd2b0e5645b07d799d22ce1b75cb9ea64b35",
+  "version": "108",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v108/XPS_Tracker_Updater_v108.zip",
+  "sha256": "7b6d06b98cb9d0bf4e763b65a5297be95d3bb14ad385378fbf19a27113da5049",
   "release_notes": [
-    "Keep the normal fast classifier for clear pages",
-    "Use a high-resolution structured-header retry only for ambiguous Brown & Caldwell table pages",
-    "Suppress long table rules only in an OCR copy when the high-resolution header remains inconclusive",
-    "Preserve the original ruled image for table geometry and all existing matching safeguards"
+    "Improve compact Brown & Caldwell Pipe length OCR with corroborated whole-table context",
+    "Require independent OCR agreement before contextual Pipe values are trusted",
+    "Tolerate bounded grid damage around the Manhole Date header",
+    "Require corroborating PDF evidence before a damaged Manhole crop can override an existing ID"
   ]
 }

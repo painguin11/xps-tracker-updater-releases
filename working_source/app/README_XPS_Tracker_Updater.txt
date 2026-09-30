@@ -1,13 +1,13 @@
-XPS Tracker Updater v107
+XPS Tracker Updater v108
 ========================
 
-Current status (September 23, 2026)
+Current status (September 30, 2026)
 ----------------------------------
-Production release: v107. Development: v95-work / working_source.
+Production release: v108. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v107 improves ambiguous rotated B&C Pipe-table classification by using a
-high-resolution OCR fallback that suppresses long table rules only in the OCR
-copy while preserving the original ruled image for table geometry.
+v108 hardens compact Brown & Caldwell Pipe and Manhole OCR by adding
+contextual whole-table corroboration for damaged ruled cells while preserving
+the existing physical-grid, fail-closed matching, and review safeguards.
 
 Purpose
 -------
@@ -770,3 +770,20 @@ Version 107 ruled-header OCR fallback
   evidence and normal table context; endpoint/master matching remains strict.
 - Preserves all v106 row-retention, review, MSA, continuation, Trouble Ticket,
   total-validation, and master-write safeguards.
+
+Version 108 compact-table contextual OCR hardening
+---------------------------------------------------
+- Compact Brown & Caldwell Pipe tables may use a contextual whole-table numeric
+  read when narrow ruled Length Surveyed cells are damaged by grid lines.
+- Contextual Pipe values are trusted only when independent PSM 6 and PSM 11 reads
+  agree on the same physical row; isolated-cell OCR remains the fallback.
+- Comma-like decimal marks are normalized only inside otherwise valid numeric
+  tokens, and contextual values remain PDF observations rather than values
+  inferred from the master or printed total.
+- Manhole header detection tolerates bounded scan damage around the Date label,
+  including a leading grid-attached glyph such as IpDate.
+- Existing Manhole IDs require corroborating PDF evidence before one damaged
+  crop may override another complete existing ID, while disagreements remain
+  fail-closed for review.
+- Preserves all v107 matching, row-retention, MSA, continuation, Trouble Ticket,
+  total-validation, new-asset, and master-write safeguards.

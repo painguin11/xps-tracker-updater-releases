@@ -22,6 +22,41 @@ version until the user explicitly says `PUBLISH`.
 - Private customer fixture OCR and Windows Excel COM/live Tkinter paths were not rerun by the Linux release job; prior recorded private-fixture results remain historical validation.
 - Temporary v107 publishing/documentation machinery is removed after this sync.
 
+## Pending after v107 — September 25 compact-table OCR hardening
+
+A supplied September 25 Phase 2 packet exposed three related OCR failure modes in
+otherwise readable ruled tables. The private customer PDF was used only for local
+diagnosis and remains uncommitted/unpackaged.
+
+- A rotated compact Pipe page can preserve correct table geometry while lightweight
+  OCR damages the activity header and individual ruled Length Surveyed cells.
+  Compact Pipe parsing now adds a narrow full-table contextual numeric read: long
+  rules are suppressed in an OCR-only copy, PSM 6 and PSM 11 must agree on the
+  same physical row before that value is trusted, and comma-like decimal marks are
+  normalized only when they are part of an otherwise valid numeric token. The
+  untouched ruled render remains authoritative for geometry.
+- That contextual Pipe value is treated only as another PDF observation. It never
+  manufactures a value from the master or printed total, and the established
+  isolated-cell/total-reconciliation paths remain available when contextual OCR
+  does not independently agree.
+- The Manhole header locator now tolerates bounded scan damage around the printed
+  Date header (for example a leading grid-attached glyph such as `IpDate`) so the
+  real header band and physical Manhole column are used instead of the coarse
+  legacy fallback.
+- Existing Manhole identity recovery now requires corroborated PDF observations
+  before one damaged tight crop may override another complete existing ID. This
+  protects cases where one crop misreads a short R2 identifier while independent
+  table/cell reads agree on the printed asset.
+
+Permanent regression:
+`working_source/tests/regression_post_v107_compact_contextual_ocr.py`.
+
+Validation workflow run **36741314425** completed successfully with **58/58**
+active regression scripts passing after the final source guard adjustment.
+The private R2 fixture was unavailable to CI, so its structural guards passed
+while exact R2 fixture OCR was skipped. Windows Excel COM/live Tkinter behavior
+was not exercised by the Linux validation job.
+
 ## Released in v107 — high-resolution ruled-header OCR fallback
 
 Public v107 release:

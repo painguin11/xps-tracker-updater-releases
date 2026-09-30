@@ -2347,6 +2347,68 @@ def _best_observed_asset_id(observations,known_items):
     return suffix[0] if suffix else (candidates[0] if candidates else '')
 
 
+def _contextual_manhole_asset_candidates(img,bands,table,asset_box,asset_format=None,known_items=None):
+    """Read Manhole IDs in full-table context with long grid rules removed.
+
+    This is the Manhole counterpart to the compact Pipe contextual read. Physical
+    bands and columns still come from the untouched ruled render. A complete ID is
+    returned only when PSM 6 and PSM 11 independently read the same project-format
+    token in the same Manhole cell.
+    """
+    if img is None or not bands or not table or not asset_box:
+        return {}
+    left,right=map(int,table); h,w=img.shape[:2]; tw=max(1,right-left)
+    x1=max(0,int(left+asset_box[0]*tw)); x2=min(w,int(left+asset_box[1]*tw))
+    if x2-x1<8:
+        return {}
+    typical=float(np.median([max(1,int(b)-int(a)) for a,b in bands]))
+    needed=(float(bands[-1][1])+typical*2.0)/max(1.0,float(h))
+    height_ratio=min(.90,max(.65,needed))
+    clean=_line_suppressed_table_header_image(img,height_ratio)
+    if clean is None or getattr(clean,'size',0)==0:
+        return {}
+    gray=cv2.cvtColor(clean,cv2.COLOR_RGB2GRAY)
+    horizontal_pad=max(6,int(round((x2-x1)*.05)))
+    vertical_pad=max(2,int(round(typical*.16)))
+    known_values=(known_items or {}).values() if isinstance(known_items,dict) else (known_items or [])
+    prefixes={parts[0] for value in known_values if (parts:=_asset_id_parts(value))}
+    votes={}
+    for psm in (6,11):
+        try:
+            data=pytesseract.image_to_data(
+                gray,config=f'--psm {psm}',output_type=pytesseract.Output.DICT)
+        except Exception:
+            continue
+        pass_id=f'psm-{psm}'
+        for i,raw in enumerate(data.get('text',[])):
+            try:
+                xc=float(data['left'][i])+float(data['width'][i])/2.0
+                yc=float(data['top'][i])+float(data['height'][i])/2.0
+            except Exception:
+                continue
+            if not (x1-horizontal_pad<=xc<=x2+horizontal_pad):
+                continue
+            band_index=next(
+                (bi for bi,(a,b) in enumerate(bands)
+                 if float(a)-vertical_pad<=yc<=float(b)+vertical_pad),
+                None)
+            if band_index is None:
+                continue
+            for token in _printed_asset_tokens(str(raw or ''),asset_format):
+                parts=_asset_id_parts(token)
+                if prefixes and (not parts or parts[0] not in prefixes):
+                    continue
+                canonical=canonical_asset_id(token)
+                votes.setdefault(band_index,{}).setdefault(canonical,set()).add(pass_id)
+    out={}
+    for band_index,band_votes in votes.items():
+        agreed=sorted(value for value,passes in band_votes.items()
+                      if {'psm-6','psm-11'}.issubset(passes))
+        if len(agreed)==1:
+            out[band_index]=agreed
+    return out
+
+
 def _corroborated_existing_asset(observation_sources,known_items,min_sources=2):
     """Return one existing asset only when independent PDF OCR sources agree."""
     if not isinstance(known_items,dict) or not known_items:
@@ -4669,6 +4731,8 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
         known_asset_values={key:item.get('asset') or str(key) for key,item in known.items()}
         batch_manhole_assets=_batch_pair_endpoint_full_candidates(
             img,bands,table,asset_box,asset_format,known_asset_values)
+        contextual_manhole_assets=_contextual_manhole_asset_candidates(
+            img,bands,table,asset_box,asset_format,known_asset_values)
         for band_index,(y1,y2) in enumerate(bands):
             if header_band_index is not None and band_index<=int(header_band_index):
                 continue
@@ -4698,6 +4762,9 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             batch_observations=list(batch_manhole_assets.get(band_index,[]) or [])
             if batch_observations:
                 source_observations.append(batch_observations)
+            contextual_observations=list(contextual_manhole_assets.get(band_index,[]) or [])
+            if contextual_observations:
+                source_observations.append(contextual_observations)
             token_margin=max(2,int(round(h*.004)))
             nearby_tokens=[
                 raw for token_y,_token_item,_token_status,raw in token_rows

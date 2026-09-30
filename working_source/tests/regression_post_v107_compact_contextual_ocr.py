@@ -68,7 +68,7 @@ def header_data(image,config='',output_type=None):
                 'top':[2,2,2],'width':[40,40,40],'height':[10,10,10]}
     return {
         'text':['Manhole','Number','Street','Drainage','Area','IpDate'],
-        'left':[5,70,260,520,610,760],
+        'left':[5,70,260,500,560,650],
         'top':[2]*6,'width':[50]*6,'height':[10]*6,
     }
 

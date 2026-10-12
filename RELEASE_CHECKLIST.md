@@ -34,6 +34,7 @@ new test for the current fix.
 
 The active baseline includes, at minimum:
 
+- post-v108 small-skew compact Pipe grid row-band recovery regression;
 - post-v107 compact Pipe contextual OCR + Manhole corroboration regression;
 - post-v106 damaged rotated Pipe header OCR classification regression;
 - post-v105 physical Pipe/Cleaning/Manhole row-retention + manual re-match regression;
@@ -74,6 +75,7 @@ The active baseline includes, at minimum:
 
 The following post-version-named regressions are already released and remain required:
 
+- `working_source/tests/regression_post_v108_compact_skew.py`
 - `working_source/tests/regression_post_v107_compact_contextual_ocr.py`
 - `working_source/tests/regression_post_v106_rotated_pipe_header_ocr.py`
 - `working_source/tests/regression_post_v105_single_row_removal.py`

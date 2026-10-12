@@ -3817,6 +3817,81 @@ def _year15_compact_grid_bands(img):
     return bands,(left,right),xs
 
 
+
+def _year15_compact_skew_retry(img, bands, table, column_bounds):
+    """Retry a compact ruled table after correcting a small scan skew.
+
+    This is deliberately not a general deskew: only a confirmed compact grid
+    with a large unexplained gap in its row separators is eligible. The result
+    replaces the original only when the same column structure survives and at
+    least two additional physical bands are recovered.
+    """
+    original=(img,bands,table,column_bounds,False)
+    if len(bands)<5 or not table or not column_bounds or len(column_bounds)<5:
+        return original
+    starts=[int(a) for a,b in bands]
+    gaps=[b-a for a,b in zip(starts,starts[1:]) if b>a]
+    if len(gaps)<3:
+        return original
+    normal_gap=float(np.median(gaps))
+    if normal_gap<=0 or max(gaps)<normal_gap*2.8:
+        return original
+
+    h,w=img.shape[:2]
+    left,right=map(int,table)
+    left=max(0,left); right=min(w,right)
+    tw=right-left
+    if tw<w*.35:
+        return original
+    y1=max(0,int(bands[0][0]-h*.03))
+    y2=min(h,int(bands[-1][1]+h*.03))
+    if y2<=y1:
+        return original
+    gray=cv2.cvtColor(img[y1:y2,left:right],cv2.COLOR_RGB2GRAY)
+    ink=cv2.threshold(gray,230,255,cv2.THRESH_BINARY_INV)[1]
+    lines=cv2.HoughLinesP(
+        ink,1,np.pi/1800,threshold=max(70,int(tw*.055)),
+        minLineLength=max(150,int(tw*.40)),
+        maxLineGap=max(15,int(tw*.035)))
+    if lines is None:
+        return original
+
+    # A line spanning two or more real columns is grid evidence, unlike an
+    # individual glyph. Ignore near-vertical strokes and implausibly large skew.
+    angles=[]
+    for x1,ly1,x2,ly2 in lines[:,0,:]:
+        dx=int(x2)-int(x1)
+        if abs(dx)<tw*.40:
+            continue
+        angle=float(np.degrees(np.arctan2(int(ly2)-int(ly1),dx)))
+        if .20<=abs(angle)<=1.6:
+            angles.append(angle)
+    if len(angles)<2:
+        return original
+    angle=float(np.median(angles))
+    if not (.25<=abs(angle)<=1.5):
+        return original
+
+    matrix=cv2.getRotationMatrix2D((w/2.0,h/2.0),angle,1.0)
+    corrected=cv2.warpAffine(
+        img,matrix,(w,h),flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,borderValue=(255,255,255))
+    retry_bands,retry_table,retry_columns=_year15_compact_grid_bands(corrected)
+    if (not retry_table or not retry_columns or
+        len(retry_columns)!=len(column_bounds) or
+        len(retry_bands)<len(bands)+2):
+        return original
+    old_width=right-left
+    new_width=retry_table[1]-retry_table[0]
+    if abs(new_width-old_width)>old_width*.05:
+        return original
+    new_starts=[a for a,b in retry_bands]
+    new_gaps=[b-a for a,b in zip(new_starts,new_starts[1:]) if b>a]
+    if new_gaps and max(new_gaps)>max(1,float(np.median(new_gaps)))*2.8:
+        return original
+    return corrected,retry_bands,retry_table,retry_columns,True
+
+
 def _year15_grid_bands(img):
     """Find the complete table from its long vertical rules, then its row rules.
 
@@ -4135,7 +4210,12 @@ def prepare_year15_pair_layout(page,master_index,kind,inherited_layout=None,pref
     geometry_source='vertical grid'
     if not bands:
         bands,table,column_bounds=_year15_compact_grid_bands(img)
-        if bands: geometry_source='compact table grid'
+        if bands:
+            geometry_source='compact table grid'
+            img,bands,table,column_bounds,deskewed=_year15_compact_skew_retry(
+                img,bands,table,column_bounds)
+            if deskewed:
+                geometry_source+=' / small-skew recovery'
     if not bands:
         bands,table=_year15_all_row_bands(img,.04,.90); column_bounds=None; geometry_source='horizontal fallback'
 

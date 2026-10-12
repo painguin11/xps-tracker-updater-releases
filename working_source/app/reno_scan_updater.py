@@ -3833,7 +3833,10 @@ def _year15_compact_skew_retry(img, bands, table, column_bounds):
     gaps=[b-a for a,b in zip(starts,starts[1:]) if b>a]
     if len(gaps)<3:
         return original
-    normal_gap=float(np.median(gaps))
+    # Missing separators inflate the upper gaps; infer normal row pitch from
+    # the shorter half rather than from the already-damaged entire sequence.
+    short_gaps=sorted(gaps)[:max(2,(len(gaps)+1)//2)]
+    normal_gap=float(np.median(short_gaps))
     if normal_gap<=0 or max(gaps)<normal_gap*2.8:
         return original
 

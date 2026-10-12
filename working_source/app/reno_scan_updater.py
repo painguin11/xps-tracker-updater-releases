@@ -3862,7 +3862,8 @@ def _year15_compact_skew_retry(img, bands, table, column_bounds):
     # A line spanning two or more real columns is grid evidence, unlike an
     # individual glyph. Ignore near-vertical strokes and implausibly large skew.
     angles=[]
-    for x1,ly1,x2,ly2 in lines[:,0,:]:
+    # OpenCV builds may return either (N,1,4) or (N,4) Hough segments.
+    for x1,ly1,x2,ly2 in np.asarray(lines).reshape(-1,4):
         dx=int(x2)-int(x1)
         if abs(dx)<tw*.40:
             continue

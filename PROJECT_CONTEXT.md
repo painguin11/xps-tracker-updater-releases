@@ -13,6 +13,26 @@ The editable source and active regression suite are under `working_source/` on
 version until the user explicitly says `PUBLISH`.
 
 
+## Pending after v108 — small-skew compact Pipe grid recovery (October 12, 2026)
+
+- A supplied image-only Phase 2 Pipe table was correctly classified at 270 degrees,
+  but roughly 0.6 degrees of residual scan skew made the compact-grid horizontal
+  morphology miss several physical row rules despite detecting all eight vertical
+  grid boundaries. This was a row-geometry failure, not a header-classification failure.
+- Development source on `v95-work` makes a **guarded compact-grid-only retry** when
+  the detected row-band spacing has an anomalous large gap. Hough evidence from
+  long printed row rules estimates only small skew angles. The entire OCR/grid
+  image is aligned before the existing grid detector reruns; the result is accepted
+  only if the same column count/width survives and multiple missing row bands
+  are recovered with reasonable spacing. Normal grids and ambiguous geometry
+  keep their original image and parsing path.
+- Private local inspection of the supplied page 6 established 13 physical Pipe
+  rows and a printed total of 2367.35 feet. Correcting the small skew restored
+  the title, header, 13 data bands, and total band geometrically. The private PDF
+  must never be committed or packaged.
+- Regression: `working_source/tests/regression_post_v108_compact_skew.py`.
+  This is unreleased development work; v108 remains the public version.
+
 ## State audit — September 30, 2026
 
 - Current production release: **v108** at release source commit `05049e8587ce651f59b98a8a1bdd60c789fb9858`.

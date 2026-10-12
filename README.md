@@ -6,22 +6,28 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v108
+## Current production release: v109
 
-- Release: [XPS Tracker Updater v108](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v108)
-- Release commit: `05049e8587ce651f59b98a8a1bdd60c789fb9858`
-- Asset: `XPS_Tracker_Updater_v108.zip`
-- Size: `326636` bytes
-- SHA-256: `7b6d06b98cb9d0bf4e763b65a5297be95d3bb14ad385378fbf19a27113da5049`
+- Release: [XPS Tracker Updater v109](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v109)
+- Release commit: `80e0f3bc8662852d5a750e33ec58232632111a5a`
+- Asset: `XPS_Tracker_Updater_v109.zip`
+- Size: `328106` bytes
+- SHA-256: `e45c9fbcde12e34951c50c8d7ef71d6f0e8f5857d7728fe1d8b759e90d0c9929`
 
 The production updater reads `update_manifest.json` on `main`, which points to
-this verified v108 asset. Development remains on `v95-work`, under `working_source/`.
+this verified v109 asset. Development remains on `v95-work`, under `working_source/`.
 Old source bundles and release notes are historical; fetch the latest development
 head and read its project instructions before editing.
 
-v108 hardens compact Brown & Caldwell Pipe and Manhole OCR with contextual
-whole-table corroboration while preserving the existing physical-grid,
-fail-closed matching, review, and master-write safeguards.
+v109 recovers slightly skewed Brown & Caldwell compact Pipe table rows while
+preserving the established OCR, matching, review and workbook safeguards.
+
+## v109
+
+- Recovers missing physical Pipe rows when rotated compact Brown & Caldwell tables have a small residual scan skew.
+- Uses a guarded long-rule skew estimate and accepts a corrected grid only when it restores multiple row bands while preserving the column structure.
+- Leaves normally aligned tables on their existing path; no weakening of matching, totals or review safeguards.
+- Passed all **59/59 active Linux regression scripts**; the published v109 ZIP was independently re-downloaded and verified before the auto-update manifest advanced.
 
 ## v108
 

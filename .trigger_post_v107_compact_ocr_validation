@@ -1,1 +1,1 @@
-validate 2026-09-30 retry 6
+Validate compact skew recovery and all active regressions on development branch.

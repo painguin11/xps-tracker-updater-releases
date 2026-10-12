@@ -1,0 +1,206 @@
+name: Publish XPS Tracker Updater v109
+on:
+  push:
+    branches: [v95-work]
+    paths: [.publish-v109-trigger]
+permissions:
+  contents: write
+concurrency:
+  group: publish-xps-v109
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.event.head_commit.message == 'PUBLISH_V109'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v95-work
+          fetch-depth: 0
+      - name: Preflight
+        run: |
+          set -euo pipefail
+          git fetch origin v95-work
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/v95-work)"
+          if gh release view v109 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v109 already published; refusing overwrite" >&2; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v109" >/dev/null 2>&1; then
+            echo "v109 tag exists; refusing overwrite" >&2; exit 1
+          fi
+          python - <<'PY'
+          import subprocess
+          paths=subprocess.check_output(['git','diff','--name-only','v108..HEAD'],text=True).splitlines()
+          apps=subprocess.check_output(['git','ls-files','working_source/app'],text=True).splitlines()
+          forbidden=('.pdf','.xlsx','.xls','.xlsm')
+          assert not any(p.lower().endswith(forbidden) for p in paths+apps)
+          print('No customer PDF/workbook changes since v108 or bundled into app')
+          PY
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+      - name: Version both modules and bundled README
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          app=Path('working_source/app/reno_scan_updater.py')
+          s=app.read_text()
+          s,n=re.subn(r"(?m)^APP_VERSION = '108'$","APP_VERSION = '109'",s,count=1)
+          assert n==1
+          app.write_text(s)
+          upd=Path('working_source/app/xps_update.py')
+          s=upd.read_text()
+          s,n=re.subn(r'(?m)^CURRENT_VERSION = "108"$','CURRENT_VERSION = "109"',s,count=1)
+          assert n==1
+          upd.write_text(s)
+          r=Path('working_source/app/README_XPS_Tracker_Updater.txt')
+          s=r.read_text()
+          assert s.startswith('XPS Tracker Updater v108\n')
+          s=s.replace('XPS Tracker Updater v108\n','XPS Tracker Updater v109\n',1)
+          s=s.replace('Current status (September 30, 2026)','Current status (October 12, 2026)',1)
+          s=s.replace('Production release: v108. Development:', 'Production release: v109. Development:',1)
+          old=('v108 hardens compact Brown & Caldwell Pipe and Manhole OCR by adding\n'
+               'contextual whole-table corroboration for damaged ruled cells while preserving\n'
+               'the existing physical-grid, fail-closed matching, and review safeguards.')
+          new=('v109 recovers missing Pipe rows on slightly skewed compact B&C tables,\n'
+               'without modifying normally aligned tables or weakening v108 OCR,\n'
+               'matching, physical-row, or workbook update safeguards.')
+          assert old in s
+          r.write_text(s.replace(old,new,1))
+          PY
+      - name: Compile and run the complete active regression matrix
+        run: |
+          set -euo pipefail
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/xps_review_controls.py
+          python - <<'PY'
+          from pathlib import Path
+          import re,subprocess,sys
+          workflow=Path('.github/workflows/validate-post-v107-compact-ocr.yml').read_text()
+          names=re.findall(r"(?m)^\s*'(regression_[^']+\.py)',\s*$",workflow)
+          assert len(names)==59 and len(set(names))==59, (len(names),names)
+          for name in names:
+              path=Path('working_source/tests')/name
+              assert path.exists(), path
+              print(f'===== {name} =====',flush=True)
+              subprocess.run([sys.executable,str(path)],check=True)
+          app=Path('working_source/app/reno_scan_updater.py').read_text()
+          upd=Path('working_source/app/xps_update.py').read_text()
+          assert "APP_VERSION = '109'" in app and 'CURRENT_VERSION = "109"' in upd
+          for needle in ('def parse_pipe_list(', 'def parse_manhole_list(', 'def parse_year15_pair_list(',
+                         'def parse_year15_manholes(', 'def parse_trouble_ticket(',
+                         'def _year15_compact_skew_retry(', 'def apply_manual_asset_edit('):
+              assert needle in app,needle
+          print('FULL ACTIVE REGRESSION SUITE: 59/59 passed')
+          PY
+          git diff --check
+      - name: Package, test ZIP and calculate checksum
+        run: |
+          set -euo pipefail
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find dist -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+          cd dist
+          zip -qr XPS_Tracker_Updater_v109.zip XPS_Tracker_Updater
+          unzip -tq XPS_Tracker_Updater_v109.zip
+          python - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('XPS_Tracker_Updater_v109.zip') as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              assert names and all(n.startswith('XPS_Tracker_Updater/') for n in names)
+              for required in ('reno_scan_updater.py','xps_update.py','xps_review_controls.py',
+                               'setup_and_run.bat','run_xps_tracker.bat',
+                               'README_XPS_Tracker_Updater.txt'):
+                  assert 'XPS_Tracker_Updater/'+required in names
+              assert not any(n.lower().endswith(('.pdf','.xlsx','.xls','.xlsm','.pyc','.pyo'))
+                             or '__pycache__' in n or 'ocr_cache' in n.lower() for n in names)
+              assert b"APP_VERSION = '109'" in z.read('XPS_Tracker_Updater/reno_scan_updater.py')
+              assert b'CURRENT_VERSION = "109"' in z.read('XPS_Tracker_Updater/xps_update.py')
+          print('Release ZIP structure, integrity and privacy checks passed')
+          PY
+          echo "RELEASE_SHA=$(sha256sum XPS_Tracker_Updater_v109.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "RELEASE_SIZE=$(stat -c%s XPS_Tracker_Updater_v109.zip)" >> "$GITHUB_ENV"
+      - name: Commit source and remove temporary publishing files
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/README_XPS_Tracker_Updater.txt
+          git rm .github/workflows/publish-v109.yml .publish-v109-trigger
+          git commit -m 'Release v109 [skip ci]'
+          echo "RELEASE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git push origin HEAD:v95-work
+      - name: Publish and independently re-download v109
+        run: |
+          set -euo pipefail
+          gh release create v109 dist/XPS_Tracker_Updater_v109.zip \
+            --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" \
+            --title 'XPS Tracker Updater v109' \
+            --notes 'Fix compact Brown & Caldwell Pipe tables with small residual scan skew after rotation. A guarded straightening retry recovers physical row separators without altering normal tables, endpoint matching, totals, review, or workbook safety. Addresses the October 12 page 6 table: 13 survey rows and 2,367.35 ft. All 59 active Linux regressions passed; private OCR fixture, Windows Excel COM and live Tkinter were not tested by public CI.'
+          mkdir -p verified
+          gh release download v109 --repo "$GITHUB_REPOSITORY" \
+            --pattern XPS_Tracker_Updater_v109.zip --dir verified
+          python - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          path=Path('verified/XPS_Tracker_Updater_v109.zip')
+          assert path.is_file(),'public release asset could not be downloaded'
+          digest=hashlib.sha256(path.read_bytes()).hexdigest()
+          assert digest==os.environ['RELEASE_SHA'],(digest,os.environ['RELEASE_SHA'])
+          assert path.stat().st_size==int(os.environ['RELEASE_SIZE'])
+          data=json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/releases/tags/v109"],text=True))
+          asset=next((a for a in data.get('assets',[]) if a.get('name')=='XPS_Tracker_Updater_v109.zip'),None)
+          assert asset and asset['size']==path.stat().st_size
+          if asset.get('digest'): assert asset['digest']=='sha256:'+digest
+          assert asset['browser_download_url']==('https://github.com/'+os.environ['GITHUB_REPOSITORY']+'/releases/download/v109/XPS_Tracker_Updater_v109.zip')
+          print('PUBLIC ASSET VERIFIED',path.stat().st_size,digest)
+          PY
+      - name: Advance production auto-update manifest after verification
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          git worktree add --detach /tmp/xps-main-v109 origin/main
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          p=Path('/tmp/xps-main-v109/update_manifest.json')
+          data=json.loads(p.read_text())
+          assert data['version']=='108','manifest moved; refuse to overwrite'
+          data={
+            'version':'109',
+            'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v109/XPS_Tracker_Updater_v109.zip',
+            'sha256':os.environ['RELEASE_SHA'],
+            'release_notes':[
+              'Recover physical Pipe rows from slightly skewed rotated Brown & Caldwell compact tables',
+              'Retry small-angle table alignment only when row separators have anomalous gaps',
+              'Retain original table detection unless corrected grid is clearly stronger with the same columns',
+              'Preserve v108 OCR, full-ID matching, total checking, review, and workbook update safeguards'
+            ]
+          }
+          p.write_text(json.dumps(data,indent=2)+'\n')
+          PY
+          cd /tmp/xps-main-v109
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add update_manifest.json
+          git commit -m 'Publish verified v109 auto-update manifest'
+          git push origin HEAD:main
+          git fetch origin main --quiet
+          git show origin/main:update_manifest.json > /tmp/verified-xps-manifest.json
+          python - <<'PY'
+          import base64,json,os,subprocess
+          data=json.load(open('/tmp/verified-xps-manifest.json'))
+          assert data['version']=='109' and data['sha256']==os.environ['RELEASE_SHA']
+          assert data['download_url']=='https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v109/XPS_Tracker_Updater_v109.zip'
+          remote=json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/contents/update_manifest.json?ref=main"],text=True))
+          live=json.loads(base64.b64decode(remote['content']).decode())
+          assert live==data
+          print('VERIFIED PUBLIC v109 MANIFEST',data['sha256'])
+          PY

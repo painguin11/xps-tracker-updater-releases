@@ -4,7 +4,7 @@
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v108**.
+Current production version: **v109**.
 
 Current development branch: **`v95-work`**.
 
@@ -13,7 +13,7 @@ The editable source and active regression suite are under `working_source/` on
 version until the user explicitly says `PUBLISH`.
 
 
-## Pending after v108 — small-skew compact Pipe grid recovery (October 12, 2026)
+## Released in v109 — small-skew compact Pipe grid recovery (October 12, 2026)
 
 - A supplied image-only Phase 2 Pipe table was correctly classified at 270 degrees,
   but roughly 0.6 degrees of residual scan skew made the compact-grid horizontal
@@ -31,7 +31,17 @@ version until the user explicitly says `PUBLISH`.
   the title, header, 13 data bands, and total band geometrically. The private PDF
   must never be committed or packaged.
 - Regression: `working_source/tests/regression_post_v108_compact_skew.py`.
-  This is unreleased development work; v108 remains the public version.
+  This was released in v109; v108 remains a documented historical baseline.
+
+## State audit — October 12, 2026
+
+- Current production release: **v109** at release source commit `80e0f3bc8662852d5a750e33ec58232632111a5a`.
+- GitHub Actions release run **38304515022** compiled the versioned app, passed all **59/59** active Linux regressions, verified the package ZIP and privacy checks, re-downloaded the public release asset, and verified exact size/SHA-256 before advancing the public manifest.
+- Verified release ZIP: `XPS_Tracker_Updater_v109.zip`, **328106 bytes**, SHA-256 `e45c9fbcde12e34951c50c8d7ef71d6f0e8f5857d7728fe1d8b759e90d0c9929`.
+- Public release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v109
+- Production `main/update_manifest.json` points to the verified v109 asset and SHA-256.
+- The customer PDF remains private. Real private-fixture OCR, Windows Excel COM and live Tkinter GUI paths were not run by the public Linux runner.
+- Temporary v109 workflow and trigger files were removed in the versioned release commit.
 
 ## State audit — September 30, 2026
 

@@ -1,13 +1,13 @@
-XPS Tracker Updater v108
+XPS Tracker Updater v109
 ========================
 
-Current status (September 30, 2026)
+Current status (October 12, 2026)
 ----------------------------------
-Production release: v108. Development: v95-work / working_source.
+Production release: v109. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v108 hardens compact Brown & Caldwell Pipe and Manhole OCR by adding
-contextual whole-table corroboration for damaged ruled cells while preserving
-the existing physical-grid, fail-closed matching, and review safeguards.
+v109 recovers missing Pipe rows on slightly skewed compact B&C tables,
+without modifying normally aligned tables or weakening v108 OCR,
+matching, physical-row, or workbook update safeguards.
 
 Purpose
 -------

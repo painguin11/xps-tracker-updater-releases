@@ -132,10 +132,10 @@ read_context={'value':82.87}
 read_direct={'value':82.87}
 read_batch={'value':82.87}
 read_clean={'value':82.87}
-read_date={'conflicting_sources':None}
+read_date={'conflicting_sources':None,'value':DATE}
 parser={'np':np,'re':re,'datetime':datetime,'asset_key':key,
     'canonical_asset_id':lambda v:str(v or '').upper(),
-    '_read_sheet_date_evidence':lambda *a,**k:{'date':DATE,'strong':True,'candidates':[DATE],'votes':{},'strong_votes':{},
+    '_read_sheet_date_evidence':lambda *a,**k:{'date':read_date['value'],'strong':True,'candidates':[read_date['value']],'votes':{},'strong_votes':{},
                                                  'conflicting_sources':read_date['conflicting_sources']},
     '_dominant_sheet_date':lambda *a,**k:DATE,
     '_read_pair_table_printed_total':lambda *a,**k:{'found':False,'band_index':None,'value':None,'confident':False},
@@ -198,6 +198,15 @@ assert date_disputed.get('skip_update') is True
 assert 'Date reads disagree' in date_disputed.get('_field_review_reasons',[])
 assert date_disputed['_field_previews']['date'].shape[0]==20
 read_date['conflicting_sources']=None
+read_date['value']=datetime(2026,9,28)
+outlier=parse('pipes')
+assert outlier.get('skip_update') is True
+assert outlier['_field_review_reasons']==['Date differs from table date'],outlier
+assert outlier['row_date']==read_date['value']
+assert outlier['_ocr_date_evidence']['table_majority_date']==DATE
+read_date['value']=DATE
+normal=parse('pipes')
+assert not normal.get('_field_review_reasons'),normal
 
 # A later PDF reread can resolve a disagreement, but only when the winning
 # value was already PDF-observed and the reread source is independently strong.
@@ -245,5 +254,6 @@ edit=next(n for n in app.body if isinstance(n,ast.FunctionDef) and n.name=='edit
 assert "unresolved_fields=[r for r in self.records if r.get('_field_review_reasons')]" in ast.get_source_segment(source,update)
 assert 'Confirm PDF Length' in ast.get_source_segment(source,edit)
 assert 'Confirm PDF Date' in ast.get_source_segment(source,edit)
+assert 'Date differs from table date' in ast.get_source_segment(source,edit)
 print('MOCKED PARSER: correct/read-disagreement/review/crop/canceling-totals covered')
 print('PRIVATE FIXTURE OCR: SKIPPED (requires raw-byte fixture access and verified per-row expectations)')

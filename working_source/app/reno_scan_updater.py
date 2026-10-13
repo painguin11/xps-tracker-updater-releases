@@ -2630,7 +2630,25 @@ def _read_sheet_date_evidence(cell_img, expected_date=None):
     for im in variants:
         for psm in (7,6):
             texts.append(cached_ocr_string(im,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789/').strip())
-    return _choose_sheet_date_evidence(texts,expected_date)
+    evidence=_choose_sheet_date_evidence(texts,expected_date)
+    # Both segmentation settings must read the same complete printed date
+    # within EACH image treatment before different treatments can conflict.
+    # Four repetitions of the same OCR preprocessing would not be independent.
+    supported={}
+    for name,read_pair in (('original grayscale',texts[:2]),
+                           ('thresholded cell',texts[2:4])):
+        votes={}
+        for read in read_pair:
+            dates={date for date,strong in _parse_sheet_date_text_candidates(read,expected_date)
+                   if strong}
+            for date in dates:
+                votes[date]=votes.get(date,0)+1
+        strong_dates=[date for date,count in votes.items() if count==2]
+        if len(strong_dates)==1:
+            supported[name]=strong_dates[0]
+    if len(supported)==2 and len(set(supported.values()))>1:
+        evidence['conflicting_sources']=supported
+    return evidence
 
 
 def _dominant_sheet_date(evidences, expected_date=None):
@@ -4716,8 +4734,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         # keep the printed row and its original source crop, but fail closed.
         if disagreement_sources:
             rec['_ocr_value_evidence']=disagreement_sources
-            rec['_field_review_reasons']=['Length reads disagree']
+            rec.setdefault('_field_review_reasons',[]).append('Length reads disagree')
             rec.setdefault('validation_warnings',[]).append('Length reads disagree')
+            rec['skip_update']=True
+        if date_evidence.get('conflicting_sources'):
+            rec['_ocr_date_evidence']=date_evidence['conflicting_sources']
+            rec.setdefault('_field_review_reasons',[]).append('Date reads disagree')
+            rec.setdefault('validation_warnings',[]).append('Date reads disagree')
             rec['skip_update']=True
         if band_index in prepared.get('geometry_uncertain_bands',[]):
             rec.setdefault('_field_review_reasons',[]).append('Row boundary uncertain')
@@ -7334,14 +7357,17 @@ class App(tk.Tk):
             row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
         win.columnconfigure(2,weight=1)
         def save():
-            # No-op saves never silently approve a disagreement.
-            if 'Length reads disagree' in r.get('_field_review_reasons',[]):
-                if not messagebox.askyesno(
-                        'Confirm PDF Length',
-                        'Two PDF length reads disagree. Check the Length crop '
-                        'beside the field. Does the entered value match the printed PDF?',
-                        parent=win):
-                    return
+            # A no-op save never silently approves independently conflicting OCR.
+            for reason,title,field in (
+                    ('Length reads disagree','Confirm PDF Length','Length'),
+                    ('Date reads disagree','Confirm PDF Date','Date')):
+                if reason in r.get('_field_review_reasons',[]):
+                    if not messagebox.askyesno(
+                            title,
+                            f'Two PDF {field.lower()} reads disagree. Check the {field} '
+                            'crop beside the field. Does the entered value match the printed PDF?',
+                            parent=win):
+                        return
             try:
                 old_length=r.get('video_length')
                 if r.get('kind') in ('Pipe','Cleaning'):
@@ -7357,12 +7383,15 @@ class App(tk.Tk):
                     apply_manual_asset_edit(r,self.master_index,asset=vars['Asset'].get())
                 r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
-            if 'Length reads disagree' in r.get('_field_review_reasons',[]):
+            reasons=set(r.get('_field_review_reasons',[]))
+            confirmed_reasons=reasons.intersection({'Length reads disagree','Date reads disagree'})
+            if confirmed_reasons:
                 r['_field_review_reasons']=[reason for reason in r['_field_review_reasons']
-                                            if reason!='Length reads disagree']
+                                            if reason not in confirmed_reasons]
                 r['warnings']=[warning for warning in r.get('warnings',[])
-                               if warning!='Length reads disagree']
-                r['_length_user_edited']=True
+                               if warning not in confirmed_reasons]
+                if 'Length reads disagree' in confirmed_reasons:
+                    r['_length_user_edited']=True
             refresh_length_status(r)
             self.revalidate_total_checks_for_record(r)
             self.resolve_pipe_duplicate_groups(prompt=False,update_mode=False)
@@ -7473,7 +7502,7 @@ class App(tk.Tk):
                 'PDF Field Review Required',
                 f'{len(unresolved_fields)} row(s) need PDF verification before Update Master.\n\n'
                 + '\n'.join(reasons) +
-                '\n\nUse Edit Selected to verify disputed lengths against their PDF crops. '
+                '\n\nUse Edit Selected to verify disputed fields against their PDF crops. '
                 'If row boundaries are uncertain, rescan/replace the page and analyze again.')
             return
         if not self.resolve_pipe_duplicate_groups(prompt=True,update_mode=True): return

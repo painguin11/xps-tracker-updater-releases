@@ -52,7 +52,8 @@ print('REAL OCR: 3 synthetic ruled cells and decimal safeguards passed')
 # SYNTHETIC IMAGE GEOMETRY: accepted correction must preserve EVERY column,
 # not just the same number of boundaries and the same outside width.
 geo={'cv2':cv2,'np':np}
-install(geo,'_year15_compact_grid_bands','_year15_compact_skew_retry')
+install(geo,'_year15_compact_grid_bands','_year15_compact_skew_retry',
+        '_year15_compact_unresolved_bands')
 h,w=1530,1980
 clean=np.full((h,w,3),255,dtype=np.uint8)
 xs=np.linspace(130,1845,8).astype(int)
@@ -75,7 +76,20 @@ geo['_year15_compact_grid_bands']=displaced
 rejected=geo['_year15_compact_skew_retry'](skew,broken,box,cols)
 assert rejected[4] is False
 assert rejected[0] is skew
-print('SYNTHETIC GEOMETRY: stable and displaced separator layouts covered')
+# Interior gaps must be severe enough to exceed normal wrapped-row variation;
+# preserve and flag the combined band, never fabricate an extra physical row.
+regular=[(i*25,i*25+19) for i in range(8)]
+assert geo['_year15_compact_unresolved_bands'](regular)==[]
+wrapped=list(regular)
+wrapped[3]=(wrapped[3][0],wrapped[3][0]+38)
+assert geo['_year15_compact_unresolved_bands'](wrapped)==[]
+merged=list(regular)
+merged[3]=(merged[3][0],merged[3][0]+82)
+merged[4]=(merged[3][1]+6,merged[3][1]+25)
+for k in range(5,8):
+    merged[k]=(merged[4][0]+25*(k-4),merged[4][1]+25*(k-4))
+assert geo['_year15_compact_unresolved_bands'](merged)==[3]
+print('SYNTHETIC GEOMETRY: guarded skew, shifted columns and uncertain merged bands covered')
 
 # MOCKED PARSER LOGIC: even when a master or printed total happens to match,
 # independent OCR disagreements may not become automatic master writes.
@@ -141,6 +155,13 @@ assert clean_disputed.get('skip_update') is True and 'Length reads disagree' in 
 read_clean['value']=82.87
 clean_correct=parse('cleaning')
 assert not clean_correct.get('_field_review_reasons'),clean_correct
+prepared['geometry_uncertain_bands']=[1]
+uncertain=parse('pipes')
+assert uncertain.get('skip_update') is True
+assert 'Row boundary uncertain' in uncertain.get('_field_review_reasons',[])
+assert uncertain['_ocr_physical_cell']['band_index']==1
+assert 'activity_value' in uncertain['_field_previews']
+del prepared['geometry_uncertain_bands']
 
 # Two individually wrong values can cancel out in a printed total.
 # A matching sum must never clear either independent OCR conflict.

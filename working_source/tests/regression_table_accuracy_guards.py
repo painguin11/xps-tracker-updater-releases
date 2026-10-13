@@ -9,6 +9,7 @@ import re
 import cv2
 import numpy as np
 import pytesseract
+from PIL import Image, ImageDraw, ImageFont
 
 SOURCE=Path(__file__).resolve().parents[1]/'app'/'reno_scan_updater.py'
 source=SOURCE.read_text(encoding='utf-8')
@@ -26,18 +27,20 @@ ns={'cv2':cv2,'np':np,'re':re,'pytesseract':pytesseract,
 install(ns,'_row_length_token_value','_valid_row_length_value','_stable_numeric_vote',
         '_direct_pair_length_candidates','asset_key','_ocr_id_text_variants',
         '_printed_asset_tokens','_ocr_asset_candidates')
-def ruled(text,width=240):
-    img=np.full((65,width,3),255,dtype=np.uint8)
-    cv2.rectangle(img,(1,1),(width-2,63),(65,65,65),1)
-    cv2.putText(img,text,(18,44),cv2.FONT_HERSHEY_SIMPLEX,1.1,(0,0,0),2,cv2.LINE_AA)
-    return img
+def ruled(text,width=380):
+    # A real, high-resolution printed-font ruled cell. OpenCV's thin vector
+    # strokes change shape across runner builds, so use the bundled system
+    # DejaVu font consistently instead of accidental OCR artifacts.
+    paper=Image.new('RGB',(width,105),'white')
+    draw=ImageDraw.Draw(paper)
+    draw.rectangle((1,1,width-2,103),outline=(65,65,65),width=1)
+    font=ImageFont.truetype('DejaVuSans.ttf',32)
+    draw.text((25,32),text,font=font,fill='black')
+    return np.asarray(paper).copy()
 for literal in ('82.87','134.12'):
-    observed=ns['_direct_pair_length_candidates'](ruled(literal,width=320))
-    if observed!=[float(literal)]:
-        enlarged=cv2.resize(cv2.cvtColor(ruled(literal,width=320),cv2.COLOR_RGB2GRAY),None,fx=3,fy=3,interpolation=cv2.INTER_CUBIC)
-        print('OCR diagnostic',literal,repr(pytesseract.image_to_string(enlarged,config='--psm 7 -c tessedit_char_whitelist=0123456789.')),repr(pytesseract.image_to_string(enlarged,config='--psm 6 -c tessedit_char_whitelist=0123456789.')),flush=True)
+    observed=ns['_direct_pair_length_candidates'](ruled(literal))
     assert observed==[float(literal)],(literal,observed)
-id_img=ruled('DN-2243S',width=290)
+id_img=ruled('DN-2243S')
 tokens=ns['_ocr_asset_candidates'](id_img,fast_plain=True,
     asset_format={'mode':'prefixed_dash','requires_dash':True,
                   'max_prefix_len':2,'max_digits':4,'allow_suffix':True})

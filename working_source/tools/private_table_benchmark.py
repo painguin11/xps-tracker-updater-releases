@@ -29,6 +29,56 @@ def load_app(path,label):
     spec.loader.exec_module(mod)
     return mod
 
+def portable_master_matrices(path):
+    """Read private workbook sheets without COM; leave the workbook unchanged.
+
+    This opt-in test-only path uses the artifact_tool spreadsheet reader.
+    It does not change any production workbook update or master parsing code.
+    """
+    from artifact_tool import Blob, SpreadsheetFile
+    workbook=SpreadsheetFile.import_xlsx(Blob.load(str(path)))
+    matrices={}
+    for item in (json.loads(line) for line in
+                 workbook.inspect({'kind':'sheet','include':'id,name'}).ndjson.splitlines()):
+        if item.get('kind')!='sheet':
+            continue
+        name=item['name']
+        # Read from A1 so the existing 1-based COM master index receives the
+        # exact same column positions, even if the used range is offset.
+        extent=item.get('range','A1')
+        bottom_right=extent.split(':')[-1]
+        matrices[name]=workbook.worksheets.get_item(name).get_range('A1:'+bottom_right).values
+    if not matrices:
+        raise RuntimeError('No readable worksheets in the private master workbook')
+    return matrices
+
+
+def install_portable_com_stub(matrices):
+    """A narrow read-only fake Excel connection for the existing index builder."""
+    import types
+    win32com=types.ModuleType('win32com')
+    client=types.ModuleType('win32com.client')
+    win32com.client=client
+    sys.modules['win32com']=win32com
+    sys.modules['win32com.client']=client
+    sys.modules.setdefault('pythoncom',types.ModuleType('pythoncom'))
+    sys.modules.setdefault('pywintypes',types.ModuleType('pywintypes'))
+    class Sheet:
+        def __init__(self,name): self.Name=name
+    class Sheets:
+        def __iter__(self): return (Sheet(name) for name in matrices)
+        def __call__(self,name): return Sheet(name)
+    class Book:
+        Worksheets=Sheets()
+        def Close(self,*args): pass
+    class Books:
+        def Open(self,*args,**kwargs): return Book()
+    class Excel:
+        Workbooks=Books()
+        def Quit(self): pass
+    client.DispatchEx=lambda *args:Excel()
+
+
 def norm_id(value):
     return ''.join(ch for ch in str(value or '').upper() if ch.isalnum())
 
@@ -90,11 +140,15 @@ def install_counts(app):
         setattr(app,name,instrument)
     return counts
 
-def run(app,cases,master):
+def run(app,cases,master,portable_matrices=None):
     import os
     if not Path(master).is_file():
         raise FileNotFoundError('Master workbook missing')
-    index=app.load_master_index(master)
+    if portable_matrices is None:
+        index=app.load_master_index(master)
+    else:
+        app._sheet_matrix=lambda ws:portable_matrices[ws.Name]
+        index=app._load_master_index_once(master)
     if not index:
         raise RuntimeError('Unable to load master workbook')
     counts=install_counts(app)
@@ -139,10 +193,15 @@ def run(app,cases,master):
                     fields['exact_'+field]+=1
                 else:
                     bad=True
-            review=bool(row.get('skip_update') or row.get('_field_review_reasons')
-                        or row.get('validation_warnings'))
+            blocked=bool(row.get('skip_update') or row.get('_field_review_reasons'))
+            review=bool(blocked or row.get('validation_warnings') or
+                        str(row.get('status') or '').startswith('LENGTH DIFF'))
+            if bad and not blocked:
+                # A warning color alone is not a write block; totals may
+                # independently block a whole work order, tracked separately.
+                totals['incorrect_rows_still_update_eligible']+=1
             if bad and not review:
-                totals['unsafe_auto_accepted_rows']+=1
+                totals['unflagged_wrong_rows']+=1
             if not bad and review:
                 totals['correct_rows_sent_to_review']+=1
             if review:
@@ -168,6 +227,8 @@ def main():
     ap.add_argument('--updated-app',default=str(Path(__file__).resolve().parents[1]/'app'/'reno_scan_updater.py'))
     ap.add_argument('--baseline-app',help='Path to separately checked-out baseline app source')
     ap.add_argument('--report',help='Optional local-only aggregate metrics JSON')
+    ap.add_argument('--portable',action='store_true',
+                    help='Read private master with artifact_tool instead of Windows Excel COM')
     args=ap.parse_args()
     fixture=json.loads(Path(args.expected).read_text(encoding='utf-8'))
     cases=fixture.get('cases')
@@ -178,9 +239,12 @@ def main():
     paths=[('updated',args.updated_app)]
     if args.baseline_app:
         paths.insert(0,('baseline',args.baseline_app))
+    matrices=portable_master_matrices(args.master) if args.portable else None
+    if args.portable:
+        install_portable_com_stub(matrices)
     results={}
     for label,path in paths:
-        results[label]=run(load_app(Path(path),label),cases,args.master)
+        results[label]=run(load_app(Path(path),label),cases,args.master,matrices)
     print(json.dumps(results,indent=2))
     if args.report:
         Path(args.report).write_text(json.dumps(results,indent=2)+'\n',encoding='utf-8')

@@ -1,13 +1,14 @@
-XPS Tracker Updater v109
+XPS Tracker Updater v110
 ========================
 
-Current status (October 12, 2026)
+Current status (October 13, 2026)
 ----------------------------------
-Production release: v109. Development: v95-work / working_source.
+Production release: v110. Development: v95-work / working_source.
 Version sections below are release history; later changes supersede earlier ones.
-v109 recovers missing Pipe rows on slightly skewed compact B&C tables,
-without modifying normally aligned tables or weakening v108 OCR,
-matching, physical-row, or workbook update safeguards.
+v110 improves conservative Pipe/Cleaning length OCR, disputed dates and
+compact row geometry, and keeps Live Summary plain until analysis ends.
+Unresolved scan ambiguity still requires manual PDF review.
+Windows Excel COM and live GUI behavior were not tested in Linux CI.
 
 Purpose
 -------

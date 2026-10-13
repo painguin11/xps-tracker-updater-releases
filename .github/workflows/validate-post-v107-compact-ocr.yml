@@ -112,7 +112,9 @@ jobs:
       - name: Bundle parser sources for private local benchmark
         run: |
           mkdir -p parser_sources
-          git show 80e0f3bc8662852d5a750e33ec58232632111a5a:working_source/app/reno_scan_updater.py > parser_sources/reno_scan_updater_v109.py
+          curl -L --fail --silent --show-error \
+            https://raw.githubusercontent.com/painguin11/xps-tracker-updater-releases/80e0f3bc8662852d5a750e33ec58232632111a5a/working_source/app/reno_scan_updater.py \
+            -o parser_sources/reno_scan_updater_v109.py
           cp working_source/app/reno_scan_updater.py parser_sources/reno_scan_updater_updated.py
 
       - uses: actions/upload-artifact@v4

@@ -1,11 +1,12 @@
 {
-  "version": "109",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v109/XPS_Tracker_Updater_v109.zip",
-  "sha256": "e45c9fbcde12e34951c50c8d7ef71d6f0e8f5857d7728fe1d8b759e90d0c9929",
+  "version": "110",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v110/XPS_Tracker_Updater_v110.zip",
+  "sha256": "d4865d11273b313726f2036626bfd88271bccd9f1ac7259cf32f46e45522c06b",
   "release_notes": [
-    "Recover physical Pipe rows from slightly skewed rotated Brown & Caldwell compact tables",
-    "Retry small-angle table alignment only when row separators have anomalous gaps",
-    "Retain original table detection unless corrected grid is clearly stronger with the same columns",
-    "Preserve v108 OCR, full-ID matching, total checking, review, and workbook update safeguards"
+    "Improve scanned-table Pipe/Cleaning length accuracy using selective corroborated border-free OCR",
+    "Guard skewed compact column alignment and flag uncertain physical row boundaries for review",
+    "Require independent PDF corroboration for conflicting complete dates and lengths",
+    "Keep Live Summary plain and Comments blank while analysis is still running",
+    "Preserve prior parsing, manual review and master-workbook safeguards"
   ]
 }

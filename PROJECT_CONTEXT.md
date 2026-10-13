@@ -1,10 +1,127 @@
 # XPS Tracker Updater project context
 
+## Released in v110 — table accuracy guards (October 13, 2026)
+
+Production v110 is verified and `main/update_manifest.json` advances only after the release asset is re-downloaded and checked.
+These improvements were developed on `v95-work`; Windows COM and GUI verification remains a separately documented limitation.
+
+### Gap assessment and narrowly scoped changes
+
+- Existing v107 header retries, v108 contextual Pipe length / Manhole identity
+  checks, v109 bounded small-skew correction, old faint-grid recovery, physical
+  row retention, complete asset-ID safeguards, date consensus, and total review
+  paths were kept. There was no broad OCR parser rewrite.
+- The v109 skew retry previously accepted the same number of columns and
+  approximately the same outside table width, but did **not** compare interior
+  separator locations. It now also requires every deskewed separator to remain
+  within 1.8% of the table's normalized width relative to its original position.
+  The accepted image remains shared by detection, OCR cells and preview crops.
+- Confirmed compact grids that still have extreme *interior* row-band spacing
+  outliers after recovery are flagged for `Row boundary uncertain`. A large
+  band alone never creates a new physical row. Headers, wrapped lines, total
+  bands, and intentionally merged rows retain their conservative handling.
+  Users must rescan an unresolved suspicious page before master writes.
+- For compact Pipe lengths, a two-mode agreeing line-suppressed whole-table
+  observation is cross-checked against the two-mode agreeing original ruled
+  cell. For Cleaning, the first stacked-column candidate is cross-checked
+  against the already-existing independent isolated-cell reread. When two
+  materially different image treatments each support conflicting numeric values,
+  keep the existing first-pass selection and the entire physical row, store both
+  PDF values and the source band/crop, mark `Length reads disagree`, and block
+  automatic master writing. No master value or printed total generates a length.
+- For an already-disagreeing Pipe or Cleaning length, a targeted
+  border-isolated reread removes interference from top/bottom and right table
+  strokes. It adds white padding and checks grayscale, thresholded and
+  right-text crop treatments under two Tesseract segmentation modes. Only a
+  value printed by the original disagreeing PDF sources and independently
+  corroborated by at least two trimmed treatments can replace the first-pass
+  value automatically. Unresolved/conflicting rereads remain review-only.
+  The slow additional OCR never runs on ordinary agreeing rows, and neither
+  master lengths nor printed totals synthesize missing digits.
+- The existing Date OCR already uses grayscale and thresholded cell views
+  under two segmentation modes each. If both modes independently agree inside
+  each image treatment but the two treatments disagree on complete full-year
+  dates, preserve the PDF row, record both read sources, and require `Date reads
+  disagree` review; no new OCR pass is added for ordinary cells.
+- Existing grayscale/thresholded Date disagreement is reviewable, but
+  strong agreement between the confirmed work-order date, the selected PDF
+  read and at least two *other* physical date cells resolves the conflict
+  without burdening an already-correct row. An unsupported surviving date
+  outlier is always review-only, even after repeated OCR votes.
+- The existing `Edit Selected` screen displays the original cell crops. A
+  disputed length or date requires explicit PDF confirmation, including when
+  the reviewer keeps the pre-filled value. An uncertain row *boundary*
+  cannot be approved merely by editing a field.
+
+### Private OCR benchmark — measured October 13, 2026
+
+A **read-only actual-parser** benchmark completed locally against three
+visually annotated table pages from two historical private scan packets and a
+private Phase 2 master. None of those PDF bytes, workbook contents, asset IDs,
+or visually verified expected-value files was added to GitHub. The four
+originally requested named Library files still did not expose raw bytes;
+additional historical files from the user's Library did, allowing a
+meaningful limited benchmark instead of another synthetic-only report.
+
+- Master-index adapter read the master through `artifact_tool` while
+  executing the production `_load_master_index_once` logic without Windows
+  COM. It resolved 2,648 pipe entries and 2,539 manhole entries.
+- The benchmark covered two Video/Pipe pages and one Cleaning page,
+  **47 physical rows**, and **94 directional endpoint IDs**.
+- With confirmed work-order dates supplied, original **v109** detected
+  **47/47** physical rows, **94/94** directional endpoint IDs, **44/47**
+  exact lengths and **47/47** dates. Its three wrong lengths were one lost
+  leading digit in a Pipe row and two clipped trailing Cleaning digits.
+- After the selective border-isolated OCR change, the updated parser retained
+  **47/47** physical rows, **94/94** IDs and **47/47** dates, and recovered
+  **47/47 exact lengths**. Each recovered value was observed in the original
+  printed PDF as an alternative independent OCR reading, then corroborated
+  by at least two border-isolated treatments; no master/total substitution.
+  The three affected rows became correct and eligible without manual length
+  review, and no previously correct benchmark row changed.
+- **Incorrect rows individually eligible for master update: 3 (v109) -> 0
+  (updated development)**. A remaining unresolvable PDF disagreement is
+  still review-only. Work-order total validation is a separate master-write
+  safeguard; no end-to-end production workbook write was performed.
+- **Correct printed rows needing existing review: 7 -> 7**. These include
+  endpoint pairs not matched against the selected master, so not every review
+  represents unnecessary OCR work.
+- **OCR cache misses: 709 -> 727**: 18 extra OCR reads (six per disputed
+  physical cell) on three pages; no increased reads on ordinary cells.
+  Observed aggregate table processing time on separately run samples was
+  208.9 seconds for v109 and 180.4 seconds for updated development.
+  Paired runtime varied significantly between runs; **do not infer a
+  general speedup or whole-document processing gain**.
+- A separate no-workorder-date stress run exposed multiple wrong full dates.
+  These are normally corrected by the existing confirmed-workorder/table
+  reconciliation. When independent PDF image treatments disagree, refined
+  code requires review unless a correct selected date is independently
+  corroborated by the work-order date plus at least two other physical PDF
+  date cells. No date is fabricated or replaced just to reconcile a total.
+- Live Summary renders uncolored, blank-Comments rows during extraction;
+  warnings, colors, and summary separators appear only after analysis ends.
+- Regression suite: original 59 historical scripts plus synthetic rendered
+  Tesseract OCR, image geometry, date/length conflict, Live Summary, and
+  mock safety cases. Private customer fixture validation is distinct from
+  those CI tests and never uploaded. Windows Excel COM writes, actual
+  Tkinter interaction, and full-document page classification/continuation
+  behavior still require separate Windows validation before publishing.
+
+For future private local comparisons, run
+`working_source/tools/private_table_benchmark.py` with
+`--portable --master PATH --expected PRIVATE.json --baseline-app BASELINE.py
+--updated-app working_source/app/reno_scan_updater.py --report PRIVATE.json`.
+The `--portable` option uses `artifact_tool` and never changes the
+production Excel COM path. Each private case must contain ordered visually
+verified `rows`, `kind`, 1-indexed `page`, local `pdf`, and a
+`workorder_date` in YYYY-MM-DD format when confirmed. Keep all inputs,
+extracted row values and output reports outside public commits/releases.
+
 ## Resume instructions
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v109**.
+Current production version: **v110**.
 
 Current development branch: **`v95-work`**.
 
@@ -12,6 +129,16 @@ The editable source and active regression suite are under `working_source/` on
 `v95-work`. Start future work from that branch and preserve the full released v109 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
+
+## v110 release verification (October 13, 2026)
+
+- Versioned source commit: `da12ab88c2b737f4504b375f0b3cefd2f7cd9638`.
+- Public release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v110
+- Published ZIP `XPS_Tracker_Updater_v110.zip`: 332233 bytes; SHA-256 `d4865d11273b313726f2036626bfd88271bccd9f1ac7259cf32f46e45522c06b`.
+- Release CI ran 59 historical regression scripts plus synthetic/rendered selective OCR, date, compact geometry, and Live Summary tests.
+- Public release asset was downloaded again and its size, SHA-256 and ZIP integrity verified before production manifest update.
+- Private three-page benchmark previously established 47/47 correct lengths and dates, 47/47 rows and 94/94 endpoint IDs; not a full-document or Windows benchmark.
+- Live Windows Excel COM updates, GUI/Tkinter and unavailable private Library fixture checks remain untested; these limitations were disclosed.
 
 ## Released in v109 — small-skew compact Pipe grid recovery (October 12, 2026)
 

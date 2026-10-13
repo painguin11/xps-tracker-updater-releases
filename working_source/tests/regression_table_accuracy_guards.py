@@ -54,7 +54,8 @@ print('REAL OCR: 3 synthetic ruled cells and decimal safeguards passed')
 # dates is a material conflict. One noisy PSM inside each image is not.
 date_ns={'cv2':cv2,'np':np,'re':re,'datetime':datetime}
 install(date_ns,'_plausible_sheet_year','_parse_sheet_date_text_candidates',
-        '_choose_sheet_date_evidence','_read_sheet_date_evidence')
+        '_choose_sheet_date_evidence','_read_sheet_date_evidence',
+        '_date_conflict_resolved_by_pdf_context')
 date_reads=[]
 def date_ocr(img,config=''):
     return date_reads.pop(0)
@@ -72,7 +73,19 @@ differing=date_evidence(['10/12/2026']*2+['10/13/2026']*2)
 assert differing['date']==DATE and len(differing.get('conflicting_sources',{}))==2
 noisy=date_evidence(['10/12/2026','10/13/2026']*2)
 assert not noisy.get('conflicting_sources')
-print('MOCKED DATE OCR: only corroborated cross-image full-date disagreement flagged')
+# Never clear a conflicting date merely because four OCR settings agree.
+# One image treatment, two other physical rows, and the confirmed work-order
+# date must all independently corroborate the selected reading.
+strong_sources={'conflicting_sources':{'grayscale':DATE,'thresholded':datetime(2026,10,13)}}
+good_rows={1:{'date':DATE,'strong':True},2:{'date':DATE,'strong':True},
+           3:{'date':DATE,'strong':True}}
+agree=date_ns['_date_conflict_resolved_by_pdf_context']
+assert agree(strong_sources,good_rows,3,DATE,DATE,DATE)
+assert not agree(strong_sources,{1:good_rows[1],3:good_rows[3]},3,DATE,DATE,DATE)
+assert not agree(strong_sources,good_rows,3,DATE,DATE,None)
+assert not agree({'conflicting_sources':{'thresholded':datetime(2026,10,13)}},
+                 good_rows,3,DATE,DATE,DATE)
+print('MOCKED DATE OCR: independent treatment, work-order and neighbor evidence required')
 
 # SYNTHETIC IMAGE GEOMETRY: accepted correction must preserve EVERY column,
 # not just the same number of boundaries and the same outside width.

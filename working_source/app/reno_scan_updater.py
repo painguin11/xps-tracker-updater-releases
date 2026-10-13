@@ -2604,6 +2604,29 @@ def _choose_sheet_date_evidence(texts, expected_date=None):
     return {'date':chosen,'strong':False,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes}
 
 
+def _date_conflict_resolved_by_pdf_context(evidence, date_reads, band_index,
+                                            selected_date, dominant_date, expected_date):
+    """Corroborate a disputed OCR date without manufacturing a replacement.
+
+    Agreement requires the confirmed work-order date, the dominant PDF table
+    date, a strongly agreeing original/threshold cell treatment and at least
+    two OTHER physical date cells. Repeated Tesseract settings on one image
+    cannot, by themselves, clear a conflict.
+    """
+    sources=(evidence or {}).get('conflicting_sources') or {}
+    if not (isinstance(selected_date,datetime) and
+            isinstance(expected_date,datetime) and
+            isinstance(dominant_date,datetime) and
+            selected_date.date()==expected_date.date()==dominant_date.date() and
+            selected_date in sources.values()):
+        return False
+    others=sum(1 for i,read in (date_reads or {}).items()
+               if i!=band_index and read.get('strong') and
+               isinstance(read.get('date'),datetime) and
+               read['date'].date()==selected_date.date())
+    return others>=2
+
+
 def _date_outlier_is_well_supported(evidence, dominant_date, expected_date=None):
     """Keep a different date only when independent OCR evidence is strong enough."""
     if not evidence or dominant_date is None: return False
@@ -4804,9 +4827,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             _mark_field_review_block(rec,'Length reads disagree')
         if date_evidence.get('conflicting_sources'):
             rec['_ocr_date_evidence']=date_evidence['conflicting_sources']
-            rec.setdefault('_field_review_reasons',[]).append('Date reads disagree')
-            rec.setdefault('validation_warnings',[]).append('Date reads disagree')
-            _mark_field_review_block(rec,'Date reads disagree')
+            if _date_conflict_resolved_by_pdf_context(
+                    date_evidence,date_reads,band_index,d,dominant_date,expected_date):
+                rec['_ocr_date_context_resolution']='confirmed work-order and two other PDF date cells'
+            else:
+                rec.setdefault('_field_review_reasons',[]).append('Date reads disagree')
+                rec.setdefault('validation_warnings',[]).append('Date reads disagree')
+                _mark_field_review_block(rec,'Date reads disagree')
         elif (dominant_date is not None and d is not None and d!=dominant_date and
               (match or endpoint_signal)):
             # Several segmentation settings can all repeat the same mistaken

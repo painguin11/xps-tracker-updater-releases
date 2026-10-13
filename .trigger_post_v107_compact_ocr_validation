@@ -1,1 +1,1 @@
-Validate private benchmark portable workbook adapter (syntax/smoke), selective date outlier safeguards, Live Summary, all active regressions. No customer files in CI.
+2026-10-13 final source: validate corroborated date conflict suppression only with work-order plus two independent PDF date rows; keep private fixtures outside CI.

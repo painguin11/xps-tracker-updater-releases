@@ -1,1 +1,1 @@
-Validate complete v109 59-script suite and new real OCR, skew, merged-row, conflict and benchmark-cli regression.
+Run final 59 historical regression scripts, real Tesseract and synthetic date, geometry, conflict, benchmark smoke suites.

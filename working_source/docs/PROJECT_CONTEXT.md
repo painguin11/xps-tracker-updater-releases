@@ -35,43 +35,71 @@ user explicitly says `PUBLISH`.
   each image treatment but the two treatments disagree on complete full-year
   dates, preserve the PDF row, record both read sources, and require `Date reads
   disagree` review; no new OCR pass is added for ordinary cells.
+- Existing grayscale/thresholded Date disagreement is reviewable, but
+  strong agreement between the confirmed work-order date, the selected PDF
+  read and at least two *other* physical date cells resolves the conflict
+  without burdening an already-correct row. An unsupported surviving date
+  outlier is always review-only, even after repeated OCR votes.
 - The existing `Edit Selected` screen displays the original cell crops. A
   disputed length or date requires explicit PDF confirmation, including when
   the reviewer keeps the pre-filled value. An uncertain row *boundary*
   cannot be approved merely by editing a field.
 
-### Accuracy benchmark availability
+### Private OCR benchmark — measured October 13, 2026
 
-The four requested historical PDFs were located in private ChatGPT Library:
-`SKM_C654e26101212490.pdf`, `test.pdf`,
-`SKM_C654e26092513250.pdf`, and `SKM_C654e26092216400.pdf`.
-Their page images could be inspected, but Library raw-byte materialization
-reported *no authorized raw-byte path* for each file. Therefore the changed
-parser could **not** be executed against these PDFs in the runner and no
-per-field before/after accuracy claim was made. Windows Excel COM, native
-Tkinter review, and end-to-end master writing are not exercised by Linux CI.
+A **read-only actual-parser** benchmark completed locally against three
+visually annotated table pages from two historical private scan packets and a
+private Phase 2 master. None of those PDF bytes, workbook contents, asset IDs,
+or visually verified expected-value files was added to GitHub. The four
+originally requested named Library files still did not expose raw bytes;
+additional historical files from the user's Library did, allowing a
+meaningful limited benchmark instead of another synthetic-only report.
 
-The privacy-safe local benchmark runner is
-`working_source/tools/private_table_benchmark.py`. On an authorized Windows
-workstation with an actual local master and privately verified row expectations,
-run it with `--master PATH --expected PRIVATE.json --baseline-app
-BASELINE/reno_scan_updater.py --updated-app working_source/app/reno_scan_updater.py
---report PRIVATE_METRICS.json`. The private JSON has a `cases` list; each
-case specifies `pdf`, 1-indexed `page`, `kind` (`pipes`, `cleaning`,
-or `manholes`), `rows` ordered by physical row with verified `up`, `down`,
-`asset`, `length` or `date` fields, and optionally `printed_total` and
-`workorder_date`. Record actual per-row expected values by visual inspection,
-not by copying an OCR guess. Metrics include physical rows, exact fields,
-unreviewed wrong rows, unnecessary review, helper retries and runtime.
-**Customer PDFs, expected-value JSON and benchmark output stay private**
-and must not be committed, attached to CI or included in any release ZIP.
+- Master-index adapter read the master through `artifact_tool` while
+  executing the production `_load_master_index_once` logic without Windows
+  COM. It resolved 2,648 pipe entries and 2,539 manhole entries.
+- The benchmark covered two Video/Pipe pages and one Cleaning page,
+  **47 physical rows**, and **94 directional endpoint IDs**.
+- With the actual confirmed work-order dates supplied to the parser,
+  **v109 versus refined development** both detected **47/47** physical rows,
+  **94/94** endpoint IDs, **44/47** lengths and **47/47** dates. Both retained
+  three OCR-shortened length readings. No missing or extra physical rows.
+- **Incorrect rows remaining individually eligible for master update:
+  3 (v109) -> 0 (refined development)**, by requiring explicit crop review
+  for conflicting PDF length evidence. Existing total-validation blocking
+  remains an independent safeguard; row-level eligibility is not a claim
+  that an end-to-end workbook write occurred.
+- **Correct printed rows still requiring existing review: 7 -> 7**.
+  These include IDs not resolved against the selected master and must not
+  be relabeled unnecessary solely because their PDF transcription is correct.
+- **OCR cache misses: 709 -> 709**. Aggregate measured table-processing time:
+  208.9 seconds -> 140.6 seconds, but the paired samples were executed
+  separately and showed substantial runtime variance. This is **not** a
+  generalizable speed improvement or a measured whole-document throughput result.
+- A separate no-workorder-date stress run exposed multiple wrong full dates.
+  These are normally corrected by the existing confirmed-workorder/table
+  reconciliation. When independent PDF image treatments disagree, refined
+  code requires review unless a correct selected date is independently
+  corroborated by the work-order date plus at least two other physical PDF
+  date cells. No date is fabricated or replaced just to reconcile a total.
+- Live Summary renders uncolored, blank-Comments rows during extraction;
+  warnings, colors, and summary separators appear only after analysis ends.
+- Regression suite: original 59 historical scripts plus synthetic rendered
+  Tesseract OCR, image geometry, date/length conflict, Live Summary, and
+  mock safety cases. Private customer fixture validation is distinct from
+  those CI tests and never uploaded. Windows Excel COM writes, actual
+  Tkinter interaction, and full-document page classification/continuation
+  behavior still require separate Windows validation before publishing.
 
-The active Linux regression baseline for v109 was **59/59 passed**
-(Actions run `38416982078`). The post-change tests are grouped as 59 existing
-regressions, new real Tesseract OCR on privacy-safe rendered text, synthetic
-skew/column/band images, mocked review/write logic, and static/compile checks.
-Missing private fixture OCR is explicitly **skipped**, not passed. A matching
-aggregate total must never overrule two incorrect and canceling field values.
+For future private local comparisons, run
+`working_source/tools/private_table_benchmark.py` with
+`--portable --master PATH --expected PRIVATE.json --baseline-app BASELINE.py
+--updated-app working_source/app/reno_scan_updater.py --report PRIVATE.json`.
+The `--portable` option uses `artifact_tool` and never changes the
+production Excel COM path. Each private case must contain ordered visually
+verified `rows`, `kind`, 1-indexed `page`, local `pdf`, and a
+`workorder_date` in YYYY-MM-DD format when confirmed. Keep all inputs,
+extracted row values and output reports outside public commits/releases.
 
 ## Resume instructions
 

@@ -30,6 +30,15 @@ user explicitly says `PUBLISH`.
   keep the existing first-pass selection and the entire physical row, store both
   PDF values and the source band/crop, mark `Length reads disagree`, and block
   automatic master writing. No master value or printed total generates a length.
+- For an already-disagreeing Pipe or Cleaning length, a targeted
+  border-isolated reread removes interference from top/bottom and right table
+  strokes. It adds white padding and checks grayscale, thresholded and
+  right-text crop treatments under two Tesseract segmentation modes. Only a
+  value printed by the original disagreeing PDF sources and independently
+  corroborated by at least two trimmed treatments can replace the first-pass
+  value automatically. Unresolved/conflicting rereads remain review-only.
+  The slow additional OCR never runs on ordinary agreeing rows, and neither
+  master lengths nor printed totals synthesize missing digits.
 - The existing Date OCR already uses grayscale and thresholded cell views
   under two segmentation modes each. If both modes independently agree inside
   each image treatment but the two treatments disagree on complete full-year
@@ -60,22 +69,30 @@ meaningful limited benchmark instead of another synthetic-only report.
   COM. It resolved 2,648 pipe entries and 2,539 manhole entries.
 - The benchmark covered two Video/Pipe pages and one Cleaning page,
   **47 physical rows**, and **94 directional endpoint IDs**.
-- With the actual confirmed work-order dates supplied to the parser,
-  **v109 versus refined development** both detected **47/47** physical rows,
-  **94/94** endpoint IDs, **44/47** lengths and **47/47** dates. Both retained
-  three OCR-shortened length readings. No missing or extra physical rows.
-- **Incorrect rows remaining individually eligible for master update:
-  3 (v109) -> 0 (refined development)**, by requiring explicit crop review
-  for conflicting PDF length evidence. Existing total-validation blocking
-  remains an independent safeguard; row-level eligibility is not a claim
-  that an end-to-end workbook write occurred.
-- **Correct printed rows still requiring existing review: 7 -> 7**.
-  These include IDs not resolved against the selected master and must not
-  be relabeled unnecessary solely because their PDF transcription is correct.
-- **OCR cache misses: 709 -> 709**. Aggregate measured table-processing time:
-  208.9 seconds -> 140.6 seconds, but the paired samples were executed
-  separately and showed substantial runtime variance. This is **not** a
-  generalizable speed improvement or a measured whole-document throughput result.
+- With confirmed work-order dates supplied, original **v109** detected
+  **47/47** physical rows, **94/94** directional endpoint IDs, **44/47**
+  exact lengths and **47/47** dates. Its three wrong lengths were one lost
+  leading digit in a Pipe row and two clipped trailing Cleaning digits.
+- After the selective border-isolated OCR change, the updated parser retained
+  **47/47** physical rows, **94/94** IDs and **47/47** dates, and recovered
+  **47/47 exact lengths**. Each recovered value was observed in the original
+  printed PDF as an alternative independent OCR reading, then corroborated
+  by at least two border-isolated treatments; no master/total substitution.
+  The three affected rows became correct and eligible without manual length
+  review, and no previously correct benchmark row changed.
+- **Incorrect rows individually eligible for master update: 3 (v109) -> 0
+  (updated development)**. A remaining unresolvable PDF disagreement is
+  still review-only. Work-order total validation is a separate master-write
+  safeguard; no end-to-end production workbook write was performed.
+- **Correct printed rows needing existing review: 7 -> 7**. These include
+  endpoint pairs not matched against the selected master, so not every review
+  represents unnecessary OCR work.
+- **OCR cache misses: 709 -> 727**: 18 extra OCR reads (six per disputed
+  physical cell) on three pages; no increased reads on ordinary cells.
+  Observed aggregate table processing time on separately run samples was
+  208.9 seconds for v109 and 180.4 seconds for updated development.
+  Paired runtime varied significantly between runs; **do not infer a
+  general speedup or whole-document processing gain**.
 - A separate no-workorder-date stress run exposed multiple wrong full dates.
   These are normally corrected by the existing confirmed-workorder/table
   reconciliation. When independent PDF image treatments disagree, refined

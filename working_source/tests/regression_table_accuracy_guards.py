@@ -158,6 +158,9 @@ parser={'np':np,'re':re,'datetime':datetime,'asset_key':key,
     '_valid_row_length_value':lambda v:v is not None and 0<float(v)<=1700,
     '_date_outlier_is_well_supported':lambda *a,**k:True,
     '_keep_unresolved_pair_row':lambda *a,**k:True,
+    '_mark_field_review_block':lambda r,reason:(r.setdefault('_review_skip_reasons',[]).append(reason)
+                                                if reason not in r.setdefault('_review_skip_reasons',[]) else None,
+                                                r.__setitem__('skip_update',True)),
     'LENGTH_DIFF_THRESHOLD':4.5}
 install(parser,'parse_year15_pair_list')
 master={'asset_format':None,'pipe_items':[PIPE],'pipes':{('DN1001','DN1002'):PIPE},'manholes':{}}
@@ -199,11 +202,15 @@ read_date['conflicting_sources']=None
 # A later PDF reread can resolve a disagreement, but only when the winning
 # value was already PDF-observed and the reread source is independently strong.
 resolve_ns={'_valid_row_length_value':lambda v:v is not None and 0<float(v)<=1700}
-install(resolve_ns,'_resolved_length_disagreement','_clear_resolved_length_disagreement')
-resolved_rec={'_field_review_reasons':['Length reads disagree'],
+install(resolve_ns,'_mark_field_review_block','_clear_field_review_block',
+        '_resolved_length_disagreement','_clear_resolved_length_disagreement')
+resolved_rec={'status':'LENGTH DIFF 31.0 (WHEEL WALK)','skip_update':False,
+              '_field_review_reasons':['Length reads disagree'],
               'validation_warnings':['Length reads disagree'],
               'warnings':['Length reads disagree'],
               '_ocr_value_evidence':{'stacked column':34.0,'isolated ruled cell':3.0}}
+resolve_ns['_mark_field_review_block'](resolved_rec,'Length reads disagree')
+assert resolved_rec['skip_update'] is True
 assert not resolve_ns['_clear_resolved_length_disagreement'](
     resolved_rec,{'confident':True,'source':'sole master-plausible OCR value'},34.0)
 assert 'Length reads disagree' in resolved_rec['_field_review_reasons']
@@ -212,6 +219,19 @@ assert resolve_ns['_clear_resolved_length_disagreement'](
 assert not resolved_rec['_field_review_reasons']
 assert not resolved_rec['validation_warnings']
 assert resolved_rec['_ocr_value_resolution']['value']==34.0
+assert resolved_rec['skip_update'] is False
+
+# Clearing one field-review reason must never bypass an independent asset/geometry block.
+unmatched={'status':'NOT MATCHED','skip_update':True,'_field_review_reasons':[],
+           '_review_skip_reasons':['Length reads disagree'],'warnings':[],'validation_warnings':[]}
+assert not resolve_ns['_clear_field_review_block'](unmatched,'Length reads disagree')
+assert unmatched['skip_update'] is True
+geometry={'status':'Matched','skip_update':True,'_field_review_reasons':['Row boundary uncertain'],
+          '_review_skip_reasons':['Row boundary uncertain','Date reads disagree'],
+          'warnings':[],'validation_warnings':['Row boundary uncertain — rescan page']}
+geometry['_field_review_reasons'].remove('Date reads disagree') if 'Date reads disagree' in geometry['_field_review_reasons'] else None
+assert not resolve_ns['_clear_field_review_block'](geometry,'Date reads disagree')
+assert geometry['skip_update'] is True
 
 # Two individually wrong values can cancel out in a printed total.
 # A matching sum must never clear either independent OCR conflict.

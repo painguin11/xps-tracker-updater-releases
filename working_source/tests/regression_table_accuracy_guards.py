@@ -196,6 +196,23 @@ assert 'Date reads disagree' in date_disputed.get('_field_review_reasons',[])
 assert date_disputed['_field_previews']['date'].shape[0]==20
 read_date['conflicting_sources']=None
 
+# A later PDF reread can resolve a disagreement, but only when the winning
+# value was already PDF-observed and the reread source is independently strong.
+resolve_ns={'_valid_row_length_value':lambda v:v is not None and 0<float(v)<=1700}
+install(resolve_ns,'_resolved_length_disagreement','_clear_resolved_length_disagreement')
+resolved_rec={'_field_review_reasons':['Length reads disagree'],
+              'validation_warnings':['Length reads disagree'],
+              'warnings':['Length reads disagree'],
+              '_ocr_value_evidence':{'stacked column':34.0,'isolated ruled cell':3.0}}
+assert not resolve_ns['_clear_resolved_length_disagreement'](
+    resolved_rec,{'confident':True,'source':'sole master-plausible OCR value'},34.0)
+assert 'Length reads disagree' in resolved_rec['_field_review_reasons']
+assert resolve_ns['_clear_resolved_length_disagreement'](
+    resolved_rec,{'confident':True,'source':'cross-observed clipped digit'},34.0)
+assert not resolved_rec['_field_review_reasons']
+assert not resolved_rec['validation_warnings']
+assert resolved_rec['_ocr_value_resolution']['value']==34.0
+
 # Two individually wrong values can cancel out in a printed total.
 # A matching sum must never clear either independent OCR conflict.
 wrong=(82.88,119.99)

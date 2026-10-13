@@ -145,6 +145,7 @@ read_context={'value':82.87}
 read_direct={'value':82.87}
 read_batch={'value':82.87}
 read_clean={'value':82.87}
+border_read={'value':None}
 read_date={'conflicting_sources':None,'value':DATE}
 parser={'np':np,'re':re,'datetime':datetime,'asset_key':key,
     'canonical_asset_id':lambda v:str(v or '').upper(),
@@ -168,6 +169,7 @@ parser={'np':np,'re':re,'datetime':datetime,'asset_key':key,
     '_choose_cleaning_length':lambda values,expected=None:values[0] if values else None,
     '_ocr_gridless_number_candidates':lambda *a,**k:[],
     '_conservative_cleaning_reread':lambda *a,**k:{'confident':True,'value':read_clean['value'],'candidates':[read_clean['value']]},
+    '_border_isolated_length_evidence':lambda *a,**k:{'value':border_read['value'],'sources':{'trim':border_read['value'],'threshold':border_read['value']}},
     '_valid_row_length_value':lambda v:v is not None and 0<float(v)<=1700,
     '_date_outlier_is_well_supported':lambda *a,**k:True,
     '_date_conflict_resolved_by_pdf_context':date_ns['_date_conflict_resolved_by_pdf_context'],
@@ -191,10 +193,22 @@ disputed=parse('pipes')
 assert disputed.get('skip_update') is True and disputed['_field_review_reasons']==['Length reads disagree'],disputed
 assert disputed['_ocr_value_evidence']=={'line-suppressed table':82.87,'original ruled cell':82.88}
 assert disputed['video_length']==82.87 # preserve strongly supported contextual first pass
+border_read['value']=82.88
+recovered=parse('pipes')
+assert recovered['video_length']==82.88 and not recovered.get('skip_update'),recovered
+assert recovered['_ocr_value_resolution']['source']=='corroborated border-isolated PDF cell'
+border_read['value']=82.89 # unobserved value must never be invented
+unconfirmed=parse('pipes')
+assert unconfirmed['video_length']==82.87 and unconfirmed.get('skip_update'),unconfirmed
+border_read['value']=None
 read_direct['value']=82.87
 read_clean['value']=82.88
 clean_disputed=parse('cleaning')
 assert clean_disputed.get('skip_update') is True and 'Length reads disagree' in clean_disputed.get('validation_warnings',[]),clean_disputed
+border_read['value']=82.87
+clean_recovered=parse('cleaning')
+assert clean_recovered['video_length']==82.87 and not clean_recovered.get('skip_update'),clean_recovered
+border_read['value']=None
 read_clean['value']=82.87
 clean_correct=parse('cleaning')
 assert not clean_correct.get('_field_review_reasons'),clean_correct

@@ -170,6 +170,7 @@ parser={'np':np,'re':re,'datetime':datetime,'asset_key':key,
     '_conservative_cleaning_reread':lambda *a,**k:{'confident':True,'value':read_clean['value'],'candidates':[read_clean['value']]},
     '_valid_row_length_value':lambda v:v is not None and 0<float(v)<=1700,
     '_date_outlier_is_well_supported':lambda *a,**k:True,
+    '_date_conflict_resolved_by_pdf_context':date_ns['_date_conflict_resolved_by_pdf_context'],
     '_keep_unresolved_pair_row':lambda *a,**k:True,
     '_mark_field_review_block':lambda r,reason:(r.setdefault('_review_skip_reasons',[]).append(reason)
                                                 if reason not in r.setdefault('_review_skip_reasons',[]) else None,

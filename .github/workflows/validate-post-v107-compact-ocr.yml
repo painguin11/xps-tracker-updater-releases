@@ -104,4 +104,5 @@ jobs:
               subprocess.run([sys.executable,str(path)],check=True)
           print(f'FULL ACTIVE REGRESSION SUITE: {len(tests)}/{len(tests)} passed')
           PY
+          python working_source/tests/regression_table_accuracy_guards.py
           git diff --check

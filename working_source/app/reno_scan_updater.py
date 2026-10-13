@@ -3889,6 +3889,11 @@ def _year15_compact_skew_retry(img, bands, table, column_bounds):
     new_width=retry_table[1]-retry_table[0]
     if abs(new_width-old_width)>old_width*.05:
         return original
+    # Outer width and column count cannot prove internal separator alignment.
+    old_rules=[(float(x)-left)/max(1.0,float(old_width)) for x in column_bounds]
+    new_rules=[(float(x)-retry_table[0])/max(1.0,float(new_width)) for x in retry_columns]
+    if any(abs(a-b)>.018 for a,b in zip(old_rules,new_rules)):
+        return original
     new_starts=[a for a,b in retry_bands]
     new_gaps=[b-a for a,b in zip(new_starts,new_starts[1:]) if b>a]
     if new_gaps and max(new_gaps)>max(1,float(np.median(new_gaps)))*2.8:
@@ -4545,6 +4550,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         value_cell=cut(val_box,right_bleed=True)
         expected=match.get('expected') if match else None
         contextual_value=None
+        disagreement_sources={}
         if kind=='cleaning':
             value_candidates=list(batch_cleaning_values.get(band_index,[]))
             if value_candidates:
@@ -4571,6 +4577,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # modes agree, that stable cell read outranks a conflicting stack read.
             # No master length or printed total supplies the replacement value.
             cleaning_reread=_conservative_cleaning_reread(value_cell)
+            batch_unique={float(x) for x in batch_cleaning_values.get(band_index,[])
+                          if _valid_row_length_value(x)}
+            if (len(batch_unique)==1 and cleaning_reread.get('confident') and
+                    _valid_row_length_value(cleaning_reread.get('value')) and
+                    next(iter(batch_unique))!=float(cleaning_reread['value'])):
+                disagreement_sources={'stacked column':next(iter(batch_unique)),
+                                      'isolated ruled cell':float(cleaning_reread['value'])}
             if cleaning_reread.get('confident') and cleaning_reread.get('value') is not None:
                 direct_value=float(cleaning_reread['value'])
                 if _valid_row_length_value(direct_value):
@@ -4590,6 +4603,10 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             # but do not let a grid-damaged isolated crop override a two-pass
             # contextual consensus.
             value_candidates=_direct_pair_length_candidates(value_cell)
+            if (contextual_value is not None and len(value_candidates)==1 and
+                    float(value_candidates[0])!=float(contextual_value)):
+                disagreement_sources={'line-suppressed table':float(contextual_value),
+                                      'original ruled cell':float(value_candidates[0])}
             if contextual_value is not None and contextual_value not in value_candidates:
                 value_candidates.append(contextual_value)
             direct_value=(float(contextual_value) if contextual_value is not None
@@ -4669,6 +4686,13 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             asset='' if status=='NEW PIPE' else f'UNMATCHED ROW {len(rows)+1}'
         rec={'kind':'Cleaning' if kind=='cleaning' else 'Pipe','asset':asset,
              'up':up,'down':down,'video_length':value,'row_date':d,'status':status}
+        # Distinct ruled-cell and whole-table/stacked treatments disagree:
+        # keep the printed row and its original source crop, but fail closed.
+        if disagreement_sources:
+            rec['_ocr_value_evidence']=disagreement_sources
+            rec['_field_review_reasons']=['Length reads disagree']
+            rec.setdefault('validation_warnings',[]).append('Length reads disagree')
+            rec['skip_update']=True
         date_cell=cut(date_box)
         up_preview=cut(up_box); dn_preview=cut(dn_box)
         rec['_field_previews']={
@@ -7275,6 +7299,14 @@ class App(tk.Tk):
             row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
         win.columnconfigure(2,weight=1)
         def save():
+            # No-op saves never silently approve a disagreement.
+            if 'Length reads disagree' in r.get('_field_review_reasons',[]):
+                if not messagebox.askyesno(
+                        'Confirm PDF Length',
+                        'Two PDF length reads disagree. Check the Length crop '
+                        'beside the field. Does the entered value match the printed PDF?',
+                        parent=win):
+                    return
             try:
                 old_length=r.get('video_length')
                 if r.get('kind') in ('Pipe','Cleaning'):
@@ -7290,6 +7322,12 @@ class App(tk.Tk):
                     apply_manual_asset_edit(r,self.master_index,asset=vars['Asset'].get())
                 r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
+            if 'Length reads disagree' in r.get('_field_review_reasons',[]):
+                r['_field_review_reasons']=[reason for reason in r['_field_review_reasons']
+                                            if reason!='Length reads disagree']
+                r['warnings']=[warning for warning in r.get('warnings',[])
+                               if warning!='Length reads disagree']
+                r['_length_user_edited']=True
             refresh_length_status(r)
             self.revalidate_total_checks_for_record(r)
             self.resolve_pipe_duplicate_groups(prompt=False,update_mode=False)
@@ -7392,6 +7430,16 @@ class App(tk.Tk):
         win.update_idletasks(); win.geometry(f'+{self.winfo_rootx()+30}+{self.winfo_rooty()+35}')
     def update_master(self):
         if not self.records and not self.trouble_tickets: messagebox.showwarning('Nothing to update','Analyze a PDF first.'); return
+        unresolved_fields=[r for r in self.records if r.get('_field_review_reasons')]
+        if unresolved_fields:
+            reasons=sorted(set(reason for r in unresolved_fields
+                               for reason in r['_field_review_reasons']))
+            messagebox.showerror(
+                'PDF Field Review Required',
+                f'{len(unresolved_fields)} row(s) need PDF verification before Update Master.\n\n'
+                + '\n'.join(reasons) +
+                '\n\nUse Edit Selected to verify disputed lengths against their PDF crops.')
+            return
         if not self.resolve_pipe_duplicate_groups(prompt=True,update_mode=True): return
         manhole_count_failures=[check for check in self.manhole_count_validations if not check.get('passed')]
         if manhole_count_failures:

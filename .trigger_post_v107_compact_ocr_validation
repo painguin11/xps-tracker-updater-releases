@@ -1,1 +1,1 @@
-2026-10-13 private benchmark observed unsafe date outliers. Validate selective date-review guard and all active regressions. No private fixtures in CI.
+Validate private benchmark portable workbook adapter (syntax/smoke), selective date outlier safeguards, Live Summary, all active regressions. No customer files in CI.

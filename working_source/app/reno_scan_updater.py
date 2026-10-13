@@ -6367,8 +6367,8 @@ class App(tk.Tk):
         self.refresh_unprocessed_summary()
 
     def refresh_unprocessed_summary(self):
-        """Render one top summary row per affected W/O, listing every failed page."""
-        if not hasattr(self,'tree'): return
+        """Defer colored page warnings until the extraction display is complete."""
+        if not hasattr(self,'tree') or getattr(self,'_analysis_running',False): return
         for iid in list(self.tree.get_children()):
             if str(iid).startswith('page-error:'):
                 self.tree.delete(iid)
@@ -6388,7 +6388,8 @@ class App(tk.Tk):
         except Exception: pass
 
     def show_manhole_count_summary(self,check):
-        """Show only failed work-order Manhole count checks at the top."""
+        """Show only failed work-order Manhole count checks after extraction."""
+        if getattr(self,'_analysis_running',False): return
         iid='manhole-count:'+hashlib.sha1(str(check.get('wo','')).encode()).hexdigest()[:16]
         if check.get('passed'):
             if self.tree.exists(iid): self.tree.delete(iid)
@@ -6405,7 +6406,8 @@ class App(tk.Tk):
         key=f"{check.get('wo','')}|{check.get('kind','')}|total-length"
         return 'group-error:'+hashlib.sha1(key.encode()).hexdigest()[:16]
     def show_total_summary_error(self,check,follow=False):
-        """Keep one work-order total status/separator row in the Live Summary."""
+        """Show validated work-order totals only once extraction is complete."""
+        if getattr(self,'_analysis_running',False): return
         iid=self._total_error_iid(check)
         if check.get('passed'):
             expected=check.get('verified_total') if check.get('manual_verified') else check.get('pdf_total')
@@ -7118,6 +7120,12 @@ class App(tk.Tk):
         # Duplicate detection spans pages, so refresh rows once at the end to show
         # any warnings discovered after their initial real-time insertion.
         # During OCR all live rows were uncolored with an empty Comments column.
+        # Populate the deferred validation separators only after analysis stops.
+        self.refresh_unprocessed_summary()
+        for check in self.manhole_count_validations:
+            self.show_manhole_count_summary(check)
+        for check in self.total_validations:
+            self.show_total_summary_error(check)
         for i in range(len(self.records)):
             self.show_summary_record(i)
         for i in range(len(self.trouble_tickets)):

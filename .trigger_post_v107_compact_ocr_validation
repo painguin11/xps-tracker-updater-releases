@@ -1,1 +1,1 @@
-2026-10-13: validate targeted border-clipped numeric OCR recovery, three rendered-length tests, all 59 historical regressions, and private-benchmark source bundling.
+2026-10-13: final development-head validation of all 59 historical regressions, table accuracy safeguards, border-isolated numeric OCR, Live Summary population behavior, compile checks and privacy-safe parser benchmarking. No production publishing.

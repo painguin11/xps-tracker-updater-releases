@@ -105,6 +105,7 @@ jobs:
           print(f'FULL ACTIVE REGRESSION SUITE: {len(tests)}/{len(tests)} passed')
           PY
           python working_source/tests/regression_table_accuracy_guards.py
+          python working_source/tests/regression_live_summary_plain_during_analysis.py
           python -m py_compile working_source/tools/private_table_benchmark.py
           python working_source/tools/private_table_benchmark.py --help >/dev/null
           git diff --check

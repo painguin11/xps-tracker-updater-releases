@@ -30,10 +30,15 @@ user explicitly says `PUBLISH`.
   keep the existing first-pass selection and the entire physical row, store both
   PDF values and the source band/crop, mark `Length reads disagree`, and block
   automatic master writing. No master value or printed total generates a length.
-- The existing `Edit Selected` screen displays the original cell crop. A
-  disputed length can be approved only after explicit PDF confirmation, including
-  when the reviewer keeps the pre-filled value. An uncertain row *boundary*
-  cannot be approved by changing the length alone.
+- The existing Date OCR already uses grayscale and thresholded cell views
+  under two segmentation modes each. If both modes independently agree inside
+  each image treatment but the two treatments disagree on complete full-year
+  dates, preserve the PDF row, record both read sources, and require `Date reads
+  disagree` review; no new OCR pass is added for ordinary cells.
+- The existing `Edit Selected` screen displays the original cell crops. A
+  disputed length or date requires explicit PDF confirmation, including when
+  the reviewer keeps the pre-filled value. An uncertain row *boundary*
+  cannot be approved merely by editing a field.
 
 ### Accuracy benchmark availability
 

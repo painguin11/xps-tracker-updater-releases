@@ -1,1 +1,1 @@
-2026-10-13 final source: validate corroborated date conflict suppression only with work-order plus two independent PDF date rows; keep private fixtures outside CI.
+2026-10-13 isolated regression now binds independent-date helper; rerun complete validation.

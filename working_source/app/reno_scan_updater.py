@@ -6316,6 +6316,8 @@ class App(tk.Tk):
         self._clear_total_outlines()
         if not hasattr(self,'tree') or not self.tree.winfo_exists():
             return
+        if getattr(self,'_analysis_running',False):
+            return  # No validation outlines until extraction is complete.
         thickness=max(2,self.spx(2)); color='#d00000'
         tree_w=max(1,self.tree.winfo_width())
         for check in self.total_validations:
@@ -6428,14 +6430,16 @@ class App(tk.Tk):
             self.tree.insert('','end' if insert_at=='end' else insert_at,iid=iid,values=values,tags=tags)
         if follow: self.tree.see(iid)
     def show_summary_record(self,index,follow=False):
-        """Insert or refresh one summary row while analysis is still running."""
+        """Show plain rows during OCR; apply review details only after completion."""
         r=self.records[index]
+        running=getattr(self,'_analysis_running',False)
         tags=()
-        if str(r.get('status','')).startswith('LENGTH DIFF'):
-            tags=('length_warning',)
-        elif record_needs_review(r):
-            tags=('check_warning',)
-        display_status=review_status(r)
+        if not running:
+            if str(r.get('status','')).startswith('LENGTH DIFF'):
+                tags=('length_warning',)
+            elif record_needs_review(r):
+                tags=('check_warning',)
+        display_status='' if running else review_status(r)
         values=(r['kind'],r['display_asset'],_format_pdf_number(r.get('video_length')),
                 fmt_date(r['date']),r['wo'],r['truck'],r['operator'],display_status)
         iid=f'record:{index}'
@@ -6455,12 +6459,13 @@ class App(tk.Tk):
         ticket=self.trouble_tickets[index]
         status=trouble_ticket_status(ticket)
         ticket['review_status']=status
+        visible_status='' if getattr(self,'_analysis_running',False) else status
         values=('Trouble',ticket.get('pipe_id',''),
                 _format_pdf_number(ticket.get('map_length')),
                 fmt_date(ticket.get('date')),ticket.get('wo',''),ticket.get('truck',''),
-                ticket.get('operator',''),status)
+                ticket.get('operator',''),visible_status)
         iid=f'ticket:{index}'
-        tags=('check_warning',) if status.startswith('Review') else ()
+        tags=('check_warning',) if visible_status.startswith('Review') else ()
         if self.tree.exists(iid): self.tree.item(iid,values=values,tags=tags)
         else: self.tree.insert('','end',iid=iid,values=values,tags=tags)
         if follow: self.tree.see(iid)
@@ -7112,6 +7117,7 @@ class App(tk.Tk):
             seen.add(key)
         # Duplicate detection spans pages, so refresh rows once at the end to show
         # any warnings discovered after their initial real-time insertion.
+        # During OCR all live rows were uncolored with an empty Comments column.
         for i in range(len(self.records)):
             self.show_summary_record(i)
         for i in range(len(self.trouble_tickets)):

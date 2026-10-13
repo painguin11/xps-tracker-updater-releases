@@ -49,6 +49,31 @@ assert ns['_row_length_token_value']('82.87')==82.87
 assert ns['_row_length_token_value']('82.8.7') is None
 print('REAL OCR: 3 synthetic ruled cells and decimal safeguards passed')
 
+# SYNTHETIC DATE READS (mock OCR strings, real date evidence logic).
+# Two distinct image treatments independently agreeing on different full
+# dates is a material conflict. One noisy PSM inside each image is not.
+date_ns={'cv2':cv2,'np':np,'re':re,'datetime':datetime}
+install(date_ns,'_plausible_sheet_year','_parse_sheet_date_text_candidates',
+        '_choose_sheet_date_evidence','_read_sheet_date_evidence')
+date_reads=[]
+def date_ocr(img,config=''):
+    return date_reads.pop(0)
+date_ns['cached_ocr_string']=date_ocr
+date_img=np.full((45,180,3),255,np.uint8)
+def date_evidence(reads):
+    date_reads[:]=reads
+    out=date_ns['_read_sheet_date_evidence'](date_img,DATE)
+    assert not date_reads
+    return out
+DATE=datetime(2026,10,12)
+same_dates=date_evidence(['10/12/2026']*4)
+assert same_dates['date']==DATE and not same_dates.get('conflicting_sources')
+differing=date_evidence(['10/12/2026']*2+['10/13/2026']*2)
+assert differing['date']==DATE and len(differing.get('conflicting_sources',{}))==2
+noisy=date_evidence(['10/12/2026','10/13/2026']*2)
+assert not noisy.get('conflicting_sources')
+print('MOCKED DATE OCR: only corroborated cross-image full-date disagreement flagged')
+
 # SYNTHETIC IMAGE GEOMETRY: accepted correction must preserve EVERY column,
 # not just the same number of boundaries and the same outside width.
 geo={'cv2':cv2,'np':np}
@@ -93,7 +118,6 @@ print('SYNTHETIC GEOMETRY: guarded skew, shifted columns and uncertain merged ba
 
 # MOCKED PARSER LOGIC: even when a master or printed total happens to match,
 # independent OCR disagreements may not become automatic master writes.
-DATE=datetime(2026,10,12)
 PIPE={'row':8,'up':'DN-1001','down':'DN-1002','up_key':'DN1001',
       'down_key':'DN1002','expected':82.87,'pipe_id':'P-8'}
 def key(v):return re.sub(r'[^A-Z0-9]','',str(v or '').upper())
@@ -108,9 +132,11 @@ read_context={'value':82.87}
 read_direct={'value':82.87}
 read_batch={'value':82.87}
 read_clean={'value':82.87}
+read_date={'conflicting_sources':None}
 parser={'np':np,'re':re,'datetime':datetime,'asset_key':key,
     'canonical_asset_id':lambda v:str(v or '').upper(),
-    '_read_sheet_date_evidence':lambda *a,**k:{'date':DATE,'strong':True,'candidates':[DATE],'votes':{},'strong_votes':{}},
+    '_read_sheet_date_evidence':lambda *a,**k:{'date':DATE,'strong':True,'candidates':[DATE],'votes':{},'strong_votes':{},
+                                                 'conflicting_sources':read_date['conflicting_sources']},
     '_dominant_sheet_date':lambda *a,**k:DATE,
     '_read_pair_table_printed_total':lambda *a,**k:{'found':False,'band_index':None,'value':None,'confident':False},
     '_batch_cleaning_length_candidates':lambda *a,**k:{1:[read_batch['value']]},
@@ -162,6 +188,13 @@ assert 'Row boundary uncertain' in uncertain.get('_field_review_reasons',[])
 assert uncertain['_ocr_physical_cell']['band_index']==1
 assert 'activity_value' in uncertain['_field_previews']
 del prepared['geometry_uncertain_bands']
+read_date['conflicting_sources']={'original grayscale':DATE,
+                                   'thresholded cell':datetime(2026,10,13)}
+date_disputed=parse('pipes')
+assert date_disputed.get('skip_update') is True
+assert 'Date reads disagree' in date_disputed.get('_field_review_reasons',[])
+assert date_disputed['_field_previews']['date'].shape[0]==20
+read_date['conflicting_sources']=None
 
 # Two individually wrong values can cancel out in a printed total.
 # A matching sum must never clear either independent OCR conflict.
@@ -174,5 +207,6 @@ update=next(n for n in app.body if isinstance(n,ast.FunctionDef) and n.name=='up
 edit=next(n for n in app.body if isinstance(n,ast.FunctionDef) and n.name=='edit_selected')
 assert "unresolved_fields=[r for r in self.records if r.get('_field_review_reasons')]" in ast.get_source_segment(source,update)
 assert 'Confirm PDF Length' in ast.get_source_segment(source,edit)
+assert 'Confirm PDF Date' in ast.get_source_segment(source,edit)
 print('MOCKED PARSER: correct/read-disagreement/review/crop/canceling-totals covered')
 print('PRIVATE FIXTURE OCR: SKIPPED (requires raw-byte fixture access and verified per-row expectations)')

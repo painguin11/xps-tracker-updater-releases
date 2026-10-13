@@ -32,7 +32,10 @@ def ruled(text,width=240):
     cv2.putText(img,text,(18,44),cv2.FONT_HERSHEY_SIMPLEX,1.1,(0,0,0),2,cv2.LINE_AA)
     return img
 for literal in ('82.87','134.12'):
-    observed=ns['_direct_pair_length_candidates'](ruled(literal))
+    observed=ns['_direct_pair_length_candidates'](ruled(literal,width=320))
+    if observed!=[float(literal)]:
+        enlarged=cv2.resize(cv2.cvtColor(ruled(literal,width=320),cv2.COLOR_RGB2GRAY),None,fx=3,fy=3,interpolation=cv2.INTER_CUBIC)
+        print('OCR diagnostic',literal,repr(pytesseract.image_to_string(enlarged,config='--psm 7 -c tessedit_char_whitelist=0123456789.')),repr(pytesseract.image_to_string(enlarged,config='--psm 6 -c tessedit_char_whitelist=0123456789.')),flush=True)
     assert observed==[float(literal)],(literal,observed)
 id_img=ruled('DN-2243S',width=290)
 tokens=ns['_ocr_asset_candidates'](id_img,fast_plain=True,

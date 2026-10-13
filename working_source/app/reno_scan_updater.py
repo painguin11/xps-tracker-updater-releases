@@ -3029,6 +3029,31 @@ def _choose_pair_length_observation(value_candidates,direct_value,expected,cell_
     return value
 
 
+def _mark_field_review_block(record,reason):
+    reasons=record.setdefault('_review_skip_reasons',[])
+    if reason not in reasons:
+        reasons.append(reason)
+    record['skip_update']=True
+
+
+def _clear_field_review_block(record,reason):
+    reasons=[value for value in record.get('_review_skip_reasons',[]) if value!=reason]
+    record['_review_skip_reasons']=reasons
+    if reasons or record.get('_field_review_reasons'):
+        return False
+    status=str(record.get('status') or '')
+    if status=='NOT MATCHED' or status.startswith(('AMBIGUOUS','NEW PIPE','NEW MANHOLE','COLUMN HEADERS')):
+        return False
+    blocking={'DUPLICATE IN PDF','BASE MASTER ROW NOT FOUND'}
+    remaining=list(record.get('validation_warnings',[]))+list(record.get('warnings',[]))
+    if any(warning in blocking for warning in remaining):
+        return False
+    # Restore eligibility only when this row was blocked by field review rather
+    # than by failed asset matching or another independent safeguard.
+    record['skip_update']=False
+    return True
+
+
 def _resolved_length_disagreement(record,reread,new_value):
     """Return True only when a stronger independent reread resolves a prior conflict."""
     if 'Length reads disagree' not in (record.get('_field_review_reasons') or []):
@@ -3065,6 +3090,7 @@ def _clear_resolved_length_disagreement(record,reread,new_value):
         if warning!='Length reads disagree']
     record['_ocr_value_resolution']={
         'value':float(new_value),'source':str(reread.get('source') or '')}
+    _clear_field_review_block(record,'Length reads disagree')
     return True
 
 
@@ -4775,16 +4801,16 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             rec['_ocr_value_evidence']=disagreement_sources
             rec.setdefault('_field_review_reasons',[]).append('Length reads disagree')
             rec.setdefault('validation_warnings',[]).append('Length reads disagree')
-            rec['skip_update']=True
+            _mark_field_review_block(rec,'Length reads disagree')
         if date_evidence.get('conflicting_sources'):
             rec['_ocr_date_evidence']=date_evidence['conflicting_sources']
             rec.setdefault('_field_review_reasons',[]).append('Date reads disagree')
             rec.setdefault('validation_warnings',[]).append('Date reads disagree')
-            rec['skip_update']=True
+            _mark_field_review_block(rec,'Date reads disagree')
         if band_index in prepared.get('geometry_uncertain_bands',[]):
             rec.setdefault('_field_review_reasons',[]).append('Row boundary uncertain')
             rec.setdefault('validation_warnings',[]).append('Row boundary uncertain — rescan page')
-            rec['skip_update']=True
+            _mark_field_review_block(rec,'Row boundary uncertain')
         # Store the exact band and crop in the same aligned image coordinate
         # system used by the OCR, not a separate uncorrected page rotation.
         rec['_ocr_physical_cell']={'band_index':band_index,
@@ -7432,6 +7458,8 @@ class App(tk.Tk):
                                if warning not in confirmed_reasons]
                 if 'Length reads disagree' in confirmed_reasons:
                     r['_length_user_edited']=True
+                for reason in confirmed_reasons:
+                    _clear_field_review_block(r,reason)
             refresh_length_status(r)
             self.revalidate_total_checks_for_record(r)
             self.resolve_pipe_duplicate_groups(prompt=False,update_mode=False)

@@ -1,1 +1,1 @@
-Run all 59 active regressions and new printed-font Tesseract / geometry / review regression.
+Validate complete v109 59-script suite and new real OCR, skew, merged-row, conflict and benchmark-cli regression.

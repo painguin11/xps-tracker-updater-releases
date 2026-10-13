@@ -1,5 +1,73 @@
 # XPS Tracker Updater project context
 
+## Development pending — table accuracy guards (October 13, 2026)
+
+Production remains **v109** and `main/update_manifest.json` is unchanged.
+These changes are source-only on `v95-work`. **Do not publish** until the
+user explicitly says `PUBLISH`.
+
+### Gap assessment and narrowly scoped changes
+
+- Existing v107 header retries, v108 contextual Pipe length / Manhole identity
+  checks, v109 bounded small-skew correction, old faint-grid recovery, physical
+  row retention, complete asset-ID safeguards, date consensus, and total review
+  paths were kept. There was no broad OCR parser rewrite.
+- The v109 skew retry previously accepted the same number of columns and
+  approximately the same outside table width, but did **not** compare interior
+  separator locations. It now also requires every deskewed separator to remain
+  within 1.8% of the table's normalized width relative to its original position.
+  The accepted image remains shared by detection, OCR cells and preview crops.
+- Confirmed compact grids that still have extreme *interior* row-band spacing
+  outliers after recovery are flagged for `Row boundary uncertain`. A large
+  band alone never creates a new physical row. Headers, wrapped lines, total
+  bands, and intentionally merged rows retain their conservative handling.
+  Users must rescan an unresolved suspicious page before master writes.
+- For compact Pipe lengths, a two-mode agreeing line-suppressed whole-table
+  observation is cross-checked against the two-mode agreeing original ruled
+  cell. For Cleaning, the first stacked-column candidate is cross-checked
+  against the already-existing independent isolated-cell reread. When two
+  materially different image treatments each support conflicting numeric values,
+  keep the existing first-pass selection and the entire physical row, store both
+  PDF values and the source band/crop, mark `Length reads disagree`, and block
+  automatic master writing. No master value or printed total generates a length.
+- The existing `Edit Selected` screen displays the original cell crop. A
+  disputed length can be approved only after explicit PDF confirmation, including
+  when the reviewer keeps the pre-filled value. An uncertain row *boundary*
+  cannot be approved by changing the length alone.
+
+### Accuracy benchmark availability
+
+The four requested historical PDFs were located in private ChatGPT Library:
+`SKM_C654e26101212490.pdf`, `test.pdf`,
+`SKM_C654e26092513250.pdf`, and `SKM_C654e26092216400.pdf`.
+Their page images could be inspected, but Library raw-byte materialization
+reported *no authorized raw-byte path* for each file. Therefore the changed
+parser could **not** be executed against these PDFs in the runner and no
+per-field before/after accuracy claim was made. Windows Excel COM, native
+Tkinter review, and end-to-end master writing are not exercised by Linux CI.
+
+The privacy-safe local benchmark runner is
+`working_source/tools/private_table_benchmark.py`. On an authorized Windows
+workstation with an actual local master and privately verified row expectations,
+run it with `--master PATH --expected PRIVATE.json --baseline-app
+BASELINE/reno_scan_updater.py --updated-app working_source/app/reno_scan_updater.py
+--report PRIVATE_METRICS.json`. The private JSON has a `cases` list; each
+case specifies `pdf`, 1-indexed `page`, `kind` (`pipes`, `cleaning`,
+or `manholes`), `rows` ordered by physical row with verified `up`, `down`,
+`asset`, `length` or `date` fields, and optionally `printed_total` and
+`workorder_date`. Record actual per-row expected values by visual inspection,
+not by copying an OCR guess. Metrics include physical rows, exact fields,
+unreviewed wrong rows, unnecessary review, helper retries and runtime.
+**Customer PDFs, expected-value JSON and benchmark output stay private**
+and must not be committed, attached to CI or included in any release ZIP.
+
+The active Linux regression baseline for v109 was **59/59 passed**
+(Actions run `38416982078`). The post-change tests are grouped as 59 existing
+regressions, new real Tesseract OCR on privacy-safe rendered text, synthetic
+skew/column/band images, mocked review/write logic, and static/compile checks.
+Missing private fixture OCR is explicitly **skipped**, not passed. A matching
+aggregate total must never overrule two incorrect and canceling field values.
+
 ## Resume instructions
 
 Repository: `painguin11/xps-tracker-updater-releases`

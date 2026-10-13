@@ -1,1 +1,1 @@
-Validate progressive Live Summary without warnings or colors until analysis complete.
+2026-10-13 private benchmark observed unsafe date outliers. Validate selective date-review guard and all active regressions. No private fixtures in CI.

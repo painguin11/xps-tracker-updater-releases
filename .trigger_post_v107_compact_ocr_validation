@@ -1,1 +1,1 @@
-Final October 13 verification: full regression suite, portable benchmark CLI, three-page measured private results documented; do not publish.
+2026-10-13: validate targeted border-clipped numeric OCR recovery, three rendered-length tests, all 59 historical regressions, and private-benchmark source bundling.

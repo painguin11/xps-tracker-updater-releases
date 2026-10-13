@@ -4807,6 +4807,17 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             rec.setdefault('_field_review_reasons',[]).append('Date reads disagree')
             rec.setdefault('validation_warnings',[]).append('Date reads disagree')
             _mark_field_review_block(rec,'Date reads disagree')
+        elif (dominant_date is not None and d is not None and d!=dominant_date and
+              (match or endpoint_signal)):
+            # Several segmentation settings can all repeat the same mistaken
+            # full-date OCR. Preserve the actual cell observation, but do not
+            # treat correlated OCR votes or a matching master as independent
+            # evidence that this atypical date is safe to write automatically.
+            rec['_ocr_date_evidence']={'selected_cell_date':d,
+                                       'table_majority_date':dominant_date}
+            rec.setdefault('_field_review_reasons',[]).append('Date differs from table date')
+            rec.setdefault('validation_warnings',[]).append('Date differs from table date')
+            _mark_field_review_block(rec,'Date differs from table date')
         if band_index in prepared.get('geometry_uncertain_bands',[]):
             rec.setdefault('_field_review_reasons',[]).append('Row boundary uncertain')
             rec.setdefault('validation_warnings',[]).append('Row boundary uncertain — rescan page')
@@ -7440,12 +7451,16 @@ class App(tk.Tk):
             # A no-op save never silently approves independently conflicting OCR.
             for reason,title,field in (
                     ('Length reads disagree','Confirm PDF Length','Length'),
-                    ('Date reads disagree','Confirm PDF Date','Date')):
+                    ('Date reads disagree','Confirm PDF Date','Date'),
+                    ('Date differs from table date','Confirm PDF Date','Date')):
                 if reason in r.get('_field_review_reasons',[]):
                     if not messagebox.askyesno(
                             title,
-                            f'Two PDF {field.lower()} reads disagree. Check the {field} '
-                            'crop beside the field. Does the entered value match the printed PDF?',
+                            (f'The OCR date differs from other dates on the table. '
+                             if reason=='Date differs from table date' else
+                             f'Two PDF {field.lower()} reads disagree. ') +
+                            f'Check the {field} crop beside the field. '
+                            'Does the entered value match the printed PDF?',
                             parent=win):
                         return
             try:
@@ -7464,7 +7479,8 @@ class App(tk.Tk):
                 r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
             reasons=set(r.get('_field_review_reasons',[]))
-            confirmed_reasons=reasons.intersection({'Length reads disagree','Date reads disagree'})
+            confirmed_reasons=reasons.intersection({
+                'Length reads disagree','Date reads disagree','Date differs from table date'})
             if confirmed_reasons:
                 r['_field_review_reasons']=[reason for reason in r['_field_review_reasons']
                                             if reason not in confirmed_reasons]

@@ -3818,6 +3818,27 @@ def _year15_compact_grid_bands(img):
 
 
 
+def _year15_compact_unresolved_bands(bands):
+    """Flag only extreme interior merged bands; never invent rows from pitch.
+
+    Wrapped content can legitimately exceed normal row height, so only severe
+    outliers in otherwise regular grids are uncertain, not proof of a row.
+    """
+    if len(bands)<7:
+        return []
+    starts=[int(a) for a,_ in bands]
+    gaps=[b-a for a,b in zip(starts,starts[1:]) if b>a]
+    if len(gaps)<5:
+        return []
+    normal=float(np.median(sorted(gaps)[:max(3,(len(gaps)+1)//2)]))
+    heights=[max(1,int(b)-int(a)) for a,b in bands]
+    normal_height=float(np.median(sorted(heights)[:max(3,(len(heights)+1)//2)]))
+    if normal<=0:
+        return []
+    return [i for i in range(2,len(gaps)-1)
+            if gaps[i]>normal*2.8 and heights[i]>normal_height*2.0]
+
+
 def _year15_compact_skew_retry(img, bands, table, column_bounds):
     """Retry a compact ruled table after correcting a small scan skew.
 
@@ -4227,6 +4248,8 @@ def prepare_year15_pair_layout(page,master_index,kind,inherited_layout=None,pref
                 geometry_source+=' / small-skew recovery'
     if not bands:
         bands,table=_year15_all_row_bands(img,.04,.90); column_bounds=None; geometry_source='horizontal fallback'
+    uncertain_bands=(_year15_compact_unresolved_bands(bands)
+                     if 'compact table grid' in geometry_source else [])
 
     if bands and inherited_layout:
         previous_img=inherited_layout.get('img'); previous_table=inherited_layout.get('table')
@@ -4274,9 +4297,11 @@ def prepare_year15_pair_layout(page,master_index,kind,inherited_layout=None,pref
                     'confidence':95,'source':'inherited continuation / '+geometry_source,
                     'warnings':[],'fingerprint':(inherited_layout or {}).get('fingerprint') or '',
                     'header_band_index':None,'master_pair_score':0,'master_pair_second':0,
-                    'orientation_deg':orientation_deg,'inherited_layout':True}
+                    'orientation_deg':orientation_deg,'inherited_layout':True,
+                    'geometry_uncertain_bands':uncertain_bands}
 
-    warnings=[]; assisted_score=0; assisted_second=0
+    warnings=(['ROW BOUNDARY UNCERTAIN — RESCAN PAGE'] if uncertain_bands else [])
+    assisted_score=0; assisted_second=0
     if ('up' not in role_indices or 'down' not in role_indices) and column_boxes:
         pair,assisted_score,assisted_second=_master_assisted_endpoint_columns(img,bands,table,column_boxes,master_index)
         if pair:
@@ -4293,7 +4318,8 @@ def prepare_year15_pair_layout(page,master_index,kind,inherited_layout=None,pref
             'source':source+' / '+geometry_source,'warnings':warnings,'fingerprint':fingerprint,
             'header_band_index':header_band_index,
             'master_pair_score':assisted_score,'master_pair_second':assisted_second,
-            'orientation_deg':orientation_deg,'inherited_layout':False}
+            'orientation_deg':orientation_deg,'inherited_layout':False,
+             'geometry_uncertain_bands':uncertain_bands}
 
 
 
@@ -4693,6 +4719,15 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             rec['_field_review_reasons']=['Length reads disagree']
             rec.setdefault('validation_warnings',[]).append('Length reads disagree')
             rec['skip_update']=True
+        if band_index in prepared.get('geometry_uncertain_bands',[]):
+            rec.setdefault('_field_review_reasons',[]).append('Row boundary uncertain')
+            rec.setdefault('validation_warnings',[]).append('Row boundary uncertain — rescan page')
+            rec['skip_update']=True
+        # Store the exact band and crop in the same aligned image coordinate
+        # system used by the OCR, not a separate uncorrected page rotation.
+        rec['_ocr_physical_cell']={'band_index':band_index,
+                                  'value_bounds':(int(left+val_box[0]*tw),y1,
+                                                  int(left+val_box[1]*tw),y2)}
         date_cell=cut(date_box)
         up_preview=cut(up_box); dn_preview=cut(dn_box)
         rec['_field_previews']={
@@ -7438,7 +7473,8 @@ class App(tk.Tk):
                 'PDF Field Review Required',
                 f'{len(unresolved_fields)} row(s) need PDF verification before Update Master.\n\n'
                 + '\n'.join(reasons) +
-                '\n\nUse Edit Selected to verify disputed lengths against their PDF crops.')
+                '\n\nUse Edit Selected to verify disputed lengths against their PDF crops. '
+                'If row boundaries are uncertain, rescan/replace the page and analyze again.')
             return
         if not self.resolve_pipe_duplicate_groups(prompt=True,update_mode=True): return
         manhole_count_failures=[check for check in self.manhole_count_validations if not check.get('passed')]

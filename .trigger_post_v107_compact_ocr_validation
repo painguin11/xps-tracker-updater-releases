@@ -1,1 +1,1 @@
-Revalidate length-disagreement gates, full regression suite and padded decimal OCR evidence on 2026-10-13.
+Run all 59 active regressions and new printed-font Tesseract / geometry / review regression.

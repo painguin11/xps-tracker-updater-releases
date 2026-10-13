@@ -3160,6 +3160,65 @@ def _cleaning_clipped_digit_recovery(prior_candidates,reread_candidates,current,
     return min(candidates,key=lambda value:(abs(value-expected_value),value))
 
 
+def _border_isolated_length_evidence(cell_img):
+    """Read actual printed digits away from horizontal and right grid rules.
+
+    Used only for already-disagreeing PDF observations. Require corroboration
+    across different OCR image treatments; never reconstruct missing digits
+    from the master length or the printed page total.
+    """
+    if cell_img is None or getattr(cell_img,'size',0)==0:
+        return {'value':None,'sources':{}}
+    gray=cv2.cvtColor(cell_img,cv2.COLOR_RGB2GRAY)
+    h,w=gray.shape
+    if h<12 or w<30:
+        return {'value':None,'sources':{}}
+    ink=gray<155
+    right=w
+    # The full-height right-hand rule should not be confused with a thin digit.
+    # Restrict to the final 7% of the cell and require nearly the full height.
+    for x in range(int(w*.93),w):
+        if int(ink[:,x].sum())>=int(h*.86):
+            right=x+1
+            break
+    if right<int(w*.65):
+        right=w
+    top=min(h-7,max(4,int(round(h*.15))))
+    bottom=max(top+6,h-max(2,int(round(h*.06))))
+    original=gray[top:bottom,:right]
+    right_text=gray[max(top,int(h*.24)):bottom,max(0,int(w*.60)):right]
+    treatments=(('border-trim grayscale',original,False),
+                ('border-trim threshold',original,True),
+                ('right-aligned text crop',right_text,False))
+    observed={}
+    for label,raw,threshold in treatments:
+        if raw.shape[0]<6 or raw.shape[1]<12:
+            continue
+        enlarged=cv2.resize(raw,None,fx=3,fy=3,interpolation=cv2.INTER_CUBIC)
+        if threshold:
+            enlarged=cv2.threshold(
+                enlarged,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
+        padded=cv2.copyMakeBorder(
+            enlarged,18,18,18,18,cv2.BORDER_CONSTANT,value=255)
+        reads=[]
+        for psm in (7,6):
+            raw_text=cached_ocr_string(
+                padded,config=f'--psm {psm} -c tessedit_char_whitelist=0123456789.').strip()
+            tokens=re.findall(r'\d+(?:\.\d+)?',raw_text.replace(',',''))
+            if len(tokens)!=1:
+                break
+            value=_row_length_token_value(tokens[0])
+            if value is None:
+                break
+            reads.append(float(value))
+        if len(reads)==2 and reads[0]==reads[1]:
+            observed[label]=reads[0]
+    counts={value:sum(v==value for v in observed.values())
+            for value in set(observed.values())}
+    winners=[value for value,count in counts.items() if count>=2]
+    return {'value':winners[0] if len(winners)==1 else None,'sources':observed}
+
+
 def _conservative_cleaning_reread(cell_img,expected=None,prior_candidates=None):
     """Reread one suspect cleaning cell without total arithmetic."""
     if cell_img is None or getattr(cell_img,'size',0)==0:
@@ -4821,10 +4880,24 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         # Distinct ruled-cell and whole-table/stacked treatments disagree:
         # keep the printed row and its original source crop, but fail closed.
         if disagreement_sources:
-            rec['_ocr_value_evidence']=disagreement_sources
-            rec.setdefault('_field_review_reasons',[]).append('Length reads disagree')
-            rec.setdefault('validation_warnings',[]).append('Length reads disagree')
-            _mark_field_review_block(rec,'Length reads disagree')
+            # A contextual/stacked read and an isolated ruled-cell read saw
+            # different PDF numbers. Reread ONLY this suspect physical cell
+            # with its border suppressed. Do not guess from the master/total.
+            border_check=_border_isolated_length_evidence(value_cell)
+            border_value=border_check.get('value')
+            printed_values={float(v) for v in disagreement_sources.values()
+                            if _valid_row_length_value(v)}
+            if border_value is not None and len(printed_values)==2 and border_value in printed_values:
+                value=float(border_value)
+                rec['video_length']=value
+                rec['_ocr_value_resolution']={
+                    'value':value,'source':'corroborated border-isolated PDF cell',
+                    'treatments':border_check.get('sources',{})}
+            else:
+                rec['_ocr_value_evidence']=disagreement_sources
+                rec.setdefault('_field_review_reasons',[]).append('Length reads disagree')
+                rec.setdefault('validation_warnings',[]).append('Length reads disagree')
+                _mark_field_review_block(rec,'Length reads disagree')
         if date_evidence.get('conflicting_sources'):
             rec['_ocr_date_evidence']=date_evidence['conflicting_sources']
             if _date_conflict_resolved_by_pdf_context(

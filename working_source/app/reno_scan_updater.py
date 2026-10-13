@@ -3029,6 +3029,45 @@ def _choose_pair_length_observation(value_candidates,direct_value,expected,cell_
     return value
 
 
+def _resolved_length_disagreement(record,reread,new_value):
+    """Return True only when a stronger independent reread resolves a prior conflict."""
+    if 'Length reads disagree' not in (record.get('_field_review_reasons') or []):
+        return False
+    evidence=record.get('_ocr_value_evidence') or {}
+    try:
+        new_numeric=float(new_value)
+        observed={float(value) for value in evidence.values()
+                  if _valid_row_length_value(value)}
+    except Exception:
+        return False
+    if new_numeric not in observed or not reread.get('confident'):
+        return False
+    source=str(reread.get('source') or '').lower()
+    # A master-only plausibility filter is not independent confirmation.
+    independent_markers=(
+        'cross-observed', 'gridless', 'strongest independent support',
+        'threshold-supported', 'low-scale cross-check',
+    )
+    return any(marker in source for marker in independent_markers)
+
+
+def _clear_resolved_length_disagreement(record,reread,new_value):
+    if not _resolved_length_disagreement(record,reread,new_value):
+        return False
+    record['_field_review_reasons']=[
+        reason for reason in record.get('_field_review_reasons',[])
+        if reason!='Length reads disagree']
+    record['validation_warnings']=[
+        warning for warning in record.get('validation_warnings',[])
+        if warning!='Length reads disagree']
+    record['warnings']=[
+        warning for warning in record.get('warnings',[])
+        if warning!='Length reads disagree']
+    record['_ocr_value_resolution']={
+        'value':float(new_value),'source':str(reread.get('source') or '')}
+    return True
+
+
 def _cleaning_clipped_digit_recovery(prior_candidates,reread_candidates,current,expected):
     """Recover a clipped trailing digit only from independent PDF observations.
 
@@ -7179,6 +7218,7 @@ class App(tk.Tk):
                 if part_values:
                     record['part_lengths']=list(part_values)
             record['video_length']=float(new_value)
+            _clear_resolved_length_disagreement(record,reread,new_value)
             refresh_length_status(record); changed=True
             current_rows=[r for _,r in self._total_check_records(check)]
             if _length_total_result(current_rows,expected_total).get('matches'):

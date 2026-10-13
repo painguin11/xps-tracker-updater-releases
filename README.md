@@ -6,21 +6,25 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v109
+## Current production release: v110
 
-- Release: [XPS Tracker Updater v109](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v109)
-- Release commit: `80e0f3bc8662852d5a750e33ec58232632111a5a`
-- Asset: `XPS_Tracker_Updater_v109.zip`
-- Size: `328106` bytes
-- SHA-256: `e45c9fbcde12e34951c50c8d7ef71d6f0e8f5857d7728fe1d8b759e90d0c9929`
+- Release: [XPS Tracker Updater v110](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v110)
+- Release commit: `da12ab88c2b737f4504b375f0b3cefd2f7cd9638`
+- Asset: `XPS_Tracker_Updater_v110.zip`
+- Size: `332233` bytes
+- SHA-256: `d4865d11273b313726f2036626bfd88271bccd9f1ac7259cf32f46e45522c06b`
 
-The production updater reads `update_manifest.json` on `main`, which points to
-this verified v109 asset. Development remains on `v95-work`, under `working_source/`.
-Old source bundles and release notes are historical; fetch the latest development
-head and read its project instructions before editing.
+The production updater reads the verified v110 asset through `update_manifest.json` on `main`.
+Development remains on `v95-work` under `working_source/`.
 
-v109 recovers slightly skewed Brown & Caldwell compact Pipe table rows while
-preserving the established OCR, matching, review and workbook safeguards.
+## v110
+
+- Improved Pipe/Cleaning OCR for border-clipped numeric cells with corroborated PDF evidence; uncertainty remains review-only.
+- Conservative compact table row/column geometry and full-date disagreement checks.
+- Live Summary shows plain rows with empty Comments during extraction; final warnings and colors appear after completion.
+- 59/59 historical regressions and additional OCR/geometry/GUI-model tests passed on Linux.
+- Three selected private scanned pages achieved 47/47 physical rows, 94/94 IDs, 47/47 lengths, and 47/47 dates.
+- Windows Excel COM, interactive Tkinter and inaccessible private fixture validation remain unverified.
 
 ## v109
 

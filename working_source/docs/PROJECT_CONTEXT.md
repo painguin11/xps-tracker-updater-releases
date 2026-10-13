@@ -1,10 +1,9 @@
 # XPS Tracker Updater project context
 
-## Development pending — table accuracy guards (October 13, 2026)
+## Released in v110 — table accuracy guards (October 13, 2026)
 
-Production remains **v109** and `main/update_manifest.json` is unchanged.
-These changes are source-only on `v95-work`. **Do not publish** until the
-user explicitly says `PUBLISH`.
+Production v110 is verified and `main/update_manifest.json` advances only after the release asset is re-downloaded and checked.
+These improvements were developed on `v95-work`; Windows COM and GUI verification remains a separately documented limitation.
 
 ### Gap assessment and narrowly scoped changes
 
@@ -122,7 +121,7 @@ extracted row values and output reports outside public commits/releases.
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v109**.
+Current production version: **v110**.
 
 Current development branch: **`v95-work`**.
 
@@ -130,6 +129,16 @@ The editable source and active regression suite are under `working_source/` on
 `v95-work`. Start future work from that branch and preserve the full released v109 baseline and its documented safeguards. Do **not** publish another
 version until the user explicitly says `PUBLISH`.
 
+
+## v110 release verification (October 13, 2026)
+
+- Versioned source commit: `da12ab88c2b737f4504b375f0b3cefd2f7cd9638`.
+- Public release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v110
+- Published ZIP `XPS_Tracker_Updater_v110.zip`: 332233 bytes; SHA-256 `d4865d11273b313726f2036626bfd88271bccd9f1ac7259cf32f46e45522c06b`.
+- Release CI ran 59 historical regression scripts plus synthetic/rendered selective OCR, date, compact geometry, and Live Summary tests.
+- Public release asset was downloaded again and its size, SHA-256 and ZIP integrity verified before production manifest update.
+- Private three-page benchmark previously established 47/47 correct lengths and dates, 47/47 rows and 94/94 endpoint IDs; not a full-document or Windows benchmark.
+- Live Windows Excel COM updates, GUI/Tkinter and unavailable private Library fixture checks remain untested; these limitations were disclosed.
 
 ## Released in v109 — small-skew compact Pipe grid recovery (October 12, 2026)
 

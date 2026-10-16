@@ -418,11 +418,18 @@ def _format_pdf_number(value):
     return text or '0'
 
 
+def _future_date(value):
+    """Reject dates after today's local calendar date."""
+    return isinstance(value, datetime) and value.date() > datetime.now().date()
+
+
 def parse_date_text(text):
     # Month-name report dates are the most reliable on the printed survey-list page.
     m = re.search(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(20\d{2})', text, re.I)
     if m:
-        try: return datetime.strptime(f'{m.group(1)} {m.group(2)} {m.group(3)}', '%B %d %Y')
+        try:
+            value=datetime.strptime(f'{m.group(1)} {m.group(2)} {m.group(3)}', '%B %d %Y')
+            return None if _future_date(value) else value
         except: pass
     # Handwritten/typed numeric dates.
     for pat in [r'\b(\d{1,2})[-/]\s*(\d{1,2})[-/]\s*((?:20)?\d{2})\b']:
@@ -430,7 +437,8 @@ def parse_date_text(text):
         if m:
             try:
                 year=int(m.group(3)); year=2000+year if year<100 else year
-                return datetime(year, int(m.group(1)), int(m.group(2)))
+                value=datetime(year, int(m.group(1)), int(m.group(2)))
+                return None if _future_date(value) else value
             except: pass
     return None
 
@@ -2529,7 +2537,8 @@ def _parse_sheet_date(cell_img, expected_year=None):
                     # Year is fixed for a report packet and is a common OCR casualty (2026 -> 2020/2028).
                     y = expected_year
                 if 2020 <= y <= 2100 and 1 <= m <= 12 and 1 <= d <= 31:
-                    return datetime(y,m,d)
+                    value=datetime(y,m,d)
+                    if not _future_date(value): return value
             except: pass
     return None
 
@@ -2574,7 +2583,9 @@ def _parse_sheet_date_text_candidates(text, expected_date=None):
             y=expected_year; repaired=True; strong=False
         if not (_plausible_sheet_year(y) and 1<=m<=12 and 1<=d<=31):
             continue
-        try: out.append((datetime(y,m,d),bool(strong and not repaired)))
+        try:
+            value=datetime(y,m,d)
+            if not _future_date(value): out.append((value,bool(strong and not repaired)))
         except Exception: pass
     return out
 
@@ -6806,6 +6817,10 @@ class App(tk.Tk):
         """Finish one parsed row and publish it to the live summary immediately."""
         if rec.get('kind')=='Pipe': refresh_length_status(rec)
         rec_date=rec.pop('row_date',None) or use_date
+        if _future_date(rec_date):
+            rec.setdefault('_field_review_reasons',[]).append('Future date rejected')
+            rec.setdefault('validation_warnings',[]).append('Future date rejected')
+            rec_date=None
         rec.update({'wo':current_wo['wo'],'truck':current_wo['truck'],
                     'operator':current_wo['operator'],'date':rec_date})
         field_previews=dict(rec.get('_field_previews') or {})
@@ -7670,6 +7685,8 @@ class App(tk.Tk):
                 map_length=float(raw_length) if raw_length else None
             except Exception:
                 messagebox.showerror('Invalid value','Use MM/DD/YYYY for Date and a number for Map Length.',parent=win); return
+            if _future_date(date):
+                messagebox.showerror('Future date rejected','The Date cannot be later than today.',parent=win); return
             ticket.update({
                 'date':date,'pipe_id':_ticket_asset_id(vars['Pipe/MH ID'].get()),'street_name':vars['Street'].get().strip(),
                 'panel':vars['Panel'].get().strip(),'area':vars['Area / Major Intersection'].get().strip(),
@@ -7692,6 +7709,12 @@ class App(tk.Tk):
         win.update_idletasks(); win.geometry(f'+{self.winfo_rootx()+30}+{self.winfo_rooty()+35}')
     def update_master(self):
         if not self.records and not self.trouble_tickets: messagebox.showwarning('Nothing to update','Analyze a PDF first.'); return
+        future_rows=[r for r in self.records if _future_date(r.get('date'))]
+        future_tickets=[t for t in self.trouble_tickets if _future_date(t.get('date'))]
+        if future_rows or future_tickets:
+            messagebox.showerror('Future date rejected',
+                f'{len(future_rows)} master row(s) and {len(future_tickets)} trouble ticket(s) have dates after today. Correct them before updating.')
+            return
         unresolved_fields=[r for r in self.records if r.get('_field_review_reasons')]
         if unresolved_fields:
             reasons=sorted(set(reason for r in unresolved_fields

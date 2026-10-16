@@ -423,13 +423,13 @@ def _future_date(value):
     return isinstance(value, datetime) and value.date() > datetime.now().date()
 
 
-def parse_date_text(text):
+def parse_date_text(text, allow_future=False):
     # Month-name report dates are the most reliable on the printed survey-list page.
     m = re.search(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(20\d{2})', text, re.I)
     if m:
         try:
             value=datetime.strptime(f'{m.group(1)} {m.group(2)} {m.group(3)}', '%B %d %Y')
-            return None if _future_date(value) else value
+            return None if (not allow_future and value.date() > datetime.now().date()) else value
         except: pass
     # Handwritten/typed numeric dates.
     for pat in [r'\b(\d{1,2})[-/]\s*(\d{1,2})[-/]\s*((?:20)?\d{2})\b']:
@@ -438,7 +438,7 @@ def parse_date_text(text):
             try:
                 year=int(m.group(3)); year=2000+year if year<100 else year
                 value=datetime(year, int(m.group(1)), int(m.group(2)))
-                return None if _future_date(value) else value
+                return None if (not allow_future and value.date() > datetime.now().date()) else value
             except: pass
     return None
 
@@ -1277,6 +1277,7 @@ def trouble_ticket_status(ticket):
     if not ticket.get('operator'): missing.append('operator')
     if not ticket.get('description'): missing.append('description')
     warnings=[]
+    if ticket.get('_future_date_rejected'): warnings.append('future date rejected; correct Date')
     if missing: warnings.append('missing '+', '.join(missing))
     if ticket.get('_ticket_layout_unverified'): warnings.append('verify form layout')
     uncertain=[key.replace('_',' ') for key,value in ticket.get('_ticket_uncertain',{}).items()
@@ -1297,7 +1298,9 @@ def parse_trouble_ticket(page, page_number, current_wo=None, source_pdf=''):
     reported=text('operator',(.085,.242,.360,.268),(11,))
     pipe_id=_ticket_asset_id(text('pipe_id',(.360,.242,.690,.268),(6,7,11,13)))
     date_text=text('date',(.690,.242,.915,.268),(6,7,11),'0123456789/-')
-    ticket_date=parse_date_text(date_text)
+    raw_ticket_date=parse_date_text(date_text,allow_future=True)
+    future_ticket_date=_future_date(raw_ticket_date)
+    ticket_date=None if future_ticket_date else raw_ticket_date
     ticket={
         'date':ticket_date,
         'reported_by':reported,
@@ -1320,6 +1323,8 @@ def parse_trouble_ticket(page, page_number, current_wo=None, source_pdf=''):
         'source_page':page_number,
         'source_page_hash':hashlib.sha256(img.tobytes()).hexdigest(),
     }
+    if future_ticket_date:
+        ticket['_future_date_rejected']=True
     if layout:
         # Compare review evidence in the same representation used by the editor.
         ticket['_ticket_uncertain']={key:ticket.get(key) for key in uncertain}
@@ -1361,8 +1366,9 @@ def parse_trouble_ticket(page, page_number, current_wo=None, source_pdf=''):
         ticket['_field_preview_pages']['operator']=list(wo_pages.get('operator') or [(current_wo or {}).get('_workorder_page') or page_number])
     # A readable ticket date should win; the confirmed work-order date is a safe
     # fallback only when OCR fails completely.
-    if not ticket['date'] and isinstance((current_wo or {}).get('date'),datetime):
-        ticket['date']=(current_wo or {}).get('date')
+    if not ticket['date'] and not future_ticket_date and isinstance((current_wo or {}).get('date'),datetime):
+        fallback_date=(current_wo or {}).get('date')
+        if not _future_date(fallback_date): ticket['date']=fallback_date
     ticket['ticket_key']=trouble_ticket_key(ticket)
     ticket['review_status']=trouble_ticket_status(ticket)
     return ticket
@@ -2538,7 +2544,7 @@ def _parse_sheet_date(cell_img, expected_year=None):
                     y = expected_year
                 if 2020 <= y <= 2100 and 1 <= m <= 12 and 1 <= d <= 31:
                     value=datetime(y,m,d)
-                    if not _future_date(value): return value
+                    if value.date() <= datetime.now().date(): return value
             except: pass
     return None
 
@@ -2554,7 +2560,7 @@ def _plausible_sheet_year(year):
     return 2020 <= year <= datetime.now().year + 2
 
 
-def _parse_sheet_date_text_candidates(text, expected_date=None):
+def _parse_sheet_date_text_candidates(text, expected_date=None, allow_future=False):
     """Return candidate sheet dates plus whether the printed year was read exactly.
 
     OCR frequently damages the 4-digit year while leaving month/day usable.  When
@@ -2585,7 +2591,7 @@ def _parse_sheet_date_text_candidates(text, expected_date=None):
             continue
         try:
             value=datetime(y,m,d)
-            if not _future_date(value): out.append((value,bool(strong and not repaired)))
+            if allow_future or value.date() <= datetime.now().date(): out.append((value,bool(strong and not repaired)))
         except Exception: pass
     return out
 
@@ -2593,10 +2599,13 @@ def _parse_sheet_date_text_candidates(text, expected_date=None):
 def _choose_sheet_date_evidence(texts, expected_date=None):
     """Choose one row date and retain vote strength for table-level reconciliation."""
     candidates=[]
+    future_dates=[]
     for txt in texts or []:
         candidates.extend(_parse_sheet_date_text_candidates(txt,expected_date))
+        future_dates.extend(date for date,_ in _parse_sheet_date_text_candidates(txt,expected_date,allow_future=True)
+                            if date.date()>datetime.now().date())
     if not candidates:
-        return {'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{}}
+        return {'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{},'future_dates':future_dates}
     all_dates=[d for d,_ in candidates]
     strong_dates=[d for d,strong in candidates if strong]
     votes={d:all_dates.count(d) for d in set(all_dates)}
@@ -2607,12 +2616,12 @@ def _choose_sheet_date_evidence(texts, expected_date=None):
     winners=sorted((d for d,n in counts.items() if n==most))
     if strong_dates:
         chosen=winners[0]
-        return {'date':chosen,'strong':True,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes}
+        return {'date':chosen,'strong':True,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes,'future_dates':future_dates}
     if isinstance(expected_date,datetime) and expected_date in counts:
         chosen=expected_date
     else:
         chosen=winners[0]
-    return {'date':chosen,'strong':False,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes}
+    return {'date':chosen,'strong':False,'candidates':all_dates,'votes':votes,'strong_votes':strong_votes,'future_dates':future_dates}
 
 
 def _date_conflict_resolved_by_pdf_context(evidence, date_reads, band_index,
@@ -4876,7 +4885,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         if dominant_date is not None and (match or endpoint_signal):
             if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date):
                 d=dominant_date
-        if d is None and not mandatory_data_band:
+        if d is None and not mandatory_data_band and not date_evidence.get('future_dates'):
             continue
         if match:
             status='Matched' if value is not None else ('CHECK WHEEL WALK' if kind=='cleaning' else 'CHECK LENGTH')
@@ -4909,6 +4918,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 rec.setdefault('_field_review_reasons',[]).append('Length reads disagree')
                 rec.setdefault('validation_warnings',[]).append('Length reads disagree')
                 _mark_field_review_block(rec,'Length reads disagree')
+        if date_evidence.get('future_dates'):
+            rec['_future_date_reads']=list(dict.fromkeys(date_evidence['future_dates']))
+            rec.setdefault('_field_review_reasons',[]).append('Future date rejected')
+            rec.setdefault('validation_warnings',[]).append('Future date rejected; correct Date')
+            _mark_field_review_block(rec,'Future date rejected')
         if date_evidence.get('conflicting_sources'):
             rec['_ocr_date_evidence']=date_evidence['conflicting_sources']
             if _date_conflict_resolved_by_pdf_context(
@@ -7597,7 +7611,7 @@ class App(tk.Tk):
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
             reasons=set(r.get('_field_review_reasons',[]))
             confirmed_reasons=reasons.intersection({
-                'Length reads disagree','Date reads disagree','Date differs from table date'})
+                'Length reads disagree','Date reads disagree','Date differs from table date','Future date rejected'})
             if confirmed_reasons:
                 r['_field_review_reasons']=[reason for reason in r['_field_review_reasons']
                                             if reason not in confirmed_reasons]
@@ -7702,6 +7716,8 @@ class App(tk.Tk):
                 'tracker_status':vars['Status'].get().strip() or 'Open',
                 'resolution_notes':vars['Resolution / Follow-up Notes'].get().strip(),
             })
+            if date is not None:
+                ticket.pop('_future_date_rejected',None)
             # Save is the user's explicit review of these fields and previews.
             ticket.pop('_ticket_uncertain',None)
             ticket.pop('_ticket_layout_unverified',None)
@@ -7712,10 +7728,10 @@ class App(tk.Tk):
     def update_master(self):
         if not self.records and not self.trouble_tickets: messagebox.showwarning('Nothing to update','Analyze a PDF first.'); return
         future_rows=[r for r in self.records if _future_date(r.get('date'))]
-        future_tickets=[t for t in self.trouble_tickets if _future_date(t.get('date'))]
+        future_tickets=[t for t in self.trouble_tickets if _future_date(t.get('date')) or t.get('_future_date_rejected') or t.get('date') is None]
         if future_rows or future_tickets:
             messagebox.showerror('Future date rejected',
-                f'{len(future_rows)} master row(s) and {len(future_tickets)} trouble ticket(s) have dates after today. Correct them before updating.')
+                f'{len(future_rows)} master row(s) and {len(future_tickets)} trouble ticket(s) have missing or rejected future dates. Correct them before updating.')
             return
         unresolved_fields=[r for r in self.records if r.get('_field_review_reasons')]
         if unresolved_fields:

@@ -7591,7 +7591,9 @@ class App(tk.Tk):
                 else:
                     r['video_length']=None
                     apply_manual_asset_edit(r,self.master_index,asset=vars['Asset'].get())
-                r['date']=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y'); r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
+                edited_date=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y')
+                if _future_date(edited_date): raise ValueError('Date cannot be later than today')
+                r['date']=edited_date; r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
             reasons=set(r.get('_field_review_reasons',[]))
             confirmed_reasons=reasons.intersection({

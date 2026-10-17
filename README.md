@@ -6,16 +6,25 @@ The updater checks `update_manifest.json` over HTTPS, downloads a newer ZIP only
 
 No master spreadsheets, scanned customer PDFs, trouble tickets, OCR caches, logs, or other company data are stored here.
 
-## Current production release: v110
+## Current production release: v111
 
-- Release: [XPS Tracker Updater v110](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v110)
-- Release commit: `da12ab88c2b737f4504b375f0b3cefd2f7cd9638`
-- Asset: `XPS_Tracker_Updater_v110.zip`
-- Size: `332233` bytes
-- SHA-256: `d4865d11273b313726f2036626bfd88271bccd9f1ac7259cf32f46e45522c06b`
+- Release: [XPS Tracker Updater v111](https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v111)
+- Release commit: `f2bd0cf4406c90299d2673877ed46953f34b52fa`
+- Asset: `XPS_Tracker_Updater_v111.zip`
+- Size: `332998` bytes
+- SHA-256: `c33d76c1fcb4e1071f0502f59300628f434892f2258bf92636f95e527801c725`
 
-The production updater reads the verified v110 asset through `update_manifest.json` on `main`.
+The production updater reads the verified v111 asset through `update_manifest.json` on `main`.
 Development remains on `v95-work` under `working_source/`.
+
+## v111
+
+- Reject dates later than the current local calendar date from report text, sheet-table OCR and Trouble Tickets.
+- Keep date cells visible for review when OCR sees future dates rather than automatically writing a potentially wrong date.
+- Prevent future manual dates and block workbook updates until rejected future dates are corrected.
+- All 59 historical regressions and 4 supplemental regression tests passed on Linux.
+- The public v111 ZIP was re-downloaded and checked for exact size, SHA-256 and ZIP integrity before the manifest advanced.
+- Windows Excel COM, interactive Tkinter and private-fixture OCR were not exercised by the public Linux runner.
 
 ## v110
 

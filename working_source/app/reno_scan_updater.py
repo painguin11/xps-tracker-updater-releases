@@ -7728,7 +7728,7 @@ class App(tk.Tk):
     def update_master(self):
         if not self.records and not self.trouble_tickets: messagebox.showwarning('Nothing to update','Analyze a PDF first.'); return
         future_rows=[r for r in self.records if _future_date(r.get('date'))]
-        future_tickets=[t for t in self.trouble_tickets if _future_date(t.get('date')) or t.get('_future_date_rejected') or t.get('date') is None]
+        future_tickets=[t for t in self.trouble_tickets if _future_date(t.get('date')) or t.get('_future_date_rejected')]
         if future_rows or future_tickets:
             messagebox.showerror('Future date rejected',
                 f'{len(future_rows)} master row(s) and {len(future_tickets)} trouble ticket(s) have missing or rejected future dates. Correct them before updating.')

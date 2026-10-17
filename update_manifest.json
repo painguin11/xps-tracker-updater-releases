@@ -1,12 +1,11 @@
 {
-  "version": "110",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v110/XPS_Tracker_Updater_v110.zip",
-  "sha256": "d4865d11273b313726f2036626bfd88271bccd9f1ac7259cf32f46e45522c06b",
+  "version": "111",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v111/XPS_Tracker_Updater_v111.zip",
+  "sha256": "c33d76c1fcb4e1071f0502f59300628f434892f2258bf92636f95e527801c725",
   "release_notes": [
-    "Improve scanned-table Pipe/Cleaning length accuracy using selective corroborated border-free OCR",
-    "Guard skewed compact column alignment and flag uncertain physical row boundaries for review",
-    "Require independent PDF corroboration for conflicting complete dates and lengths",
-    "Keep Live Summary plain and Comments blank while analysis is still running",
-    "Preserve prior parsing, manual review and master-workbook safeguards"
+    "Reject any date later than the current local calendar date from report, table and Trouble Ticket OCR",
+    "Flag future-date OCR evidence for manual review instead of silently substituting another date",
+    "Block future dates in manual edits and prevent rejected future dates from reaching master and Trouble Tickets workbooks",
+    "Preserve existing scanned-table, ID, length, and manual review safeguards"
   ]
 }

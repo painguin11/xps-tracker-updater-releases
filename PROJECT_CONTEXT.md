@@ -1,5 +1,16 @@
 # XPS Tracker Updater project context
 
+## Released in v111 — future-date rejection (October 16, 2026)
+
+The production update manifest now points to verified v111. The application compares extracted dates with the computer's current local calendar date (today is allowed), rejects future report and table date candidates, and retains affected physical table rows for manual review. The Trouble Ticket parser flags a future printed date instead of silently falling back to the work-order date; rejected ticket dates must be corrected in the editor. Future manual dates are prohibited in both editors and Update Master rechecks dates and rejected-ticket markers before any workbook write.
+
+- Release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v111
+- Source commit: `f2bd0cf4406c90299d2673877ed46953f34b52fa`.
+- Verified ZIP: `XPS_Tracker_Updater_v111.zip`, `332998` bytes, SHA-256 `c33d76c1fcb4e1071f0502f59300628f434892f2258bf92636f95e527801c725`.
+- GitHub Actions run `38984672059`: all 59 historical regressions and four supplemental checks passed; ZIP integrity and privacy passed, public ZIP re-downloaded, size and checksum verified, and main manifest re-read.
+- Linux CI limitations: real Windows Excel COM, Tkinter UI and private customer fixture OCR were not performed.
+- Development branch remains `v95-work`. Preserve the v110 scanned-table and OCR fixes.
+
 ## Released in v110 — table accuracy guards (October 13, 2026)
 
 Production v110 is verified and `main/update_manifest.json` advances only after the release asset is re-downloaded and checked.
@@ -121,7 +132,7 @@ extracted row values and output reports outside public commits/releases.
 
 Repository: `painguin11/xps-tracker-updater-releases`
 
-Current production version: **v110**.
+Current production version: **v111**.
 
 Current development branch: **`v95-work`**.
 

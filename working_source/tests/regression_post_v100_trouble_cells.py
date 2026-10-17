@@ -23,7 +23,7 @@ from PIL import Image
 
 SOURCE=Path(__file__).resolve().parents[1]/'app'/'reno_scan_updater.py'
 tree=ast.parse(SOURCE.read_text(encoding='utf-8'))
-names={'render_page','digits','asset_key','canonical_asset_id','parse_float','parse_date_text','fmt_date',
+names={'_future_date','render_page','digits','asset_key','canonical_asset_id','parse_float','parse_date_text','fmt_date',
        '_ticket_crop','_clean_ticket_text','_ticket_field_text','_ticket_service_types',
        '_ticket_asset_id','_ticket_cell_image','_ticket_detect_cells','_ticket_detected_values',
        'legacy_trouble_ticket_key','trouble_ticket_key','trouble_ticket_asset_key',
@@ -40,7 +40,7 @@ exec(compile(ast.Module(body=[n for n in tree.body if isinstance(n,ast.FunctionD
                         type_ignores=[]),str(SOURCE),'exec'),ns)
 
 
-def form(left=38,top=165,width=530,pipe_id='ZX-1234A-ZX-5678',blank=False):
+def form(left=38,top=165,width=530,pipe_id='ZX-1234A-ZX-5678',blank=False,date_text='1/2/2026'):
     doc=pymupdf.open();page=doc.new_page(width=612,height=792)
     def row(y,labels,values,widths):
         x=left
@@ -51,7 +51,7 @@ def form(left=38,top=165,width=530,pipe_id='ZX-1234A-ZX-5678',blank=False):
             page.insert_text((x+5,y+11),label,fontsize=8,fontname='hebo')
             if value: page.insert_text((x+9,y+31),value,fontsize=9,fontname='hebo')
             x+=cell_width
-    row(top,['Reported by:','Pipe ID #','Date:'],['TEST  A',pipe_id,'1/2/2026'],[.37,.37,.26])
+    row(top,['Reported by:','Pipe ID #','Date:'],['TEST  A',pipe_id,date_text],[.37,.37,.26])
     row(top+65,['Street Name','Panel'],['TEST ROAD','MAP 42'],[.74,.26])
     row(top+140,['Area/Major Intersection','Vac Truck','Pipe Survey','MH Survey'],
         ['TEST INTERSECTION','','' if blank else 'X','X' if blank else ''],[.62,.12,.13,.13])
@@ -93,6 +93,13 @@ def synthetic_checks():
         assert ticket['_field_preview_pages']['description']==[1]
         assert ticket['ticket_key']==ns['parse_trouble_ticket'](doc[0],1,wo)['ticket_key']
         doc.close()
+    # A future date on a readable ticket must NEVER borrow the past work-order date.
+    future=(datetime.now().replace(year=datetime.now().year+1)).strftime('%-m/%-d/%Y')
+    doc=form(date_text=future)
+    ticket=ns['parse_trouble_ticket'](doc[0],1,{'wo':'12345','date':datetime(2025,1,1)})
+    assert ticket['date'] is None and ticket.get('_future_date_rejected'),ticket
+    assert 'future date rejected' in ticket['review_status'].lower(),ticket['review_status']
+    doc.close()
     for identifier in ('ZX-1234A-ZX-5678','R2-280','123456789','ZX-5678B'):
         assert ns['_ticket_asset_id'](identifier)==identifier
     assert ns['_ticket_detect_cells'](np.full((1980,1530,3),255,np.uint8)) is None

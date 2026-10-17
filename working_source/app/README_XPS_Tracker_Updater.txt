@@ -1,9 +1,13 @@
-XPS Tracker Updater v110
+XPS Tracker Updater v111
 ========================
 
-Current status (October 13, 2026)
+Current status (October 16, 2026)
 ----------------------------------
-Production release: v110. Development: v95-work / working_source.
+Production release: v111. Development: v95-work / working_source.
+v111 rejects future calendar dates from PDF report, table and Trouble Ticket OCR;
+future-date conflicts require manual review, and future manual edits are blocked.
+Update Master refuses rejected future dates until corrected. Existing v110
+OCR/table safeguards remain in place.
 Version sections below are release history; later changes supersede earlier ones.
 v110 improves conservative Pipe/Cleaning length OCR, disputed dates and
 compact row geometry, and keeps Live Summary plain until analysis ends.

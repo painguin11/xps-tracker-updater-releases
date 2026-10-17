@@ -18,7 +18,7 @@ except Exception as exc:
     raise
 
 APP_NAME = 'XPS Tracker Updater'
-APP_VERSION = '110'
+APP_VERSION = '111'
 APP_TITLE = f'{APP_NAME} v{APP_VERSION}'
 LENGTH_DIFF_THRESHOLD = 4.5
 DUPLICATE_PIPE_REVIEW = 'Duplicate pipe - check IDs'
@@ -2602,7 +2602,9 @@ def _choose_sheet_date_evidence(texts, expected_date=None):
     future_dates=[]
     for txt in texts or []:
         candidates.extend(_parse_sheet_date_text_candidates(txt,expected_date))
-        future_dates.extend(date for date,_ in _parse_sheet_date_text_candidates(txt,expected_date,allow_future=True)
+        # Inspect the literal PDF date before any expected-year OCR repair, too.
+        # A future printed/OCR year must not be silently legitimized by packet context.
+        future_dates.extend(date for date,_ in _parse_sheet_date_text_candidates(txt,None,allow_future=True)
                             if date.date()>datetime.now().date())
     if not candidates:
         return {'date':None,'strong':False,'candidates':[],'votes':{},'strong_votes':{},'future_dates':future_dates}

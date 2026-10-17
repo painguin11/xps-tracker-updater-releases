@@ -10,7 +10,8 @@ assert 'else len(bands))' in src
 assert 'mandatory_data_bands=set(range(start_band,stop_band))' in src
 assert 'mandatory_data_band=band_index in mandatory_data_bands' in src
 assert 'if not mandatory_data_band and not match and not endpoint_signal:' in src
-assert 'if d is None and not mandatory_data_band:' in src
+assert 'if d is None and not mandatory_data_band and not date_evidence.get(\'future_dates\'):' in src
+assert "rec.setdefault('_field_review_reasons',[]).append('Future date rejected')" in src
 assert "rec.setdefault('validation_warnings',[]).append('DUPLICATE IN PDF')" in src
 assert "if key in seen and kind!='pipes': continue" not in src
 

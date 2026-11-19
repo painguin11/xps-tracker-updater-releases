@@ -5657,7 +5657,13 @@ def apply_manual_asset_edit(record,master_index,up=None,down=None,asset=None):
         asset=canonical_asset_id(asset)
         if not asset: raise ValueError('Asset is required.')
         clear_asset_decision_if_changed(asset_key(asset))
-        item,status=_resolve_manhole_manual_id(asset,master_index.get('manholes',{}))
+        # Exact lookup must also work in the stand-alone row-edit regression
+        # harness; do not fuzzy-correct a manual ID to a nearby master asset.
+        known=master_index.get('manholes',{})
+        item=known.get(asset_key(asset))
+        key=asset_key(asset)
+        new_suffix=bool(not item and key[-1:].isalpha() and key[:-1] in known)
+        status='Matched' if item else ('NEW MANHOLE' if new_suffix else 'NOT MATCHED')
         record['asset']=item.get('asset') if item else asset
         record['asset_key']=item.get('asset_key') if item else asset_key(asset)
         record['display_asset']=record['asset']; record['display_asset_base']=record['asset']

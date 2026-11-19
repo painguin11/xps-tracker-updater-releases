@@ -11,6 +11,10 @@ create the next version.
 
 Before publishing any later release, run `working_source/tests/regression_post_v111_work_order_group_dates.py` plus the entire active regression suite. Verify on real multi-page packets that every Pipe, Cleaning and Manhole row in one physical work-order group has the same date, blank row OCR can be filled from a confirmed/unambiguous group date, conflicting dates remain blocked for review, and manual Date edits propagate to that group without affecting a different work order. Check that a missing, future, or inconsistent date cannot reach Update Master; that legitimate printed rows are not dropped for unreadable date cells; and that existing future-date, per-cell OCR disagreement, total and asset review safeguards remain intact. Check the Date input in the Confirm Work Order dialog on Windows. No new release has been approved.
 
+## Unreleased selective Manhole identity gate (post-v111)
+
+Run `working_source/tests/regression_post_v111_selective_manhole_id_review.py`, the full active regression suite, and real Manhole scan comparisons before publishing. Check that two independently agreeing exact PDF reads of an existing Manhole ID pass automatically, while conflicting, fuzzy, digit-only, single-source, or weak matches require PDF-crop review; no blanket prompt appears for clear matches. Verify Reno/B&C normal and count-retry paths, duplicate suppression, new-Manhole approval, exact manual re-matching, and the Update Master safeguard. Validate on Windows with Excel COM and interactive Tkinter. Never treat presence in the master as proof of OCR identity. Do not publish until the user explicitly says `PUBLISH`.
+
 ## Before changing release state
 
 1. Confirm development is on the intended work branch (currently `v95-work`).

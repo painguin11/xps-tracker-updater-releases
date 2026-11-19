@@ -98,8 +98,9 @@ calls=lambda node:{n.func.id for n in ast.walk(node)
 assert '_manhole_match_questionable' in calls(methods['commit_extracted_record'])
 assert '_require_manhole_id_review' in calls(methods['commit_extracted_record'])
 assert '_confirm_manhole_id_review' in calls(methods['edit_selected'])
-assert '_resolve_manhole_manual_id' in calls(next(n for n in tree.body
-    if isinstance(n,ast.FunctionDef) and n.name=='apply_manual_asset_edit'))
+manual=next(n for n in tree.body if isinstance(n,ast.FunctionDef)
+            and n.name=='apply_manual_asset_edit')
+assert "known.get(asset_key(asset))" in ast.get_source_segment(source,manual)
 assert '_manhole_id_review_required' in source
 assert 'padded_candidates' in source and 'pass_observations' in source
 assert 'source_observations' in source

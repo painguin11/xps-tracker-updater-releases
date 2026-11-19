@@ -1,5 +1,16 @@
 # XPS Tracker Updater project context
 
+## In development — work-order group date consistency (unreleased, November 18, 2026)
+
+- Every extracted Pipe, Cleaning and Manhole record from the same physical work-order page group now shares one date. Repeated W/O numbers on separate work-order pages remain independent.
+- The Confirm Work Order dialog exposes an editable work-order Date (MM/DD/YYYY). A validated confirmed date takes precedence for that group's rows; if left blank, exactly one unambiguous date observed in the group can fill the missing cells. Conflicting or entirely missing group dates are review-only, never guessed.
+- A row date that contradicts the confirmed group date is displayed consistently with the group but remains blocked for verification. Future-date OCR flags and independent per-cell disagreement flags remain active.
+- Editing one extracted row's Date applies that valid date across the physical work-order group; only group-level missing/conflict blockers are cleared automatically. Existing independent review requirements remain.
+- A separate Update Master guard rejects missing, future, or mixed group dates before touching any workbook.
+- Physically established Pipe/Cleaning rows are not discarded merely because their own date OCR is blank.
+- Added `working_source/tests/regression_post_v111_work_order_group_dates.py` for focused synthetic coverage. Full regression suite, real PDFs, Windows Excel COM and Tkinter testing remain to be run; this is **not** a released change.
+- Continue development on `v95-work`. Production remains verified **v111** until the user explicitly says `PUBLISH`.
+
 ## Released in v111 — future-date rejection (October 16, 2026)
 
 The production update manifest now points to verified v111. The application compares extracted dates with the computer's current local calendar date (today is allowed), rejects future report and table date candidates, and retains affected physical table rows for manual review. The Trouble Ticket parser flags a future printed date instead of silently falling back to the work-order date; rejected ticket dates must be corrected in the editor. Future manual dates are prohibited in both editors and Update Master rechecks dates and rejected-ticket markers before any workbook write.

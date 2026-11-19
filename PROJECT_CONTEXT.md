@@ -1,5 +1,18 @@
 # XPS Tracker Updater project context
 
+## Released in v112 — work-order dates and selective Manhole verification (November 18, 2026)
+
+Production v112 synchronizes the Date across the Pipe, Cleaning and Manhole rows belonging to each physical work-order group. The Confirm Work Order dialog allows the date to be verified or corrected. Rows with missing date OCR inherit a confirmed or uniquely consistent group date; conflicting or unavailable dates are flagged for review instead of guessed. A date edit in one row applies across the group, while other work orders remain separate. The master-write guard requires one valid, nonfuture date for the whole group.
+
+Manhole IDs are now automatically accepted only when separate OCR treatments agree on the same exact complete ID that exists in the master. A master match alone is insufficient: discrepant, fuzzy, numeric-only or single-source existing-Manhole matches must be checked against the original PDF crop before writing. Clear corroborated IDs do not trigger a verification prompt. The manual Manhole ID correction path matches exactly, rather than silently fuzzy-correcting to another existing Manhole.
+
+- Release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v112
+- Tagged source commit: `3c8ff65cdfb142acfa068507d6fd96917fe3b9ce`.
+- Verified ZIP: `XPS_Tracker_Updater_v112.zip`, 336048 bytes, SHA-256 `8cac470e490f85fa8c90036ad160510644c7554a0f547089d80676ace7e6af5b`.
+- GitHub Actions run `44449443157`: **59 historical regressions and six supplemental tests passed**, including post-v111 group-date and selective Manhole ID tests. Source privacy, ZIP structure/integrity, public asset re-download, size, SHA-256 and read-back of `main/update_manifest.json` all passed. Temporary release workflow/trigger were removed.
+- Linux CI did **not** exercise actual private customer scanned PDFs, Windows Excel COM or live Windows Tkinter UI. These remain important field-validation limits, not proven 100% OCR accuracy.
+- Development continues on `v95-work`; never overwrite the v112 tag or published asset.
+
 ## Released in v111 — future-date rejection (October 16, 2026)
 
 The production update manifest now points to verified v111. The application compares extracted dates with the computer's current local calendar date (today is allowed), rejects future report and table date candidates, and retains affected physical table rows for manual review. The Trouble Ticket parser flags a future printed date instead of silently falling back to the work-order date; rejected ticket dates must be corrected in the editor. Future manual dates are prohibited in both editors and Update Master rechecks dates and rejected-ticket markers before any workbook write.

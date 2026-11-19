@@ -7763,7 +7763,7 @@ class App(tk.Tk):
             v=tk.StringVar(value=val); vars[lab]=v
             ttk.Entry(win,textvariable=v,width=30).grid(row=n,column=1,padx=8,pady=6,sticky='w')
             add_preview(n,key)
-        ttk.Label(win,text='Date changes apply to every row in this work order. Compare values with the PDF before saving.',foreground='#8A5200').grid(
+        ttk.Label(win,text='Compare each value with its PDF image before saving. Date changes apply to every row in this work order.',foreground='#8A5200').grid(
             row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
         win.columnconfigure(2,weight=1)
         def save():

@@ -1,11 +1,11 @@
 {
-  "version": "111",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v111/XPS_Tracker_Updater_v111.zip",
-  "sha256": "c33d76c1fcb4e1071f0502f59300628f434892f2258bf92636f95e527801c725",
+  "version": "112",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v112/XPS_Tracker_Updater_v112.zip",
+  "sha256": "8cac470e490f85fa8c90036ad160510644c7554a0f547089d80676ace7e6af5b",
   "release_notes": [
-    "Reject any date later than the current local calendar date from report, table and Trouble Ticket OCR",
-    "Flag future-date OCR evidence for manual review instead of silently substituting another date",
-    "Block future dates in manual edits and prevent rejected future dates from reaching master and Trouble Tickets workbooks",
-    "Preserve existing scanned-table, ID, length, and manual review safeguards"
+    "Use one consistent date across all Pipe, Cleaning and Manhole records within a work order",
+    "Propagate confirmed work-order dates and group edits while requiring review of conflicting or missing dates",
+    "Review only questionable Manhole ID matches; accept independently corroborated exact ID OCR automatically",
+    "Preserve future-date, scanned-table, new-asset, length, and manual review safeguards"
   ]
 }

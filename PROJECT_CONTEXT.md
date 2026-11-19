@@ -1,24 +1,17 @@
 # XPS Tracker Updater project context
 
-## In development — work-order group date consistency (unreleased, November 18, 2026)
+## Released in v112 — work-order dates and selective Manhole verification (November 18, 2026)
 
-- Every extracted Pipe, Cleaning and Manhole record from the same physical work-order page group now shares one date. Repeated W/O numbers on separate work-order pages remain independent.
-- The Confirm Work Order dialog exposes an editable work-order Date (MM/DD/YYYY). A validated confirmed date takes precedence for that group's rows; if left blank, exactly one unambiguous date observed in the group can fill the missing cells. Conflicting or entirely missing group dates are review-only, never guessed.
-- A row date that contradicts the confirmed group date is displayed consistently with the group but remains blocked for verification. Future-date OCR flags and independent per-cell disagreement flags remain active.
-- Editing one extracted row's Date applies that valid date across the physical work-order group; only group-level missing/conflict blockers are cleared automatically. Existing independent review requirements remain.
-- A separate Update Master guard rejects missing, future, or mixed group dates before touching any workbook.
-- Physically established Pipe/Cleaning rows are not discarded merely because their own date OCR is blank.
-- Added `working_source/tests/regression_post_v111_work_order_group_dates.py` for focused synthetic coverage. Full regression suite, real PDFs, Windows Excel COM and Tkinter testing remain to be run; this is **not** a released change.
-- Continue development on `v95-work`. Production remains verified **v111** until the user explicitly says `PUBLISH`.
+Production v112 synchronizes the Date across the Pipe, Cleaning and Manhole rows belonging to each physical work-order group. The Confirm Work Order dialog allows the date to be verified or corrected. Rows with missing date OCR inherit a confirmed or uniquely consistent group date; conflicting or unavailable dates are flagged for review instead of guessed. A date edit in one row applies across the group, while other work orders remain separate. The master-write guard requires one valid, nonfuture date for the whole group.
 
-## In development — selective Manhole ID identity verification (unreleased, November 18, 2026)
+Manhole IDs are now automatically accepted only when separate OCR treatments agree on the same exact complete ID that exists in the master. A master match alone is insufficient: discrepant, fuzzy, numeric-only or single-source existing-Manhole matches must be checked against the original PDF crop before writing. Clear corroborated IDs do not trigger a verification prompt. The manual Manhole ID correction path matches exactly, rather than silently fuzzy-correcting to another existing Manhole.
 
-- A Manhole ID appearing in the master is **not** enough to prove it was read accurately from the scanned page. Existing Reno and B&C OCR matching paths can produce a plausible but incorrect known Manhole ID.
-- Automatic existing-Manhole matches now require the **same complete, exact, known ID from at least two distinct OCR source treatments**. For Reno, compare ruled cell and independently padded cell reads. For B&C positioned tokens, track PSM-6 and PSM-11 separately; for B&C grid, retain original cell, batch/contextual and positioned-token source observations. Conflicting recognized master IDs, missing independent agreement, and fuzzy/numeric-only lookups are marked `VERIFY MANHOLE ID AGAINST PDF` and excluded from automatic master writes.
-- Clear corroborated existing IDs remain automatic: do **not** prompt on every Manhole row. Only questionable matches require selecting the row, checking its source PDF crop/page and explicitly confirming or correcting the ID.
-- Reno Manhole rows now retain their ID/date image crops for review. Manual Manhole corrections use **exact** master-ID lookup only, never fuzzy correction to a different Manhole. Existing distinct NEW MANHOLE approval is retained without a duplicate global verification popup.
-- The master-write guard checks only unresolved questionable Manhole matches, not all unverified rows. Existing duplicate, new-asset, date, count, partial-row and total safeguards remain.
-- Focused synthetic regression: `working_source/tests/regression_post_v111_selective_manhole_id_review.py`. Full suite and real customer scan/Windows Excel/Tkinter verification remain outstanding. This change is **not published**; v111 remains production. Do not promise 100% unattended OCR accuracy without validated scan evidence.
+- Release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v112
+- Tagged source commit: `3c8ff65cdfb142acfa068507d6fd96917fe3b9ce`.
+- Verified ZIP: `XPS_Tracker_Updater_v112.zip`, 336048 bytes, SHA-256 `8cac470e490f85fa8c90036ad160510644c7554a0f547089d80676ace7e6af5b`.
+- GitHub Actions run `44449443157`: **59 historical regressions and six supplemental tests passed**, including post-v111 group-date and selective Manhole ID tests. Source privacy, ZIP structure/integrity, public asset re-download, size, SHA-256 and read-back of `main/update_manifest.json` all passed. Temporary release workflow/trigger were removed.
+- Linux CI did **not** exercise actual private customer scanned PDFs, Windows Excel COM or live Windows Tkinter UI. These remain important field-validation limits, not proven 100% OCR accuracy.
+- Development continues on `v95-work`; never overwrite the v112 tag or published asset.
 
 ## Released in v111 — future-date rejection (October 16, 2026)
 

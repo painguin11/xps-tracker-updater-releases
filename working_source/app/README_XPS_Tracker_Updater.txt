@@ -1,18 +1,20 @@
-XPS Tracker Updater v111
+XPS Tracker Updater v112
 ========================
 
-Current status (October 16, 2026)
+Current status (November 18, 2026)
 ----------------------------------
-Production release: v111. Development: v95-work / working_source.
-v111 rejects future calendar dates from PDF report, table and Trouble Ticket OCR;
-future-date conflicts require manual review, and future manual edits are blocked.
-Update Master refuses rejected future dates until corrected. Existing v110
-OCR/table safeguards remain in place.
+Release candidate: v112 from the v95-work development branch.
+- Work-order dates are consistent across every Pipe, Cleaning and Manhole
+  row in a physical work-order group, with group-wide date corrections.
+  Missing or disputed dates remain subject to manual review safeguards.
+- Existing Manhole IDs must agree across independent exact OCR reads before
+  automatic acceptance. Questionable matches alone require PDF verification;
+  clear matches are automatic. A master lookup cannot independently validate
+  a possibly misread Manhole ID.
+- Preserves future-date rejection and the earlier scanned-table safeguards.
+- Linux CI cannot validate private customer PDF fixtures, interactive Windows
+  Tkinter windows or Excel COM writes; these require separate field testing.
 Version sections below are release history; later changes supersede earlier ones.
-v110 improves conservative Pipe/Cleaning length OCR, disputed dates and
-compact row geometry, and keeps Live Summary plain until analysis ends.
-Unresolved scan ambiguity still requires manual PDF review.
-Windows Excel COM and live GUI behavior were not tested in Linux CI.
 
 Purpose
 -------

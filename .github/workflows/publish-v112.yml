@@ -85,7 +85,7 @@ jobs:
       - name: Audit source privacy and build release ZIP
         run: |
           set -euo pipefail
-          if git diff --name-only f2bd0cf4406c90299d2673877ed46953f34b52fa HEAD | grep -Ei '\.(pdf|xlsx|xlsm|xls)
+          if git diff --name-only f2bd0cf4406c90299d2673877ed46953f34b52fa HEAD | grep -Ei '\\.(pdf|xlsx|xlsm|xls)$'; then
             echo 'Forbidden private workbook or PDF in release changes'; exit 1
           fi
           mkdir -p dist/XPS_Tracker_Updater
@@ -159,109 +159,6 @@ jobs:
                "Propagate confirmed work-order dates and group edits while requiring review of conflicting or missing dates",
                "Review only questionable Manhole ID matches; accept independently corroborated exact ID OCR automatically",
                "Preserve future-date, scanned-table, new-asset, length, and manual review safeguards"
-             ]
-          }
-          path.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
-          PY
-          cd /tmp/xps-main-v112
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add update_manifest.json
-          git commit -m 'Publish v112 verified auto-update manifest'
-          git push origin HEAD:main
-          git fetch origin main
-          git show origin/main:update_manifest.json > /tmp/xps-v112-manifest.json
-          python - <<'PY'
-          import json,os
-          data=json.load(open('/tmp/xps-v112-manifest.json',encoding='utf-8'))
-          assert data['version']=='112'
-          assert data['sha256']==os.environ['RELEASE_SHA']
-          assert data['download_url'].endswith('/v112/XPS_Tracker_Updater_v112.zip')
-          print('Read-back from origin/main verified version, URL and checksum')
-          PY
-
-      - name: Remove temporary v112 workflow and trigger
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/publish-v112.yml .trigger_publish_v112
-          git commit -m 'Clean up temporary v112 publishing files [skip ci]'
-          git push origin HEAD:v95-work
-; then
-            echo 'Forbidden private workbook or PDF in release changes'; exit 1
-          fi
-          mkdir -p dist/XPS_Tracker_Updater
-          cp -a working_source/app/. dist/XPS_Tracker_Updater/
-          find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
-          find dist -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
-          cd dist
-          zip -qr XPS_Tracker_Updater_v112.zip XPS_Tracker_Updater
-          unzip -t XPS_Tracker_Updater_v112.zip
-          python - <<'PY'
-          from pathlib import Path
-          import hashlib,zipfile
-          archive=Path('XPS_Tracker_Updater_v112.zip')
-          with zipfile.ZipFile(archive) as z:
-              names=z.namelist()
-              assert names and all(n.startswith('XPS_Tracker_Updater/') for n in names)
-              assert z.testzip() is None
-              for item in ('reno_scan_updater.py','xps_update.py','run_xps_tracker.bat',
-                           'README_XPS_Tracker_Updater.txt','xps_review_controls.py'):
-                  assert 'XPS_Tracker_Updater/'+item in names,item
-              forbidden=('.pdf','.xlsx','.xlsm','.xls','ocr_cache','logs/','private','customer')
-              assert not any(any(piece in name.lower() for piece in forbidden) for name in names)
-          print('ZIP integrity, structure and privacy checks passed')
-          PY
-          echo "RELEASE_SHA=$(sha256sum XPS_Tracker_Updater_v112.zip | awk '{print $1}')" >> "$GITHUB_ENV"
-          echo "RELEASE_SIZE=$(stat -c%s XPS_Tracker_Updater_v112.zip)" >> "$GITHUB_ENV"
-
-      - name: Publish new release and verify public asset download
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release create v112 dist/XPS_Tracker_Updater_v112.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'XPS Tracker Updater v112' --notes 'Reject dates later than the computer local calendar date during report, table, and Trouble Ticket OCR. Future OCR date evidence is review-only; manual edits cannot save future dates; Update Master is blocked until rejected future dates are corrected. Preserves all v110 table, ID, length and master safeguards. Linux suite passed; Windows Excel COM, live Tkinter, and private fixture OCR were not run by public CI.'
-          python - <<'PY'
-          import json,os,subprocess
-          repo=os.environ['GITHUB_REPOSITORY']
-          d=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/releases/tags/v112'],text=True))
-          assert d['tag_name']=='v112' and d['name']=='XPS Tracker Updater v112'
-          matches=[asset for asset in d['assets'] if asset['name']=='XPS_Tracker_Updater_v112.zip']
-          assert len(matches)==1
-          a=matches[0]
-          assert int(a['size'])==int(os.environ['RELEASE_SIZE'])
-          assert a.get('digest')==f"sha256:{os.environ['RELEASE_SHA']}"
-          print('Release metadata and asset digest verified')
-          PY
-          curl --fail --location --retry 5 --retry-delay 2 --silent --show-error --output /tmp/xps-v112-public.zip "https://github.com/$GITHUB_REPOSITORY/releases/download/v112/XPS_Tracker_Updater_v112.zip"
-          test "$(stat -c%s /tmp/xps-v112-public.zip)" = "$RELEASE_SIZE"
-          echo "$RELEASE_SHA  /tmp/xps-v112-public.zip" | sha256sum --check
-          unzip -t /tmp/xps-v112-public.zip >/dev/null
-          echo 'Public asset re-download, size, SHA-256 and ZIP integrity verified'
-
-      - name: Advance public updater manifest only after verification
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git worktree add --detach /tmp/xps-main-v112 origin/main
-          python - <<'PY'
-          from pathlib import Path
-          import json,os
-          path=Path('/tmp/xps-main-v112/update_manifest.json')
-          data=json.loads(path.read_text(encoding='utf-8'))
-          assert data['version']=='110',f'Unexpected prior production manifest: {data["version"]}'
-          data={
-             'version':'112',
-             'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v112/XPS_Tracker_Updater_v112.zip',
-             'sha256':os.environ['RELEASE_SHA'],
-             'release_notes':[
-               "Reject any date later than the current local calendar date from report, table and Trouble Ticket OCR",
-               "Flag future-date OCR evidence for manual review instead of silently substituting another date",
-               "Block future dates in manual edits and prevent rejected future dates from reaching master and Trouble Tickets workbooks",
-               "Preserve existing scanned-table, ID, length, and manual review safeguards"
              ]
           }
           path.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')

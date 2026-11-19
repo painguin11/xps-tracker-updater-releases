@@ -3,7 +3,7 @@ XPS Tracker Updater v112
 
 Current status (November 18, 2026)
 ----------------------------------
-Release candidate: v112 from the v95-work development branch.
+Published production release: v112. Development continues on v95-work.
 - Work-order dates are consistent across every Pipe, Cleaning and Manhole
   row in a physical work-order group, with group-wide date corrections.
   Missing or disputed dates remain subject to manual review safeguards.

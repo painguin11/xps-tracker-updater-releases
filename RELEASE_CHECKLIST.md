@@ -1,11 +1,29 @@
 # XPS Tracker Updater release checklist
 
-This checklist applies to the current **v111 production baseline**, the retained
+This checklist applies to the current **v112 production baseline**, the retained
 `v95-work` safeguards, and all future releases. Do not publish unless
 the user explicitly says `PUBLISH`.
 
 Never overwrite an existing release/tag. If a published version needs a fix,
 create the next version.
+
+## v112 — released date and Manhole verification safeguards
+
+The v112 Linux workflow ran the full active suite (59 historical and six
+supplemental regressions), including
+`regression_post_v111_work_order_group_dates.py` and
+`regression_post_v111_selective_manhole_id_review.py`.
+
+For any future change, keep these regressions active and check:
+- One valid group date across all Pipe, Cleaning and Manhole rows in each
+  physical work order, including blank date OCR and manual corrections.
+- Conflicting/missing/future dates continue to require explicit review.
+- Independently agreeing exact Manhole IDs remain automatic. Questionable,
+  fuzzy, digit-only or conflicting Manhole IDs require PDF-crop verification.
+- New Manhole approval and existing count, duplicate, row, length and workbook
+  protections stay intact. No master row may be written on a weak identity.
+- Windows Excel COM, actual customer PDFs and live Tkinter must be verified
+  separately; public Linux CI cannot claim these paths were tested.
 
 ## Before changing release state
 
@@ -321,7 +339,19 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-v111 is the current production release:
+**v112 is the current production release:**
+
+- Release source commit: `3c8ff65cdfb142acfa068507d6fd96917fe3b9ce`.
+- ZIP: `XPS_Tracker_Updater_v112.zip` (336048 bytes).
+- SHA-256: `8cac470e490f85fa8c90036ad160510644c7554a0f547089d80676ace7e6af5b`.
+- GitHub Actions run `44449443157`: all 59 historical and six supplemental
+  Linux regression scripts passed, ZIP integrity/privacy passed, and the public
+  release download and updater manifest were verified against SHA-256/size.
+- Windows Excel COM, live Tkinter and private scan fixture OCR remain unverified
+  by Linux CI.
+
+**v111 was the previous production release:**
+
 
 - Release source commit: `f2bd0cf4406c90299d2673877ed46953f34b52fa`.
 - ZIP: `XPS_Tracker_Updater_v111.zip`.

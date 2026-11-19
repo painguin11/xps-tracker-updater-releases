@@ -7762,7 +7762,8 @@ class App(tk.Tk):
         win.columnconfigure(2,weight=1)
         def save():
             if (r.get('kind')=='Manhole' and r.get('_manhole_id_review_required')
-                    and not r.get('_manhole_id_verified')):
+                    and (not r.get('_manhole_id_verified') or
+                         asset_key(vars['Asset'].get())!=asset_key(r.get('asset')))):
                 proposed=canonical_asset_id(vars['Asset'].get())
                 if not proposed:
                     messagebox.showerror('Manhole ID required',

@@ -7,6 +7,10 @@ the user explicitly says `PUBLISH`.
 Never overwrite an existing release/tag. If a published version needs a fix,
 create the next version.
 
+## Unreleased work-order date consistency checks (post-v111)
+
+Before publishing any later release, run `working_source/tests/regression_post_v111_work_order_group_dates.py` plus the entire active regression suite. Verify on real multi-page packets that every Pipe, Cleaning and Manhole row in one physical work-order group has the same date, blank row OCR can be filled from a confirmed/unambiguous group date, conflicting dates remain blocked for review, and manual Date edits propagate to that group without affecting a different work order. Check that a missing, future, or inconsistent date cannot reach Update Master; that legitimate printed rows are not dropped for unreadable date cells; and that existing future-date, per-cell OCR disagreement, total and asset review safeguards remain intact. Check the Date input in the Confirm Work Order dialog on Windows. No new release has been approved.
+
 ## Before changing release state
 
 1. Confirm development is on the intended work branch (currently `v95-work`).

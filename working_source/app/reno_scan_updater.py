@@ -447,6 +447,80 @@ def fmt_date(d):
     return d.strftime('%m/%d/%Y') if isinstance(d, datetime) else str(d or '')
 
 
+def _work_order_group_key(record):
+    page=record.get('_workorder_group')
+    return ('page',page) if page is not None else ('wo',str(record.get('wo') or ''))
+
+
+def _set_work_order_group_date(records, source_record, value, clear_group_review=False):
+    """One manually verified date belongs to every row of this physical W/O group."""
+    if not isinstance(value,datetime) or _future_date(value):
+        raise ValueError('Enter a valid work-order date no later than today')
+    value=datetime(value.year,value.month,value.day)
+    key=_work_order_group_key(source_record)
+    changed=0
+    for rec in records:
+        if _work_order_group_key(rec)!=key: continue
+        rec['date']=value; changed+=1
+        if clear_group_review:
+            for reason in ('Work order date missing','Work order dates conflict'):
+                if reason in rec.get('_field_review_reasons',[]):
+                    rec['_field_review_reasons']=[x for x in rec['_field_review_reasons'] if x!=reason]
+                    rec['warnings']=[x for x in rec.get('warnings',[]) if x!=reason]
+                    _clear_field_review_block(rec,reason)
+    return changed
+
+
+def _reconcile_work_order_group_dates(records, confirmed_by_page):
+    """Use the confirmed W/O date, or a single unambiguous group date, for all rows.
+
+    Never pick a conflicting OCR date arbitrarily. Keep existing future-date and
+    independent per-cell review blocks intact when populating the shared date.
+    """
+    groups={}
+    for rec in records:
+        groups.setdefault(_work_order_group_key(rec),[]).append(rec)
+    for key,rows in groups.items():
+        info=confirmed_by_page.get(key[1],{}) if key[0]=='page' else {}
+        confirmed=info.get('date')
+        if not isinstance(confirmed,datetime) or _future_date(confirmed):
+            confirmed=None
+        observed={datetime(d.year,d.month,d.day) for rec in rows
+                  for d in [rec.get('date')] if isinstance(d,datetime) and not _future_date(d)}
+        chosen=(datetime(confirmed.year,confirmed.month,confirmed.day) if confirmed else
+                (next(iter(observed)) if len(observed)==1 else None))
+        for rec in rows:
+            previous=rec.get('date')
+            if chosen is None:
+                reason='Work order dates conflict' if len(observed)>1 else 'Work order date missing'
+            elif isinstance(previous,datetime) and previous.date()!=chosen.date():
+                reason='Work order dates conflict'
+            else:
+                reason=None
+            rec['date']=chosen
+            if reason:
+                reasons=rec.setdefault('_field_review_reasons',[])
+                if reason not in reasons: reasons.append(reason)
+                warnings=rec.setdefault('warnings',[])
+                if reason not in warnings: warnings.append(reason)
+                _mark_field_review_block(rec,reason)
+
+
+def _work_order_date_problems(records):
+    """Independent master-write guard: no blank, future or mixed group dates."""
+    groups={}
+    for rec in records:
+        groups.setdefault(_work_order_group_key(rec),[]).append(rec)
+    problems=[]
+    for key,rows in groups.items():
+        dates={rec['date'].date() for rec in rows
+               if isinstance(rec.get('date'),datetime) and not _future_date(rec['date'])}
+        if len(dates)!=1 or any(not isinstance(rec.get('date'),datetime) or
+                                _future_date(rec.get('date')) for rec in rows):
+            problems.append(str(rows[0].get('wo') or 'UNKNOWN'))
+    return problems
+
+
 def operator_master_name(name):
     """Convert confirmed operator to first name + last initial when available.
 
@@ -4887,7 +4961,8 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
         if dominant_date is not None and (match or endpoint_signal):
             if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date):
                 d=dominant_date
-        if d is None and not mandatory_data_band and not date_evidence.get('future_dates'):
+        if (d is None and not mandatory_data_band and not date_evidence.get('future_dates')
+                and not (match or endpoint_signal)):
             continue
         if match:
             status='Matched' if value is not None else ('CHECK WHEEL WALK' if kind=='cleaning' else 'CHECK LENGTH')
@@ -5906,7 +5981,11 @@ class ConfirmDialog(tk.Toplevel):
             photo=ImageTk.PhotoImage(crop); self.crop_photos.append(photo)
             ttk.Label(self,image=photo).grid(row=r,column=2,sticky='w',padx=(6,12),pady=4)
 
-        next_row=4
+        ttk.Label(self,text='Work Order Date:').grid(row=4,column=0,sticky='e',padx=(12,6),pady=6)
+        self.date_var=tk.StringVar(value=fmt_date(self.guessed_date))
+        ttk.Entry(self,textvariable=self.date_var,width=34).grid(row=4,column=1,sticky='w',padx=6,pady=6)
+        ttk.Label(self,text='MM/DD/YYYY; leave blank to use table dates',foreground='#8A5200').grid(row=4,column=2,sticky='w',padx=(6,12),pady=4)
+        next_row=5
         self.manhole_count_var=None
         if guesses.get('expect_manhole_count'):
             ttk.Label(self,text='Expected Manholes:').grid(row=next_row,column=0,sticky='e',padx=(12,6),pady=6)
@@ -5949,7 +6028,13 @@ class ConfirmDialog(tk.Toplevel):
             if not re.fullmatch(r'\d{1,3}',raw_count) or int(raw_count)<1:
                 messagebox.showwarning('Manhole count','Enter the total number of Manhole surveys written in the Description of work performed section.',parent=self); return
             expected_manhole_count=int(raw_count)
-        self.result={'wo':wo,'truck':truck,'operator':master_op,'operator_full':full_op,'date':self.guessed_date,
+        date_text=self.date_var.get().strip()
+        try:
+            date=datetime.strptime(date_text,'%m/%d/%Y') if date_text else None
+            if date is not None and _future_date(date): raise ValueError('Date cannot be later than today')
+        except ValueError:
+            messagebox.showwarning('Work order date','Enter a valid MM/DD/YYYY date no later than today, or leave it blank to use PDF table dates.',parent=self); return
+        self.result={'wo':wo,'truck':truck,'operator':master_op,'operator_full':full_op,'date':date,
                      'expected_manhole_count':expected_manhole_count}; self.destroy()
     def cancel(self): self.result=None; self.destroy()
 
@@ -6833,6 +6918,7 @@ class App(tk.Tk):
         """Finish one parsed row and publish it to the live summary immediately."""
         if rec.get('kind')=='Pipe': refresh_length_status(rec)
         rec_date=rec.pop('row_date',None) or use_date
+        rec['_workorder_group']=current_wo.get('_workorder_page')
         if _future_date(rec_date):
             rec.setdefault('_field_review_reasons',[]).append('Future date rejected')
             rec.setdefault('validation_warnings',[]).append('Future date rejected')
@@ -7249,6 +7335,9 @@ class App(tk.Tk):
             doc.close()
             save_ocr_cache()
             self.stop_analysis_animation()
+        # Assign one date to every physical work-order group before final display.
+        # Unresolved mixed/missing dates remain review-only, never master-writable.
+        _reconcile_work_order_group_dates(self.records,confirmed_by_page)
         seen=set()
         for row_i,r in enumerate(self.records):
             if r.get('kind')=='Pipe':
@@ -7575,7 +7664,7 @@ class App(tk.Tk):
             v=tk.StringVar(value=val); vars[lab]=v
             ttk.Entry(win,textvariable=v,width=30).grid(row=n,column=1,padx=8,pady=6,sticky='w')
             add_preview(n,key)
-        ttk.Label(win,text='Compare each value with its PDF image before saving.',foreground='#8A5200').grid(
+        ttk.Label(win,text='Date changes apply to every row in this work order. Compare values with the PDF before saving.',foreground='#8A5200').grid(
             row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
         win.columnconfigure(2,weight=1)
         def save():
@@ -7623,6 +7712,7 @@ class App(tk.Tk):
                     r['_length_user_edited']=True
                 for reason in confirmed_reasons:
                     _clear_field_review_block(r,reason)
+            _set_work_order_group_date(self.records,r,edited_date,clear_group_review=True)
             refresh_length_status(r)
             self.revalidate_total_checks_for_record(r)
             self.resolve_pipe_duplicate_groups(prompt=False,update_mode=False)
@@ -7729,6 +7819,13 @@ class App(tk.Tk):
         win.update_idletasks(); win.geometry(f'+{self.winfo_rootx()+30}+{self.winfo_rooty()+35}')
     def update_master(self):
         if not self.records and not self.trouble_tickets: messagebox.showwarning('Nothing to update','Analyze a PDF first.'); return
+        date_problems=_work_order_date_problems(self.records)
+        if date_problems:
+            messagebox.showerror('Work order dates need review',
+                'Every row in a work-order group must have the same valid date.\n\n'
+                'Use Edit Selected to verify the date for the whole group.\n\n'
+                'Work order(s): '+', '.join(dict.fromkeys(date_problems)))
+            return
         future_rows=[r for r in self.records if _future_date(r.get('date'))]
         future_tickets=[t for t in self.trouble_tickets if _future_date(t.get('date')) or t.get('_future_date_rejected')]
         if future_rows or future_tickets:

@@ -11,6 +11,15 @@
 - Added `working_source/tests/regression_post_v111_work_order_group_dates.py` for focused synthetic coverage. Full regression suite, real PDFs, Windows Excel COM and Tkinter testing remain to be run; this is **not** a released change.
 - Continue development on `v95-work`. Production remains verified **v111** until the user explicitly says `PUBLISH`.
 
+## In development — selective Manhole ID identity verification (unreleased, November 18, 2026)
+
+- A Manhole ID appearing in the master is **not** enough to prove it was read accurately from the scanned page. Existing Reno and B&C OCR matching paths can produce a plausible but incorrect known Manhole ID.
+- Automatic existing-Manhole matches now require the **same complete, exact, known ID from at least two distinct OCR source treatments**. For Reno, compare ruled cell and independently padded cell reads. For B&C positioned tokens, track PSM-6 and PSM-11 separately; for B&C grid, retain original cell, batch/contextual and positioned-token source observations. Conflicting recognized master IDs, missing independent agreement, and fuzzy/numeric-only lookups are marked `VERIFY MANHOLE ID AGAINST PDF` and excluded from automatic master writes.
+- Clear corroborated existing IDs remain automatic: do **not** prompt on every Manhole row. Only questionable matches require selecting the row, checking its source PDF crop/page and explicitly confirming or correcting the ID.
+- Reno Manhole rows now retain their ID/date image crops for review. Manual Manhole corrections use **exact** master-ID lookup only, never fuzzy correction to a different Manhole. Existing distinct NEW MANHOLE approval is retained without a duplicate global verification popup.
+- The master-write guard checks only unresolved questionable Manhole matches, not all unverified rows. Existing duplicate, new-asset, date, count, partial-row and total safeguards remain.
+- Focused synthetic regression: `working_source/tests/regression_post_v111_selective_manhole_id_review.py`. Full suite and real customer scan/Windows Excel/Tkinter verification remain outstanding. This change is **not published**; v111 remains production. Do not promise 100% unattended OCR accuracy without validated scan evidence.
+
 ## Released in v111 — future-date rejection (October 16, 2026)
 
 The production update manifest now points to verified v111. The application compares extracted dates with the computer's current local calendar date (today is allowed), rejects future report and table date candidates, and retains affected physical table rows for manual review. The Trouble Ticket parser flags a future printed date instead of silently falling back to the work-order date; rejected ticket dates must be corrected in the editor. Future manual dates are prohibited in both editors and Update Master rechecks dates and rejected-ticket markers before any workbook write.

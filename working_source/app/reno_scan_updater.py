@@ -450,8 +450,29 @@ def fmt_date(d):
 MANHOLE_ID_REVIEW_REASON='VERIFY MANHOLE ID AGAINST PDF'
 
 
+def _manhole_match_questionable(record,known):
+    """Require independent exact PDF reads for an automatic Manhole master match.
+
+    The master is an allowlist, not evidence for OCR character correction.
+    """
+    if record.get('kind')!='Manhole' or record.get('status')!='Matched':
+        return False
+    selected=asset_key(record.get('asset'))
+    if not selected or selected not in known:
+        return True
+    sources=record.get('_manhole_id_sources') or []
+    source_keys=[]
+    for source in sources:
+        exact={asset_key(raw) for raw in (source or []) if asset_key(raw) in known}
+        source_keys.append(exact)
+    candidates=set().union(*source_keys) if source_keys else set()
+    if candidates-{selected}:
+        return True
+    return sum(selected in keys for keys in source_keys)<2
+
+
 def _require_manhole_id_review(record):
-    """Never treat an OCR/master agreement as proof of a printed Manhole ID."""
+    """Require PDF review only when OCR identity evidence is questionable."""
     if record.get('kind')!='Manhole': return
     record['_manhole_id_review_required']=True
     record['_manhole_id_verified']=False
@@ -3790,7 +3811,9 @@ def parse_manhole_list(page, master_index, quick_text, on_row=None, on_progress=
         date_img=img[y1:y2,int(.090*w):int(.180*w)]
         id_img=img[y1:y2,int(.155*w):int(.300*w)]
         full_sid_candidates=_ocr_asset_candidates(id_img,fast_plain=False,asset_format=asset_format)
-        sid_candidates=_ocr_digits(id_img,False)+full_sid_candidates
+        padded_id_img=cv2.copyMakeBorder(id_img,8,8,16,16,cv2.BORDER_CONSTANT,value=(255,255,255))
+        padded_candidates=_ocr_asset_candidates(padded_id_img,fast_plain=True,asset_format=asset_format)
+        sid_candidates=_ocr_digits(id_img,False)+full_sid_candidates+padded_candidates
         new_options=_new_suffix_asset_candidates(full_sid_candidates,known.keys())
         new_sid=new_options[0] if new_options else ''
         sid='' if new_sid else _best_known_id(sid_candidates,known.keys(),max_dist=1)
@@ -3804,7 +3827,8 @@ def parse_manhole_list(page, master_index, quick_text, on_row=None, on_progress=
         blanks=0
         rec={'kind':'Manhole','asset':observed_sid,'video_length':None,
              'row_date':_parse_sheet_date(date_img),'status':'Matched' if sid else 'NEW MANHOLE',
-             '_field_previews':{'asset':id_img.copy(),'date':date_img.copy()}}
+             '_field_previews':{'asset':id_img.copy(),'date':date_img.copy()},
+             '_manhole_id_sources':[full_sid_candidates,padded_candidates]}
         if not sid: rec['skip_update']=True
         rows.append(rec)
         if on_row: on_row(rec)
@@ -3830,11 +3854,14 @@ def _retry_manhole_list_rows(page, master_index, quick_text, on_progress=None):
         date_img=img[y1:y2,int(.080*w):int(.190*w)]
         id_img=img[y1:y2,int(.135*w):int(.325*w)]
         observations=[]
-        for value in _ocr_asset_candidates(id_img,fast_plain=False,asset_format=asset_format):
+        direct_observations=_ocr_asset_candidates(id_img,fast_plain=False,asset_format=asset_format)
+        padded_observations=[]
+        for value in direct_observations:
             if value not in observations: observations.append(value)
         try:
             padded=cv2.copyMakeBorder(id_img,8,8,16,16,cv2.BORDER_CONSTANT,value=(255,255,255))
-            for value in _ocr_asset_candidates(padded,fast_plain=True,asset_format=asset_format):
+            padded_observations=_ocr_asset_candidates(padded,fast_plain=True,asset_format=asset_format)
+            for value in padded_observations:
                 if value not in observations: observations.append(value)
             gray=cv2.cvtColor(padded,cv2.COLOR_RGB2GRAY)
             for psm in (8,13):
@@ -3853,7 +3880,8 @@ def _retry_manhole_list_rows(page, master_index, quick_text, on_progress=None):
         seen.add(key)
         rec={'kind':'Manhole','asset':observed,'video_length':None,
              'row_date':_parse_sheet_date(date_img),'status':'Matched' if sid else 'NEW MANHOLE',
-             '_field_previews':{'asset':id_img.copy(),'date':date_img.copy()}}
+             '_field_previews':{'asset':id_img.copy(),'date':date_img.copy()},
+             '_manhole_id_sources':[direct_observations,padded_observations]}
         if not sid: rec['skip_update']=True
         rows.append(rec)
     return rows
@@ -5237,7 +5265,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             formatted=_printed_asset_tokens(raw,asset_format)
             if not formatted: continue
             item,status=_resolve_full_asset(formatted,known)
-            token_rows.append((y+hh//2,item,status,formatted[0]))
+            token_rows.append((y+hh//2,item,status,formatted[0],psm))
 
     token_out=[]
     if token_rows:
@@ -5248,7 +5276,11 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 if clustered[-1][1] is None and row[1] is not None: clustered[-1]=row
             else: clustered.append(row)
         seen=set()
-        for yc,item,status,raw in clustered:
+        for yc,item,status,raw,_psm in clustered:
+            pass_observations=[
+                [candidate for token_y,_item,_status,candidate,token_psm in token_rows
+                 if token_psm==source_psm and abs(token_y-yc)<h*.012]
+                for source_psm in (6,11)]
             if on_progress: on_progress()
             sid=item['asset'] if item else (_best_observed_asset_id([raw],known) or canonical_asset_id(raw))
             unique_key=item['asset_key'] if item else f'row-{yc}'
@@ -5257,7 +5289,8 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             near=[x for x in token_dates if abs(x[0]-yc)<h*.025]
             if near: row_date=min(near,key=lambda x:abs(x[0]-yc))[1]
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
-                 'video_length':None,'row_date':row_date,'status':status}
+                 'video_length':None,'row_date':row_date,'status':status,
+                 '_manhole_id_sources':pass_observations}
             preview_half=max(8,int(round(h*.018)))
             asset_preview=img[max(0,int(yc)-preview_half):min(h,int(yc)+preview_half),0:int(w*.38)]
             date_preview=img[max(0,int(yc)-preview_half):min(h,int(yc)+preview_half),int(w*.60):w]
@@ -5319,7 +5352,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 source_observations.append(contextual_observations)
             token_margin=max(2,int(round(h*.004)))
             nearby_tokens=[
-                raw for token_y,_token_item,_token_status,raw in token_rows
+                raw for token_y,_token_item,_token_status,raw,_psm in token_rows
                 if int(y1)-token_margin<=int(token_y)<=int(y2)+token_margin]
             if nearby_tokens:
                 source_observations.append(nearby_tokens)
@@ -5364,7 +5397,8 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                 else:
                     sid='?'
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
-                 'video_length':None,'row_date':row_date,'status':status}
+                 'video_length':None,'row_date':row_date,'status':status,
+                 '_manhole_id_sources':source_observations}
             if len(confirmed_suffixes)==1: rec['_mh_suffix_confirmed']=True
             rec['_field_previews']={
                 'asset':id_img.copy() if getattr(id_img,'size',0) else None,
@@ -5432,17 +5466,22 @@ def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation
             except Exception:
                 pass
             observations=[]
+            source_observations=[]
             for cell,fast in cells:
+                source=[]
                 for value in _ocr_asset_candidates(cell,fast_plain=fast,asset_format=asset_format):
                     if value not in observations: observations.append(value)
+                    if value not in source: source.append(value)
                 try:
                     gray=cv2.cvtColor(cell,cv2.COLOR_RGB2GRAY)
                     for psm in (8,13):
                         raw=cached_ocr_string(gray,config=f'--psm {psm} -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
                         for value in _printed_asset_tokens(raw,asset_format):
                             if value not in observations: observations.append(value)
+                            if value not in source: source.append(value)
                 except Exception:
                     pass
+                source_observations.append(source)
             if not observations: continue
             confirmed_suffixes=list(dict.fromkeys(_confirmed_suffix_asset_candidates(
                 base,known,asset_format=asset_format)))
@@ -5457,7 +5496,8 @@ def _retry_year15_manhole_rows(page, master_index, on_progress=None, orientation
             seen.add(key)
             date_img=img[y1:y2,date_left:date_right]
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
-                 'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status}
+                 'video_length':None,'row_date':_parse_sheet_date(date_img),'status':status,
+                 '_manhole_id_sources':source_observations}
             if len(confirmed_suffixes)==1: rec['_mh_suffix_confirmed']=True
             rec['_field_previews']={
                 'asset':base.copy() if getattr(base,'size',0) else None,
@@ -6995,7 +7035,7 @@ class App(tk.Tk):
         else:
             rec['display_asset']=rec.get('asset','')
         rec['source_page']=page_number; rec['warnings']=list(rec.pop('validation_warnings',[]))
-        if rec.get('kind')=='Manhole':
+        if _manhole_match_questionable(rec,idx.get('manholes',{})):
             _require_manhole_id_review(rec)
         if str(rec.get('status','')).startswith(('NEW PIPE','NEW MANHOLE')):
             base_info=new_asset_base_info(rec,idx)
@@ -7721,7 +7761,8 @@ class App(tk.Tk):
             row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
         win.columnconfigure(2,weight=1)
         def save():
-            if r.get('kind')=='Manhole':
+            if (r.get('kind')=='Manhole' and r.get('_manhole_id_review_required')
+                    and not r.get('_manhole_id_verified')):
                 proposed=canonical_asset_id(vars['Asset'].get())
                 if not proposed:
                     messagebox.showerror('Manhole ID required',
@@ -7781,7 +7822,7 @@ class App(tk.Tk):
                 for reason in confirmed_reasons:
                     _clear_field_review_block(r,reason)
             _set_work_order_group_date(self.records,r,edited_date,clear_group_review=True)
-            if r.get('kind')=='Manhole':
+            if r.get('kind')=='Manhole' and r.get('_manhole_id_review_required'):
                 _confirm_manhole_id_review(r)
             refresh_length_status(r)
             self.revalidate_total_checks_for_record(r)
@@ -7898,13 +7939,14 @@ class App(tk.Tk):
             return
         unverified_manhole_rows=[
             r for r in self.records if r.get('kind')=='Manhole' and
+            r.get('_manhole_id_review_required') and
             not r.get('_manhole_id_verified') and not r.get('_unmatched_ignored')]
         if unverified_manhole_rows:
             messagebox.showerror('Manhole IDs require PDF verification',
                 f'{len(unverified_manhole_rows)} Manhole row(s) have not been manually '
                 'verified against the printed PDF.\n\n'
-                'Even an ID that matches the master may be an OCR misread. '
-                'Use Edit Selected to compare each Manhole ID with its PDF '
+                'Only questionable OCR matches need verification. '
+                'Use Edit Selected to compare each flagged ID with its PDF '
                 'image and explicitly confirm it before updating.')
             return
         future_rows=[r for r in self.records if _future_date(r.get('date'))]

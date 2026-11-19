@@ -447,6 +447,50 @@ def fmt_date(d):
     return d.strftime('%m/%d/%Y') if isinstance(d, datetime) else str(d or '')
 
 
+MANHOLE_ID_REVIEW_REASON='VERIFY MANHOLE ID AGAINST PDF'
+
+
+def _require_manhole_id_review(record):
+    """Never treat an OCR/master agreement as proof of a printed Manhole ID."""
+    if record.get('kind')!='Manhole': return
+    record['_manhole_id_review_required']=True
+    record['_manhole_id_verified']=False
+    reasons=record.setdefault('_field_review_reasons',[])
+    if MANHOLE_ID_REVIEW_REASON not in reasons:
+        reasons.append(MANHOLE_ID_REVIEW_REASON)
+    warnings=record.setdefault('warnings',[])
+    if MANHOLE_ID_REVIEW_REASON not in warnings:
+        warnings.append(MANHOLE_ID_REVIEW_REASON)
+    _mark_field_review_block(record,MANHOLE_ID_REVIEW_REASON)
+
+
+def _confirm_manhole_id_review(record):
+    """Only a deliberate reviewer confirmation clears the ID evidence blocker."""
+    if record.get('kind')!='Manhole':
+        return
+    if not asset_key(record.get('asset')):
+        raise ValueError('Enter the complete printed Manhole ID before confirming it.')
+    record['_manhole_id_verified']=True
+    record['_field_review_reasons']=[
+        reason for reason in record.get('_field_review_reasons',[])
+        if reason!=MANHOLE_ID_REVIEW_REASON]
+    record['warnings']=[
+        reason for reason in record.get('warnings',[])
+        if reason!=MANHOLE_ID_REVIEW_REASON]
+    _clear_field_review_block(record,MANHOLE_ID_REVIEW_REASON)
+
+
+def _resolve_manhole_manual_id(asset,known):
+    """Never fuzzy-correct a manually entered ID to a different master Manhole."""
+    asset=canonical_asset_id(asset)
+    item=known.get(asset_key(asset))
+    if item:
+        return item,'Matched'
+    if _new_suffix_asset_candidates([asset],known):
+        return None,'NEW MANHOLE'
+    return None,'NOT MATCHED'
+
+
 def _work_order_group_key(record):
     page=record.get('_workorder_group')
     return ('page',page) if page is not None else ('wo',str(record.get('wo') or ''))
@@ -3759,7 +3803,8 @@ def parse_manhole_list(page, master_index, quick_text, on_row=None, on_progress=
         seen.add(observed_sid)
         blanks=0
         rec={'kind':'Manhole','asset':observed_sid,'video_length':None,
-             'row_date':_parse_sheet_date(date_img),'status':'Matched' if sid else 'NEW MANHOLE'}
+             'row_date':_parse_sheet_date(date_img),'status':'Matched' if sid else 'NEW MANHOLE',
+             '_field_previews':{'asset':id_img.copy(),'date':date_img.copy()}}
         if not sid: rec['skip_update']=True
         rows.append(rec)
         if on_row: on_row(rec)
@@ -3807,7 +3852,8 @@ def _retry_manhole_list_rows(page, master_index, quick_text, on_progress=None):
         if not key or key in seen: continue
         seen.add(key)
         rec={'kind':'Manhole','asset':observed,'video_length':None,
-             'row_date':_parse_sheet_date(date_img),'status':'Matched' if sid else 'NEW MANHOLE'}
+             'row_date':_parse_sheet_date(date_img),'status':'Matched' if sid else 'NEW MANHOLE',
+             '_field_previews':{'asset':id_img.copy(),'date':date_img.copy()}}
         if not sid: rec['skip_update']=True
         rows.append(rec)
     return rows
@@ -5571,11 +5617,14 @@ def apply_manual_asset_edit(record,master_index,up=None,down=None,asset=None):
         asset=canonical_asset_id(asset)
         if not asset: raise ValueError('Asset is required.')
         clear_asset_decision_if_changed(asset_key(asset))
-        item,status=_resolve_full_asset([asset],master_index.get('manholes',{}))
+        item,status=_resolve_manhole_manual_id(asset,master_index.get('manholes',{}))
         record['asset']=item.get('asset') if item else asset
         record['asset_key']=item.get('asset_key') if item else asset_key(asset)
         record['display_asset']=record['asset']; record['display_asset_base']=record['asset']
         record['skip_update']=not bool(item); record['status']='Matched' if item else status
+        if record.get('_manhole_id_review_required') and (
+                old_identity!=asset_key(asset) or not record.get('_manhole_id_verified')):
+            _require_manhole_id_review(record)
         return bool(item)
     return False
 
@@ -6946,6 +6995,8 @@ class App(tk.Tk):
         else:
             rec['display_asset']=rec.get('asset','')
         rec['source_page']=page_number; rec['warnings']=list(rec.pop('validation_warnings',[]))
+        if rec.get('kind')=='Manhole':
+            _require_manhole_id_review(rec)
         if str(rec.get('status','')).startswith(('NEW PIPE','NEW MANHOLE')):
             base_info=new_asset_base_info(rec,idx)
             if base_info:
@@ -7344,7 +7395,9 @@ class App(tk.Tk):
                 continue
             key=((r.get('kind'),asset_key(r.get('up','')),asset_key(r.get('down',''))) if r.get('kind') in ('Pipe','Cleaning')
                  else (r.get('kind'),r.get('asset_key') or asset_key(r.get('asset',''))))
-            if r.get('skip_update'): key=(key,'unmatched',r.get('source_page'),row_i)
+            if r.get('skip_update') and not (r.get('kind')=='Manhole' and
+                                                r.get('_manhole_id_review_required')):
+                key=(key,'unmatched',r.get('source_page'),row_i)
             if key in seen:
                 r.setdefault('warnings',[]).append('DUPLICATE IN PDF'); r['skip_update']=True
             seen.add(key)
@@ -7668,6 +7721,21 @@ class App(tk.Tk):
             row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
         win.columnconfigure(2,weight=1)
         def save():
+            if r.get('kind')=='Manhole':
+                proposed=canonical_asset_id(vars['Asset'].get())
+                if not proposed:
+                    messagebox.showerror('Manhole ID required',
+                        'Enter the complete Manhole ID printed in the PDF.',parent=win)
+                    return
+                if not messagebox.askyesno(
+                    'Verify printed Manhole ID',
+                    'Read the Manhole ID directly from the PDF crop or original PDF page.\n\n'
+                    f'Is the exact printed ID {proposed}?\n\n'
+                    'Matching an existing ID in the master does NOT prove that '
+                    'OCR read the ID correctly. Choose No if you have not '
+                    'independently verified every character.',
+                    parent=win):
+                    return
             # A no-op save never silently approves independently conflicting OCR.
             for reason,title,field in (
                     ('Length reads disagree','Confirm PDF Length','Length'),
@@ -7713,6 +7781,8 @@ class App(tk.Tk):
                 for reason in confirmed_reasons:
                     _clear_field_review_block(r,reason)
             _set_work_order_group_date(self.records,r,edited_date,clear_group_review=True)
+            if r.get('kind')=='Manhole':
+                _confirm_manhole_id_review(r)
             refresh_length_status(r)
             self.revalidate_total_checks_for_record(r)
             self.resolve_pipe_duplicate_groups(prompt=False,update_mode=False)
@@ -7825,6 +7895,17 @@ class App(tk.Tk):
                 'Every row in a work-order group must have the same valid date.\n\n'
                 'Use Edit Selected to verify the date for the whole group.\n\n'
                 'Work order(s): '+', '.join(dict.fromkeys(date_problems)))
+            return
+        unverified_manhole_rows=[
+            r for r in self.records if r.get('kind')=='Manhole' and
+            not r.get('_manhole_id_verified') and not r.get('_unmatched_ignored')]
+        if unverified_manhole_rows:
+            messagebox.showerror('Manhole IDs require PDF verification',
+                f'{len(unverified_manhole_rows)} Manhole row(s) have not been manually '
+                'verified against the printed PDF.\n\n'
+                'Even an ID that matches the master may be an OCR misread. '
+                'Use Edit Selected to compare each Manhole ID with its PDF '
+                'image and explicitly confirm it before updating.')
             return
         future_rows=[r for r in self.records if _future_date(r.get('date'))]
         future_tickets=[t for t in self.trouble_tickets if _future_date(t.get('date')) or t.get('_future_date_rejected')]

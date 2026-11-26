@@ -468,7 +468,40 @@ def _manhole_match_questionable(record,known):
     candidates=set().union(*source_keys) if source_keys else set()
     if candidates-{selected}:
         return True
-    return sum(selected in keys for keys in source_keys)<2
+    return (sum(selected in keys for keys in source_keys)<2 and
+            record.get('_manhole_high_confidence_exact')!=selected)
+
+
+def _manhole_single_read_check(record,known,asset_format):
+    """For one exact source only, try an isolated high-confidence literal PDF read.
+
+    Never rescue fuzzy/numeric-only matches or conflicting existing IDs.
+    """
+    if record.get('kind')!='Manhole' or record.get('status')!='Matched':
+        return
+    selected=asset_key(record.get('asset'))
+    sources=record.get('_manhole_id_sources') or []
+    exact=[{asset_key(raw) for raw in source if asset_key(raw) in known}
+           for source in sources if source]
+    if sum(selected in keys for keys in exact)!=1 or set().union(*exact)-{selected}:
+        return
+    crop=(record.get('_field_previews') or {}).get('asset')
+    if not getattr(crop,'size',0): return
+    try:
+        rule=asset_format or _infer_asset_format([known[selected].get('asset') or selected])
+        gray=cv2.cvtColor(crop,cv2.COLOR_RGB2GRAY)
+        gray=cv2.resize(gray,None,fx=2.4,fy=2.4,interpolation=cv2.INTER_CUBIC)
+        gray=cv2.copyMakeBorder(gray,12,12,12,12,cv2.BORDER_CONSTANT,value=255)
+        data=pytesseract.image_to_data(gray,config='--psm 7',output_type=pytesseract.Output.DICT)
+        literal=[]
+        for raw,confidence in zip(data.get('text',[]),data.get('conf',[])):
+            raw=str(raw or '').strip().upper()
+            if _asset_value_matches_format(raw,rule):
+                literal.append((asset_key(raw),float(confidence)))
+        if (len(literal)==1 and literal[0][0]==selected and literal[0][1]>=85):
+            record['_manhole_high_confidence_exact']=selected
+    except Exception:
+        pass
 
 
 def _require_manhole_id_review(record):
@@ -517,18 +550,21 @@ def _work_order_group_key(record):
     return ('page',page) if page is not None else ('wo',str(record.get('wo') or ''))
 
 
-def _set_work_order_group_date(records, source_record, value, clear_group_review=False):
-    """One manually verified date belongs to every row of this physical W/O group."""
+def _set_work_order_group_date(records, source_record, value, clear_group_review=False,
+                               whole_group=True):
+    """Apply a verified date to this row, or the whole W/O only by explicit choice."""
     if not isinstance(value,datetime) or _future_date(value):
         raise ValueError('Enter a valid work-order date no later than today')
     value=datetime(value.year,value.month,value.day)
     key=_work_order_group_key(source_record)
     changed=0
     for rec in records:
-        if _work_order_group_key(rec)!=key: continue
+        if _work_order_group_key(rec)!=key or (not whole_group and rec is not source_record):
+            continue
         rec['date']=value; changed+=1
         if clear_group_review:
-            for reason in ('Work order date missing','Work order dates conflict'):
+            for reason in ('Work order date missing','Work order dates conflict',
+                           'Overnight row date needs review'):
                 if reason in rec.get('_field_review_reasons',[]):
                     rec['_field_review_reasons']=[x for x in rec['_field_review_reasons'] if x!=reason]
                     rec['warnings']=[x for x in rec.get('warnings',[]) if x!=reason]
@@ -537,11 +573,7 @@ def _set_work_order_group_date(records, source_record, value, clear_group_review
 
 
 def _reconcile_work_order_group_dates(records, confirmed_by_page):
-    """Use the confirmed W/O date, or a single unambiguous group date, for all rows.
-
-    Never pick a conflicting OCR date arbitrarily. Keep existing future-date and
-    independent per-cell review blocks intact when populating the shared date.
-    """
+    """Retain actual row dates for overnight orders; never invent the midnight split."""
     groups={}
     for rec in records:
         groups.setdefault(_work_order_group_key(rec),[]).append(rec)
@@ -550,19 +582,47 @@ def _reconcile_work_order_group_dates(records, confirmed_by_page):
         confirmed=info.get('date')
         if not isinstance(confirmed,datetime) or _future_date(confirmed):
             confirmed=None
-        observed={datetime(d.year,d.month,d.day) for rec in rows
-                  for d in [rec.get('date')] if isinstance(d,datetime) and not _future_date(d)}
-        chosen=(datetime(confirmed.year,confirmed.month,confirmed.day) if confirmed else
-                (next(iter(observed)) if len(observed)==1 else None))
-        for rec in rows:
-            previous=rec.get('date')
-            if chosen is None:
-                reason='Work order dates conflict' if len(observed)>1 else 'Work order date missing'
-            elif isinstance(previous,datetime) and previous.date()!=chosen.date():
-                reason='Work order dates conflict'
+        else:
+            confirmed=datetime(confirmed.year,confirmed.month,confirmed.day)
+        def observed_date(rec):
+            value=rec.get('_row_date_observed',rec.get('date'))
+            if isinstance(value,datetime) and not _future_date(value):
+                return datetime(value.year,value.month,value.day)
+            return None
+        observations=[observed_date(rec) for rec in rows]
+        observed={d for d in observations if d is not None}
+        # The cover-sheet date anchors an overnight order when available.
+        possible=observed|({confirmed} if confirmed else set())
+        overnight=(len(possible)==2 and (max(possible)-min(possible)).days==1)
+        single=next(iter(possible)) if len(possible)==1 else None
+        for i,rec in enumerate(rows):
+            previous=observations[i]
+            reason=None
+            if single is not None:
+                rec['date']=single
+            elif overnight:
+                rec['date']=previous
+                if previous is None:
+                    # Only infer a missing row date when bracketed by same-date
+                    # physical rows on the same page. Never assume the midnight boundary.
+                    page=rec.get('source_page')
+                    before=next((observations[j] for j in range(i-1,-1,-1)
+                                 if rows[j].get('source_page')==page and observations[j]),None)
+                    after=next((observations[j] for j in range(i+1,len(rows))
+                                if rows[j].get('source_page')==page and observations[j]),None)
+                    if page is not None and before is not None and before==after:
+                        rec['date']=before
+                    else:
+                        reason='Overnight row date needs review'
+                elif (previous!=confirmed and observations.count(previous)<2 and
+                      not rec.get('_row_date_strong')):
+                    # One uncorroborated adjacent-day read could still be a typo/OCR error.
+                    reason='Overnight row date needs review'
             else:
-                reason=None
-            rec['date']=chosen
+                # Preserve conflicting printed values for review, not a fabricated
+                # group-wide value. The independent master gate blocks >2/nonadjacent dates.
+                rec['date']=previous
+                reason='Work order dates conflict' if possible else 'Work order date missing'
             if reason:
                 reasons=rec.setdefault('_field_review_reasons',[])
                 if reason not in reasons: reasons.append(reason)
@@ -572,7 +632,7 @@ def _reconcile_work_order_group_dates(records, confirmed_by_page):
 
 
 def _work_order_date_problems(records):
-    """Independent master-write guard: no blank, future or mixed group dates."""
+    """Reject invalid dates, unresolved date review, and non-overnight mixed dates."""
     groups={}
     for rec in records:
         groups.setdefault(_work_order_group_key(rec),[]).append(rec)
@@ -580,8 +640,11 @@ def _work_order_date_problems(records):
     for key,rows in groups.items():
         dates={rec['date'].date() for rec in rows
                if isinstance(rec.get('date'),datetime) and not _future_date(rec['date'])}
-        if len(dates)!=1 or any(not isinstance(rec.get('date'),datetime) or
-                                _future_date(rec.get('date')) for rec in rows):
+        if (not dates or len(dates)>2 or (max(dates)-min(dates)).days>1 or
+                any(not isinstance(rec.get('date'),datetime) or _future_date(rec.get('date')) or
+                    set(rec.get('_field_review_reasons',[])).intersection({
+                        'Work order date missing','Work order dates conflict','Overnight row date needs review'})
+                    for rec in rows)):
             problems.append(str(rows[0].get('wo') or 'UNKNOWN'))
     return problems
 
@@ -2725,7 +2788,14 @@ def _parse_sheet_date_text_candidates(text, expected_date=None, allow_future=Fal
             if y<100: y=2000+y
             strong=(len(c_s)==4 and 2020<=y<=2100)
         if expected_year and y!=expected_year:
-            y=expected_year; repaired=True; strong=False
+            # A literal December/January overnight date is not a damaged year.
+            try:
+                adjacent=(strong and isinstance(expected_date,datetime) and
+                          abs((datetime(y,m,d).date()-expected_date.date()).days)==1)
+            except ValueError:
+                adjacent=False
+            if not adjacent:
+                y=expected_year; repaired=True; strong=False
         if not (_plausible_sheet_year(y) and 1<=m<=12 and 1<=d<=31):
             continue
         try:
@@ -5032,8 +5102,11 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             if (not mandatory_data_band and
                     not _keep_unresolved_pair_row(unresolved_up,unresolved_dn,value,d,asset_format=asset_format)):
                 continue
+        raw_date=d
+        adjacent_date=bool(isinstance(raw_date,datetime) and isinstance(dominant_date,datetime)
+                           and abs((raw_date.date()-dominant_date.date()).days)==1)
         if dominant_date is not None and (match or endpoint_signal):
-            if d is None or not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date):
+            if d is None or (not adjacent_date and not _date_outlier_is_well_supported(date_evidence,dominant_date,expected_date)):
                 d=dominant_date
         if (d is None and not mandatory_data_band and not date_evidence.get('future_dates')
                 and not (match or endpoint_signal)):
@@ -5047,7 +5120,10 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
             down=_best_observed_asset_id(dn_obs,endpoint_items) or (canonical_asset_id(dn_obs[0]) if dn_obs else '?')
             asset='' if status=='NEW PIPE' else f'UNMATCHED ROW {len(rows)+1}'
         rec={'kind':'Cleaning' if kind=='cleaning' else 'Pipe','asset':asset,
-             'up':up,'down':down,'video_length':value,'row_date':d,'status':status}
+             'up':up,'down':down,'video_length':value,'row_date':d,'status':status,
+             '_row_date_observed':d if raw_date is not None else None,
+             '_row_date_strong':bool(raw_date==d and (date_evidence.get('strong_votes') or {}).get(d,0)>=3
+                                    and not date_evidence.get('conflicting_sources'))}
         # Distinct ruled-cell and whole-table/stacked treatments disagree:
         # keep the printed row and its original source crop, but fail closed.
         if disagreement_sources:
@@ -5084,6 +5160,7 @@ def parse_year15_pair_list(page, master_index, kind, prepared=None, on_row=None,
                 rec.setdefault('validation_warnings',[]).append('Date reads disagree')
                 _mark_field_review_block(rec,'Date reads disagree')
         elif (dominant_date is not None and d is not None and d!=dominant_date and
+              not (adjacent_date and (date_evidence.get('strong_votes') or {}).get(d,0)>=3) and
               (match or endpoint_signal)):
             # Several segmentation settings can all repeat the same mistaken
             # full-date OCR. Preserve the actual cell observation, but do not
@@ -7012,7 +7089,9 @@ class App(tk.Tk):
     def commit_extracted_record(self,rec,current_wo,use_date,idx,page_number,processed):
         """Finish one parsed row and publish it to the live summary immediately."""
         if rec.get('kind')=='Pipe': refresh_length_status(rec)
-        rec_date=rec.pop('row_date',None) or use_date
+        printed_date=rec.pop('row_date',None)
+        rec.setdefault('_row_date_observed',printed_date)
+        rec_date=printed_date or use_date
         rec['_workorder_group']=current_wo.get('_workorder_page')
         if _future_date(rec_date):
             rec.setdefault('_field_review_reasons',[]).append('Future date rejected')
@@ -7042,7 +7121,9 @@ class App(tk.Tk):
             rec['display_asset']=rec.get('asset','')
         rec['source_page']=page_number; rec['warnings']=list(rec.pop('validation_warnings',[]))
         if _manhole_match_questionable(rec,idx.get('manholes',{})):
-            _require_manhole_id_review(rec)
+            _manhole_single_read_check(rec,idx.get('manholes',{}),idx.get('asset_format'))
+            if _manhole_match_questionable(rec,idx.get('manholes',{})):
+                _require_manhole_id_review(rec)
         if str(rec.get('status','')).startswith(('NEW PIPE','NEW MANHOLE')):
             base_info=new_asset_base_info(rec,idx)
             if base_info:
@@ -7432,8 +7513,8 @@ class App(tk.Tk):
             doc.close()
             save_ocr_cache()
             self.stop_analysis_animation()
-        # Assign one date to every physical work-order group before final display.
-        # Unresolved mixed/missing dates remain review-only, never master-writable.
+        # Reconcile single-day and overnight work orders before final display.
+        # Ambiguous dates remain review-only, never master-writable.
         _reconcile_work_order_group_dates(self.records,confirmed_by_page)
         seen=set()
         for row_i,r in enumerate(self.records):
@@ -7763,7 +7844,7 @@ class App(tk.Tk):
             v=tk.StringVar(value=val); vars[lab]=v
             ttk.Entry(win,textvariable=v,width=30).grid(row=n,column=1,padx=8,pady=6,sticky='w')
             add_preview(n,key)
-        ttk.Label(win,text='Compare each value with its PDF image before saving. Date changes apply to every row in this work order.',foreground='#8A5200').grid(
+        ttk.Label(win,text='Compare each value with its PDF image before saving. Date edits can apply to this row or the whole work order.',foreground='#8A5200').grid(
             row=len(fields)+1,column=0,columnspan=3,padx=12,pady=(4,2),sticky='w')
         win.columnconfigure(2,weight=1)
         def save():
@@ -7812,6 +7893,7 @@ class App(tk.Tk):
                 else:
                     r['video_length']=None
                     apply_manual_asset_edit(r,self.master_index,asset=vars['Asset'].get())
+                previous_date=r.get('date')
                 edited_date=datetime.strptime(vars['Date'].get().strip(),'%m/%d/%Y')
                 if _future_date(edited_date): raise ValueError('Date cannot be later than today')
                 r['date']=edited_date; r['wo']=vars['W/O'].get().strip(); r['truck']=vars['Truck'].get().strip(); r['operator']=vars['Operator'].get().strip()
@@ -7828,7 +7910,15 @@ class App(tk.Tk):
                     r['_length_user_edited']=True
                 for reason in confirmed_reasons:
                     _clear_field_review_block(r,reason)
-            _set_work_order_group_date(self.records,r,edited_date,clear_group_review=True)
+            whole_group=False
+            if edited_date!=previous_date:
+                whole_group=messagebox.askyesno(
+                    'Apply date to entire work order?',
+                    'Yes: all rows in this work order use this date.\\n'
+                    'No: change only this row (including overnight work).',
+                    default='no',parent=win)
+            _set_work_order_group_date(self.records,r,edited_date,clear_group_review=True,
+                                       whole_group=whole_group)
             if r.get('kind')=='Manhole' and r.get('_manhole_id_review_required'):
                 _confirm_manhole_id_review(r)
             refresh_length_status(r)
@@ -7940,8 +8030,8 @@ class App(tk.Tk):
         date_problems=_work_order_date_problems(self.records)
         if date_problems:
             messagebox.showerror('Work order dates need review',
-                'Every row in a work-order group must have the same valid date.\n\n'
-                'Use Edit Selected to verify the date for the whole group.\n\n'
+                'Each work order must have valid dates on one day or two consecutive days.\n\n'
+                'Use Edit Selected to verify ambiguous dates against the PDF.\n\n'
                 'Work order(s): '+', '.join(dict.fromkeys(date_problems)))
             return
         unverified_manhole_rows=[

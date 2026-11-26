@@ -647,7 +647,8 @@ def _work_order_date_problems(records):
         if (not dates or len(dates)>2 or (max(dates)-min(dates)).days>1 or
                 any(not isinstance(rec.get('date'),datetime) or _future_date(rec.get('date')) or
                     set(rec.get('_field_review_reasons',[])).intersection({
-                        'Work order date missing','Work order dates conflict','Overnight row date needs review'})
+                        'Work order date missing','Work order dates conflict','Overnight row date needs review',
+                        'Overnight MSA date needs review'})
                     for rec in rows)):
             problems.append(str(rows[0].get('wo') or 'UNKNOWN'))
     return problems
@@ -6983,7 +6984,31 @@ class App(tk.Tk):
         for record in (first,second):
             record['warnings']=[w for w in record.get('warnings',[]) if w!=DUPLICATE_PIPE_REVIEW]
             record.pop('_duplicate_pipe_block',None); record.pop('_msa_pending',None); record.pop('_msa_rejected',None)
+        # MSA is still one master row. Do not silently select a date when
+        # its two printed segments cross midnight.
+        first_observed=first.get('_row_date_observed',first.get('date'))
+        second_observed=second.get('_row_date_observed',second.get('date'))
         combine_split_pipe_records(first,second)
+        if first_observed is None and second_observed is not None:
+            first['_row_date_observed']=second_observed
+            first['_row_date_strong']=bool(second.get('_row_date_strong'))
+        if (isinstance(first_observed,datetime) and isinstance(second_observed,datetime)
+                and first_observed.date()!=second_observed.date()):
+            first['_msa_date_observations']=[first_observed,second_observed]
+            reason='Overnight MSA date needs review'
+            first.setdefault('_field_review_reasons',[]).append(reason)
+            first.setdefault('warnings',[]).append(reason)
+            _mark_field_review_block(first,reason)
+            previews=first.setdefault('_field_previews',{})
+            date_crops=[]; date_pages=[]
+            for segment in (first,second):
+                crop=(segment.get('_field_previews') or {}).get('date')
+                if getattr(crop,'size',0):
+                    date_crops.append(crop)
+                    date_pages.extend((segment.get('_field_preview_pages') or {}).get('date',[])[:1])
+            if date_crops:
+                previews['date']=date_crops
+                first.setdefault('_field_preview_pages',{})['date']=date_pages
         first['_msa_confirmed']=True
         self.records.pop(second_index)
 
@@ -7883,13 +7908,19 @@ class App(tk.Tk):
             for reason,title,field in (
                     ('Length reads disagree','Confirm PDF Length','Length'),
                     ('Date reads disagree','Confirm PDF Date','Date'),
-                    ('Date differs from table date','Confirm PDF Date','Date')):
+                    ('Date differs from table date','Confirm PDF Date','Date'),
+                    ('Overnight row date needs review','Confirm PDF Date','Date'),
+                    ('Work order dates conflict','Confirm PDF Date','Date'),
+                    ('Overnight MSA date needs review','Confirm PDF Date','Date')):
                 if reason in r.get('_field_review_reasons',[]):
                     if not messagebox.askyesno(
                             title,
                             (f'The OCR date differs from other dates on the table. '
                              if reason=='Date differs from table date' else
-                             f'Two PDF {field.lower()} reads disagree. ') +
+                             ('Verify the date for this overnight or conflicting work-order row. '
+                              if reason in ('Overnight row date needs review','Work order dates conflict',
+                                            'Overnight MSA date needs review') else
+                              f'Two PDF {field.lower()} reads disagree. ')) +
                             f'Check the {field} crop beside the field. '
                             'Does the entered value match the printed PDF?',
                             parent=win):
@@ -7914,7 +7945,8 @@ class App(tk.Tk):
             except Exception as e: messagebox.showerror('Invalid value',str(e),parent=win); return
             reasons=set(r.get('_field_review_reasons',[]))
             confirmed_reasons=reasons.intersection({
-                'Length reads disagree','Date reads disagree','Date differs from table date','Future date rejected'})
+                'Length reads disagree','Date reads disagree','Date differs from table date','Future date rejected',
+                'Overnight MSA date needs review'})
             if confirmed_reasons:
                 r['_field_review_reasons']=[reason for reason in r['_field_review_reasons']
                                             if reason not in confirmed_reasons]

@@ -1,5 +1,11 @@
 # XPS Tracker Updater project context
 
+## Pending development — overnight dates and selective Manhole review (November 25, 2026)
+
+Production remains v112. On the development fix branch, clear exact Manhole matches can pass when a literal positioned OCR read is high confidence (85 or above) or an isolated padded-cell check corroborates the exact ID. Conflicting existing IDs, fuzzy/partial-only matches, and low-confidence reads still require review. Confidence is a heuristic, not a guarantee; real private scan validation is still needed.
+
+Single-day work orders still fill missing dates from a consistent group date. Overnight orders may contain two consecutive dates; explicit row dates are retained, ambiguous missing dates around the transition require review, and nonadjacent/future dates remain blocked. Manual date edits default to row-only, with an explicit whole-group option. A split MSA spanning dates is flagged for a manual master-row date choice. No release or manifest update has been performed.
+
 ## Released in v112 — work-order dates and selective Manhole verification (November 18, 2026)
 
 Production v112 synchronizes the Date across the Pipe, Cleaning and Manhole rows belonging to each physical work-order group. The Confirm Work Order dialog allows the date to be verified or corrected. Rows with missing date OCR inherit a confirmed or uniquely consistent group date; conflicting or unavailable dates are flagged for review instead of guessed. A date edit in one row applies across the group, while other work orders remain separate. The master-write guard requires one valid, nonfuture date for the whole group.

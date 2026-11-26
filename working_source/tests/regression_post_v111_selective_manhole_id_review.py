@@ -63,6 +63,15 @@ assert questionable(row([['2002'],['DN-2002']]),known)
 assert questionable(row([['DN-20O2'],['DN-20O2']]),known)
 assert questionable(row([]),known)
 
+# One unambiguous exact source plus a high-confidence isolated literal read
+# passes, but the confidence marker never bypasses conflicting or fuzzy evidence.
+rescued=row([['DN-2002'],[]])
+rescued['_manhole_high_confidence_exact']='DN2002'
+assert not questionable(rescued,known)
+conflicting=row([['DN-2002'],['DN-2003']])
+conflicting['_manhole_high_confidence_exact']='DN2002'
+assert questionable(conflicting,known)
+
 # Two alternate real master IDs conflict: always review even if first one matches.
 assert questionable(row([['DN-2002'],['DN-2003']]),known)
 assert questionable(row([['DN-2002','DN-2003'],['DN-2002']]),known)
@@ -97,6 +106,7 @@ calls=lambda node:{n.func.id for n in ast.walk(node)
                    if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)}
 assert '_manhole_match_questionable' in calls(methods['commit_extracted_record'])
 assert '_require_manhole_id_review' in calls(methods['commit_extracted_record'])
+assert '_manhole_single_read_check' in calls(methods['commit_extracted_record'])
 assert '_confirm_manhole_id_review' in calls(methods['edit_selected'])
 manual=next(n for n in tree.body if isinstance(n,ast.FunctionDef)
             and n.name=='apply_manual_asset_edit')

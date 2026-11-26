@@ -339,7 +339,14 @@ If public asset verification fails, **do not advance the manifest**.
 
 ## Current verified production reference
 
-**v112 is the current production release:**
+**v113 is the current production release:**
+
+- Source commit: `85572fc42278052dc923df93eeed27ecad9ca05b`.
+- Verified ZIP: `XPS_Tracker_Updater_v113.zip` (338064 bytes), SHA-256 `92375615e1f224520563a5260a6240022ae164c6d7ecf878f4482d4aa93c593d`.
+- CI run 45731569661: full historical and supplemental regression suite, ZIP integrity/privacy, verified public re-download and manifest read-back passed.
+- Private scan OCR, live Windows Tkinter and Excel COM not tested.
+
+**Previous v112 release:**
 
 - Release source commit: `3c8ff65cdfb142acfa068507d6fd96917fe3b9ce`.
 - ZIP: `XPS_Tracker_Updater_v112.zip` (336048 bytes).

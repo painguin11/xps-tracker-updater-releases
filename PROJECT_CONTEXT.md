@@ -1,10 +1,14 @@
 # XPS Tracker Updater project context
 
-## Pending development — overnight dates and selective Manhole review (November 25, 2026)
+## Released in v113 — overnight dates and selective Manhole verification (November 25, 2026)
 
-Production remains v112. On the development fix branch, clear exact Manhole matches can pass when a literal positioned OCR read is high confidence (85 or above) or an isolated padded-cell check corroborates the exact ID. Conflicting existing IDs, fuzzy/partial-only matches, and low-confidence reads still require review. Confidence is a heuristic, not a guarantee; real private scan validation is still needed.
+Production v113 retains row dates for overnight work orders and reduces unnecessary MH ID review through high-confidence literal OCR and targeted rereads. Conflicts, partial/fuzzy IDs, uncertain midnight boundaries, future dates, and nonconsecutive mixed dates remain guarded. Individual and whole-group date corrections are supported.
 
-Single-day work orders still fill missing dates from a consistent group date. Overnight orders may contain two consecutive dates; explicit row dates are retained, ambiguous missing dates around the transition require review, and nonadjacent/future dates remain blocked. Manual date edits default to row-only, with an explicit whole-group option. A split MSA spanning dates is flagged for a manual master-row date choice. No release or manifest update has been performed.
+- Release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v113
+- Source commit: `85572fc42278052dc923df93eeed27ecad9ca05b`
+- ZIP: `XPS_Tracker_Updater_v113.zip`, 338064 bytes; SHA-256 `92375615e1f224520563a5260a6240022ae164c6d7ecf878f4482d4aa93c593d`
+- CI run: 45731569661; 59 historical regressions and six supplemental checks passed; ZIP privacy/integrity, public re-download, and manifest read-back passed.
+- Private customer PDF OCR, interactive Windows Tkinter and Excel COM writes were not exercised by public CI.
 
 ## Released in v112 — work-order dates and selective Manhole verification (November 18, 2026)
 

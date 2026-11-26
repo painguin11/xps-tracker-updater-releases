@@ -1,19 +1,17 @@
-XPS Tracker Updater v112
+XPS Tracker Updater v113
 ========================
 
-Current status (November 18, 2026)
+Current status (November 25, 2026)
 ----------------------------------
-Published production release: v112. Development continues on v95-work.
-- Work-order dates are consistent across every Pipe, Cleaning and Manhole
-  row in a physical work-order group, with group-wide date corrections.
-  Missing or disputed dates remain subject to manual review safeguards.
-- Existing Manhole IDs must agree across independent exact OCR reads before
-  automatic acceptance. Questionable matches alone require PDF verification;
-  clear matches are automatic. A master lookup cannot independently validate
-  a possibly misread Manhole ID.
-- Preserves future-date rejection and the earlier scanned-table safeguards.
-- Linux CI cannot validate private customer PDF fixtures, interactive Windows
-  Tkinter windows or Excel COM writes; these require separate field testing.
+- Reduce unnecessary MH verification using high-confidence literal OCR and
+  targeted rereads. Conflicting, fuzzy and partial-only IDs remain reviewable.
+- Preserve individual row dates in overnight work orders spanning two
+  consecutive calendar dates. Fill missing dates when unambiguous; review
+  unresolved midnight boundaries and conflicting dates.
+- Date edits may apply to the selected row or explicitly to the whole group.
+- Preserve existing future-date, scanned-table, length and new-asset safeguards.
+- Linux CI does not verify private customer scans, interactive Windows Tkinter
+  or Excel COM writes; these require separate field testing.
 Version sections below are release history; later changes supersede earlier ones.
 
 Purpose

@@ -5381,7 +5381,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
                  'video_length':None,'row_date':row_date,'status':status,
                  '_manhole_id_sources':pass_observations}
             confident_here={key for token_y,key in confident_tokens if abs(token_y-yc)<h*.012}
-            if item and confident_here=={asset_key(sid)}:
+            if item and confident_here and confident_here=={asset_key(sid)}:
                 rec['_manhole_high_confidence_exact']=asset_key(sid)
             preview_half=max(8,int(round(h*.018)))
             asset_preview=img[max(0,int(yc)-preview_half):min(h,int(yc)+preview_half),0:int(w*.38)]

@@ -468,8 +468,9 @@ def _manhole_match_questionable(record,known):
     candidates=set().union(*source_keys) if source_keys else set()
     if candidates-{selected}:
         return True
-    return (sum(selected in keys for keys in source_keys)<2 and
-            record.get('_manhole_high_confidence_exact')!=selected)
+    support=sum(selected in keys for keys in source_keys)
+    return not (support>=2 or (support==1 and
+                record.get('_manhole_high_confidence_exact')==selected))
 
 
 def _manhole_single_read_check(record,known,asset_format):
@@ -593,6 +594,9 @@ def _reconcile_work_order_group_dates(records, confirmed_by_page):
         observed={d for d in observations if d is not None}
         # The cover-sheet date anchors an overnight order when available.
         possible=observed|({confirmed} if confirmed else set())
+        if not possible:
+            possible={datetime(d.year,d.month,d.day) for rec in rows
+                      for d in [rec.get('date')] if isinstance(d,datetime) and not _future_date(d)}
         overnight=(len(possible)==2 and (max(possible)-min(possible)).days==1)
         single=next(iter(possible)) if len(possible)==1 else None
         for i,rec in enumerate(rows):
@@ -5327,7 +5331,7 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
     # ruled grid can also make whole-page Tesseract skip most rows. Keep the
     # positioned-token path, then compare it with the physical row-grid path and
     # use whichever preserves more distinct printed Manhole rows.
-    token_rows=[]; token_dates=[]
+    token_rows=[]; token_dates=[]; confident_tokens=[]
     for psm in (6,11):
         if on_progress: on_progress()
         gray=cv2.cvtColor(img,cv2.COLOR_RGB2GRAY)
@@ -5343,6 +5347,13 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             if not formatted: continue
             item,status=_resolve_full_asset(formatted,known)
             token_rows.append((y+hh//2,item,status,formatted[0],psm))
+            try:
+                literal=raw.strip().upper()
+                if (_asset_value_matches_format(literal,asset_format) and
+                        float(data['conf'][i])>=85):
+                    confident_tokens.append((y+hh//2,asset_key(literal)))
+            except (KeyError,IndexError,TypeError,ValueError):
+                pass
 
     token_out=[]
     if token_rows:
@@ -5368,6 +5379,9 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             rec={'kind':'Manhole','asset':sid,'asset_key':item['asset_key'] if item else '',
                  'video_length':None,'row_date':row_date,'status':status,
                  '_manhole_id_sources':pass_observations}
+            confident_here={key for token_y,key in confident_tokens if abs(token_y-yc)<h*.012}
+            if item and confident_here=={asset_key(sid)}:
+                rec['_manhole_high_confidence_exact']=asset_key(sid)
             preview_half=max(8,int(round(h*.018)))
             asset_preview=img[max(0,int(yc)-preview_half):min(h,int(yc)+preview_half),0:int(w*.38)]
             date_preview=img[max(0,int(yc)-preview_half):min(h,int(yc)+preview_half),int(w*.60):w]

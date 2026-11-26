@@ -5350,8 +5350,8 @@ def parse_year15_manholes(page, master_index, on_row=None, on_progress=None, ori
             token_rows.append((y+hh//2,item,status,formatted[0],psm))
             try:
                 literal=raw.strip().upper()
-                if (_asset_value_matches_format(literal,asset_format) and
-                        float(data['conf'][i])>=85):
+                if (float(data['conf'][i])>=85 and
+                        _asset_value_matches_format(literal,asset_format)):
                     confident_tokens.append((y+hh//2,asset_key(literal)))
             except (KeyError,IndexError,TypeError,ValueError):
                 pass

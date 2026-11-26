@@ -1,11 +1,11 @@
 {
-  "version": "112",
-  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v112/XPS_Tracker_Updater_v112.zip",
-  "sha256": "8cac470e490f85fa8c90036ad160510644c7554a0f547089d80676ace7e6af5b",
+  "version": "113",
+  "download_url": "https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v113/XPS_Tracker_Updater_v113.zip",
+  "sha256": "92375615e1f224520563a5260a6240022ae164c6d7ecf878f4482d4aa93c593d",
   "release_notes": [
-    "Use one consistent date across all Pipe, Cleaning and Manhole records within a work order",
-    "Propagate confirmed work-order dates and group edits while requiring review of conflicting or missing dates",
-    "Review only questionable Manhole ID matches; accept independently corroborated exact ID OCR automatically",
+    "Preserve actual row dates for overnight work orders spanning two consecutive dates",
+    "Fill unambiguous missing dates and allow individual or whole-work-order date edits",
+    "Reduce unnecessary Manhole verification with high-confidence literal OCR and targeted rereads",
     "Preserve future-date, scanned-table, new-asset, length, and manual review safeguards"
   ]
 }

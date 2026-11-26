@@ -1,0 +1,231 @@
+name: Publish XPS Tracker Updater v113
+
+on:
+  push:
+    branches: [fix/v112-manhole-overnight-dates]
+    paths: ['.trigger_publish_v113']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-xps-v113
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Confirm exclusive release and source versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v113 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Refusing to overwrite existing v113 release'; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v113" >/dev/null 2>&1; then
+            echo 'Refusing to reuse v113 tag'; exit 1
+          fi
+          python - <<'PY'
+          import ast,re
+          from pathlib import Path
+          app=Path('working_source/app/reno_scan_updater.py').read_text(encoding='utf-8')
+          updater=Path('working_source/app/xps_update.py').read_text(encoding='utf-8')
+          bundled=Path('working_source/app/README_XPS_Tracker_Updater.txt').read_text(encoding='utf-8')
+          assert re.search(r"^APP_VERSION\s*=\s*['\"]113['\"]",app,re.M)
+          assert re.search(r'^CURRENT_VERSION\s*=\s*["\']113["\']',updater,re.M)
+          assert bundled.startswith('XPS Tracker Updater v113')
+          ast.parse(app);ast.parse(updater)
+          for required in ('def _reconcile_work_order_group_dates', 'def _manhole_match_questionable', 'def _require_manhole_id_review', 'def parse_pipe_list','def parse_manhole_list',
+             'def parse_year15_pair_list','def parse_year15_manholes','def parse_trouble_ticket',
+             'def _future_date','def _choose_sheet_date_evidence','def update_master'):
+              assert required in app,required
+          print('v113 source version and parser safeguards confirmed')
+          PY
+          python -m py_compile working_source/app/reno_scan_updater.py working_source/app/xps_update.py working_source/app/xps_review_controls.py
+          git diff --check
+
+      - name: Install OCR and regression dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk tesseract-ocr >/dev/null
+          python -m pip install --quiet numpy opencv-python-headless openpyxl pymupdf pillow pytesseract
+
+      - name: Full active regressions and future-date guards
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess,sys
+          names=["regression_post_v108_compact_skew.py","regression_post_v107_compact_contextual_ocr.py","regression_post_v106_rotated_pipe_header_ocr.py","regression_post_v105_single_row_removal.py","regression_post_v105_physical_rows_never_discarded.py","regression_post_v105_rotated_pipe_and_manhole_row.py","regression_post_v103_manhole_reordered_columns.py","regression_post_v102_manhole_expected_count_retry.py","regression_post_v102_manhole_partial_tokens.py","regression_post_v100_826_trouble_geometry.py","regression_post_v100_trouble_cells.py","regression_trouble_workbook.py","regression_post_v99_faint_vertical_grid.py","regression_post_v98_short_wide_compact_table.py","regression_post_v97_cleaning_clipped_digits.py","regression_post_v96_msa_editable_fields.py","regression_post_v95_new_packet_ocr.py","regression_post_v95_padded_endpoint_ids.py","regression_post_v95_msa_suffix_review.py","regression_v95_faint_compact_rows.py","regression_v95_exact_endpoint_priority.py","regression_v94_stacked_endpoint_digits.py","regression_v93_workorder_low_confidence_blank.py","regression_v93_new_asset_notes.py","regression_v92_workorder_4_or_5_digits.py","regression_v91_workorder_color_ocr.py","regression_v91_new_asset_preview_and_endpoint_recovery.py","regression_v90_review_ui.py","regression_v89_review_workflow.py","regression_v89_printed_pair_identity.py","regression_v89_manhole_count_and_final_total.py","regression_v88_continuations.py","regression_v87_total_summary_separator.py","regression_v86_assets_and_edit.py","regression_v85_edit_row_previews.py","regression_v85_mandatory_rows_and_length_votes.py","regression_v84_real_packet_length_logic.py","regression_v83_length_recovery.py","regression_v83_exact_pdf_numbers.py","regression_v83_total_preview_group_errors.py","regression_v82_pair_video_lengths.py","regression_v82_master_asset_format.py","regression_v82_suffix_guard.py","regression_v82_cleaning_header_noise.py","regression_v82_layout_threshold.py","regression_v81_header_outline.py","regression_v80_ocr_total_ui.py","regression_v79_layout_speed.py","regression_v78_rollback.py","regression_v75_811_ocr.py","regression_v74_row_filtering.py","regression_v73_total_dates.py","regression_compact_table_fallback.py","regression_length_totals.py","regression_split_pipes.py","regression_new_assets.py","regression_master_insert.py","regression_r2_endpoint_ocr.py","regression_v102_review_wrapper.py"]
+          extra=['regression_table_accuracy_guards.py',
+                 'regression_border_isolated_lengths.py',
+                 'regression_live_summary_plain_during_analysis.py',
+                 'regression_future_dates.py',
+                 'regression_post_v111_work_order_group_dates.py',
+                 'regression_post_v111_selective_manhole_id_review.py']
+          root=Path('working_source/tests')
+          for name in names+extra:
+              path=root/name
+              assert path.is_file(),f'Missing active regression: {path}'
+              print('===== '+str(path)+' =====',flush=True)
+              subprocess.run([sys.executable,str(path)],check=True)
+          print(f'PASS {len(names)}/{len(names)} historical regressions and {len(extra)} supplemental regressions',flush=True)
+          PY
+          python -m py_compile working_source/tools/private_table_benchmark.py
+          python working_source/tools/private_table_benchmark.py --help >/dev/null
+
+      - name: Audit source privacy and build release ZIP
+        run: |
+          set -euo pipefail
+          if git diff --name-only 3c8ff65cdfb142acfa068507d6fd96917fe3b9ce HEAD | grep -Ei '\\.(pdf|xlsx|xlsm|xls)$'; then
+            echo 'Forbidden private workbook or PDF in release changes'; exit 1
+          fi
+          mkdir -p dist/XPS_Tracker_Updater
+          cp -a working_source/app/. dist/XPS_Tracker_Updater/
+          find dist -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find dist -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+          cd dist
+          zip -qr XPS_Tracker_Updater_v113.zip XPS_Tracker_Updater
+          unzip -t XPS_Tracker_Updater_v113.zip
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,zipfile
+          archive=Path('XPS_Tracker_Updater_v113.zip')
+          with zipfile.ZipFile(archive) as z:
+              names=z.namelist()
+              assert names and all(n.startswith('XPS_Tracker_Updater/') for n in names)
+              assert z.testzip() is None
+              for item in ('reno_scan_updater.py','xps_update.py','run_xps_tracker.bat',
+                           'README_XPS_Tracker_Updater.txt','xps_review_controls.py'):
+                  assert 'XPS_Tracker_Updater/'+item in names,item
+              forbidden=('.pdf','.xlsx','.xlsm','.xls','ocr_cache','logs/','private','customer')
+              assert not any(any(piece in name.lower() for piece in forbidden) for name in names)
+          print('ZIP integrity, structure and privacy checks passed')
+          PY
+          echo "RELEASE_SHA=$(sha256sum XPS_Tracker_Updater_v113.zip | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "RELEASE_SIZE=$(stat -c%s XPS_Tracker_Updater_v113.zip)" >> "$GITHUB_ENV"
+
+      - name: Promote tested source to development branch
+        run: |
+          set -euo pipefail
+          git fetch origin v95-work
+          git merge-base --is-ancestor origin/v95-work HEAD
+          git push origin HEAD:v95-work
+
+      - name: Publish new release and verify public asset download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create v113 dist/XPS_Tracker_Updater_v113.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'XPS Tracker Updater v113' --notes 'Reduce unnecessary Manhole ID verification with high-confidence literal OCR and targeted rereads; retain review for conflicting, incomplete or fuzzy matches. Preserve two consecutive dates in overnight work orders, with safe missing-date inference and individual or group-wide edits. Preserve future-date, OCR, length, and new-asset safeguards. Linux regression suite passed; Windows Excel COM, live Tkinter and private customer-fixture OCR were not tested by public CI.'
+          python - <<'PY'
+          import json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          d=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/releases/tags/v113'],text=True))
+          assert d['tag_name']=='v113' and d['name']=='XPS Tracker Updater v113'
+          matches=[asset for asset in d['assets'] if asset['name']=='XPS_Tracker_Updater_v113.zip']
+          assert len(matches)==1
+          a=matches[0]
+          assert int(a['size'])==int(os.environ['RELEASE_SIZE'])
+          assert a.get('digest')==f"sha256:{os.environ['RELEASE_SHA']}"
+          print('Release metadata and asset digest verified')
+          PY
+          curl --fail --location --retry 5 --retry-delay 2 --silent --show-error --output /tmp/xps-v113-public.zip "https://github.com/$GITHUB_REPOSITORY/releases/download/v113/XPS_Tracker_Updater_v113.zip"
+          test "$(stat -c%s /tmp/xps-v113-public.zip)" = "$RELEASE_SIZE"
+          echo "$RELEASE_SHA  /tmp/xps-v113-public.zip" | sha256sum --check
+          unzip -t /tmp/xps-v113-public.zip >/dev/null
+          echo 'Public asset re-download, size, SHA-256 and ZIP integrity verified'
+
+      - name: Advance public updater manifest only after verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git worktree add --detach /tmp/xps-main-v113 origin/main
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          path=Path('/tmp/xps-main-v113/update_manifest.json')
+          data=json.loads(path.read_text(encoding='utf-8'))
+          assert data['version']=='112',f'Unexpected prior production manifest: {data["version"]}'
+          data={
+             'version':'113',
+             'download_url':'https://github.com/painguin11/xps-tracker-updater-releases/releases/download/v113/XPS_Tracker_Updater_v113.zip',
+             'sha256':os.environ['RELEASE_SHA'],
+             'release_notes':[
+               "Preserve actual row dates for overnight work orders spanning two consecutive dates",
+               "Fill unambiguous missing dates and allow individual or whole-work-order date edits",
+               "Reduce unnecessary Manhole verification with high-confidence literal OCR and targeted rereads",
+               "Preserve future-date, scanned-table, new-asset, length, and manual review safeguards"
+             ]
+          }
+          path.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          cd /tmp/xps-main-v113
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add update_manifest.json
+          git commit -m 'Publish v113 verified auto-update manifest'
+          git push origin HEAD:main
+          git fetch origin main
+          git show origin/main:update_manifest.json > /tmp/xps-v113-manifest.json
+          python - <<'PY'
+          import json,os
+          data=json.load(open('/tmp/xps-v113-manifest.json',encoding='utf-8'))
+          assert data['version']=='113'
+          assert data['sha256']==os.environ['RELEASE_SHA']
+          assert data['download_url'].endswith('/v113/XPS_Tracker_Updater_v113.zip')
+          print('Read-back from origin/main verified version, URL and checksum')
+          PY
+
+      - name: Record verified production status and remove temporary release files
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python - <<'PY'
+          import os,re
+          from pathlib import Path
+          sha=os.environ['RELEASE_SHA']; size=os.environ['RELEASE_SIZE']
+          commit=os.environ['GITHUB_SHA']; run=os.environ['GITHUB_RUN_ID']
+          summary=f"""## Released in v113 — overnight dates and selective Manhole verification (November 25, 2026)
+
+          Production v113 retains row dates for overnight work orders and reduces unnecessary MH ID review through high-confidence literal OCR and targeted rereads. Conflicts, partial/fuzzy IDs, uncertain midnight boundaries, future dates, and nonconsecutive mixed dates remain guarded. Individual and whole-group date corrections are supported.
+
+          - Release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v113
+          - Source commit: `{commit}`
+          - ZIP: `XPS_Tracker_Updater_v113.zip`, {size} bytes; SHA-256 `{sha}`
+          - CI run: {run}; 59 historical regressions and six supplemental checks passed; ZIP privacy/integrity, public re-download, and manifest read-back passed.
+          - Private customer PDF OCR, interactive Windows Tkinter and Excel COM writes were not exercised by public CI.
+
+          """
+          p=Path('PROJECT_CONTEXT.md'); t=p.read_text(encoding='utf-8')
+          t=re.sub(r'## Pending development — overnight dates and selective Manhole review[^\n]*\n.*?(?=## Released in v112)',summary,t,flags=re.S)
+          p.write_text(t,encoding='utf-8')
+          p=Path('AGENTS.md'); t=p.read_text(encoding='utf-8').replace('Production version: **v112**','Production version: **v113**').replace('through v112','through v113'); p.write_text(t,encoding='utf-8')
+          p=Path('RELEASE_CHECKLIST.md'); t=p.read_text(encoding='utf-8')
+          t=t.replace('**v112 is the current production release:**','**v113 is the current production release:**\n\n'+f'- Source commit: `{commit}`.\n- Verified ZIP: `XPS_Tracker_Updater_v113.zip` ({size} bytes), SHA-256 `{sha}`.\n- CI run {run}: full historical and supplemental regression suite, ZIP integrity/privacy, verified public re-download and manifest read-back passed.\n- Private scan OCR, live Windows Tkinter and Excel COM not tested.\n\n**Previous v112 release:**')
+          p.write_text(t,encoding='utf-8')
+          for name in ('AGENTS.md','PROJECT_CONTEXT.md','RELEASE_CHECKLIST.md'):
+              dest=Path('working_source/docs')/name
+              if dest.exists(): dest.write_bytes(Path(name).read_bytes())
+          PY
+          git rm .github/workflows/publish-v113.yml .trigger_publish_v113 .github/workflows/validate-v112-overnight-fix.yml
+          git add AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md working_source/docs
+          git commit -m 'Record verified v113 and clean temporary publishing files [skip ci]'
+          git push origin HEAD:v95-work
+          git fetch origin main
+          git worktree add --detach /tmp/xps-main-v113-docs origin/main
+          cp AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md /tmp/xps-main-v113-docs/
+          cd /tmp/xps-main-v113-docs
+          git add AGENTS.md PROJECT_CONTEXT.md RELEASE_CHECKLIST.md
+          git commit -m 'Sync verified v113 production documentation'
+          git push origin HEAD:main

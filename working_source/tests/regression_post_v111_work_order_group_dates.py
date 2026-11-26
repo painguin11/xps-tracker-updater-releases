@@ -1,4 +1,4 @@
-"""Regression coverage for one date per physical work-order group (post-v111)."""
+"""Regression coverage for single-day and overnight physical work orders."""
 from pathlib import Path
 import ast
 from datetime import datetime, timedelta
@@ -53,12 +53,43 @@ same_number=[row(8,day_b),row(9,day_c)]
 reconcile(same_number,{8:{'date':day_b},9:{'date':day_c}})
 assert [r['date'] for r in same_number]==[day_b,day_c]
 
-# A contradictory table read cannot silently become write-eligible.
-mixed=[row(12,day_a),row(12,day_b),row(12,None)]
+# Preserve strong adjacent-date rows and review an unresolvable midnight split.
+mixed=[row(12,day_a),row(12,day_b,_row_date_strong=True),row(12,None)]
 reconcile(mixed,{12:{'date':day_a}})
-assert all(r['date']==day_a for r in mixed)
-assert 'Work order dates conflict' in mixed[1]['_field_review_reasons']
-assert mixed[1]['skip_update'] is True
+assert [r['date'] for r in mixed]==[day_a,day_b,None]
+assert 'Overnight row date needs review' in mixed[2]['_field_review_reasons']
+assert problems(mixed)==['1234']
+set_date(mixed,mixed[2],day_b,clear_group_review=True,whole_group=False)
+assert [r['date'] for r in mixed]==[day_a,day_b,day_b]
+assert not problems(mixed)
+# Ordinary no-op/row-only editing never erases the overnight date.
+set_date(mixed,mixed[0],day_a,clear_group_review=True,whole_group=False)
+assert mixed[1]['date']==day_b
+
+# Strong adjacent dates with no missing cells are accepted.
+overnight=[row(15,day_a),row(15,day_b,_row_date_strong=True)]
+reconcile(overnight,{15:{'date':day_a}})
+assert [r['date'] for r in overnight]==[day_a,day_b]
+assert not problems(overnight)
+
+# Weak isolated adjacent dates remain visible but require review.
+weak=[row(16,day_a),row(16,day_b)]
+reconcile(weak,{16:{'date':day_a}})
+assert weak[1]['date']==day_b and problems(weak)==['1234']
+
+# Missing dates bracketed by same-day rows can be filled, not at midnight.
+bracket=[row(17,day_a,source_page=2),row(17,None,source_page=2),
+         row(17,day_a,source_page=2),row(17,day_b,source_page=2,_row_date_strong=True)]
+reconcile(bracket,{17:{'date':day_a}})
+assert [r['date'] for r in bracket]==[day_a,day_a,day_a,day_b]
+assert not problems(bracket)
+
+# Date fallback assigned during extraction is not printed evidence.
+fallback=[row(18,day_a,_row_date_observed=day_a),
+          row(18,day_a,_row_date_observed=None),
+          row(18,day_b,_row_date_observed=day_b,_row_date_strong=True)]
+reconcile(fallback,{18:{'date':day_a}})
+assert fallback[1]['date'] is None and problems(fallback)==['1234']
 
 # Without a confirmed date, a single unambiguous OCR date fills missing rows.
 unique=[row(13,day_b),row(13,None)]
@@ -67,9 +98,9 @@ assert all(r['date']==day_b for r in unique)
 assert not problems(unique)
 
 # Conflicting OCR dates, or no dates at all, block workbook writes.
-disputed=[row(20,day_a),row(20,day_b)]
+disputed=[row(20,day_a),row(20,day_c)]
 reconcile(disputed,{20:{'date':None}})
-assert all(r['date'] is None for r in disputed)
+assert [r['date'] for r in disputed]==[day_a,day_c]
 assert all('Work order dates conflict' in r['_field_review_reasons'] for r in disputed)
 assert problems(disputed)==['1234']
 missing=[row(30,None),row(30,None)]
@@ -115,4 +146,4 @@ assert '_work_order_date_problems' in calls(methods['update_master'])
 assert 'self.date_var' in text and 'Work Order Date:' in text
 assert "and not (match or endpoint_signal)" in text
 
-print('post-v111 work-order group date consistency regression passed')
+print('single-day and overnight work-order date consistency regression passed')

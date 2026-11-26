@@ -1,1 +1,2 @@
 Publish v113 only after complete regression, package integrity, public asset re-download and checksum verification.
+Retry after restoring version declaration compatibility.

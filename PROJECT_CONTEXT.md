@@ -1,5 +1,15 @@
 # XPS Tracker Updater project context
 
+## Released in v113 — overnight dates and selective Manhole verification (November 25, 2026)
+
+Production v113 retains row dates for overnight work orders and reduces unnecessary MH ID review through high-confidence literal OCR and targeted rereads. Conflicts, partial/fuzzy IDs, uncertain midnight boundaries, future dates, and nonconsecutive mixed dates remain guarded. Individual and whole-group date corrections are supported.
+
+- Release: https://github.com/painguin11/xps-tracker-updater-releases/releases/tag/v113
+- Source commit: `85572fc42278052dc923df93eeed27ecad9ca05b`
+- ZIP: `XPS_Tracker_Updater_v113.zip`, 338064 bytes; SHA-256 `92375615e1f224520563a5260a6240022ae164c6d7ecf878f4482d4aa93c593d`
+- CI run: 45731569661; 59 historical regressions and six supplemental checks passed; ZIP privacy/integrity, public re-download, and manifest read-back passed.
+- Private customer PDF OCR, interactive Windows Tkinter and Excel COM writes were not exercised by public CI.
+
 ## Released in v112 — work-order dates and selective Manhole verification (November 18, 2026)
 
 Production v112 synchronizes the Date across the Pipe, Cleaning and Manhole rows belonging to each physical work-order group. The Confirm Work Order dialog allows the date to be verified or corrected. Rows with missing date OCR inherit a confirmed or uniquely consistent group date; conflicting or unavailable dates are flagged for review instead of guessed. A date edit in one row applies across the group, while other work orders remain separate. The master-write guard requires one valid, nonfuture date for the whole group.
